@@ -1,6 +1,6 @@
 # Agent Music Workstation P0 十天双人模块化开发计划
 
-**版本：** 1.3
+**版本：** 1.4
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -349,8 +349,8 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 |---|---|---|---|---|
 | **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、显式恢复、另存为；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；同项目单写实例；稳定 Project Command/Event |
 | **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Meter 修改与最终 Meter/barline 一致性校验、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateGlobalMeter`、`validateFinalMeterConsistency`、PlaybackCompilation、TimelineViewModel、ValidationReport |
-| **A3** | Candidate Transaction | Candidate worktree、Task 状态机、checkpoint、Accept/Reject、取消回滚；所有 Current 写入经 A1 串行写入机制 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 Candidate Command/Event |
-| **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Mastra Agent Loop、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask` |
+| **A3** | Candidate Transaction | Candidate `baseRevision`、`.agent-music` worktree、Candidate/Task 双状态机、execution envelope、Scope Extension 授权、checkpoint、Accept/Reject、取消回滚、cleanup marker、稳定领域错误；Current 正式写入经 A1 串行写入机制 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 Agent-facing / Renderer-control interface 与 Candidate Command/Event |
+| **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Mastra Agent Loop、planning/confirmation 前置流程、AgentExecutionContext、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask`，不复制 A3 Candidate/Task 授权状态 |
 | **A5** | Persistence & Export Preparation | SQLite、Settings、安全脱敏、复用 A1 clean Current 读取校验、ABC/MIDI 导出数据、WAV 输入准备 | A1、A2 | 可恢复 Agent 状态；经过 Current 校验的导出输入 |
 
 #### 7.1.1 A1 最小接口与实现边界
@@ -375,7 +375,17 @@ createInitialComposition(): string;
 
 该方法由 `createProject()` 调用，不进入 Renderer IPC。A1 阶段允许使用明确的 TODO 或固定 fixture 占位；A2 负责补齐 Canonical ABC 的正式生成语义。
 
-A1 还向 Core 内部提供项目级串行写入和 clean Current 读取能力，供 A3 的 Accept/回滚及 A5 的导出准备复用；不得向 Renderer、Agent 暴露 Git、文件写入、加锁或解锁等低层接口。
+A1 还向 Core 内部提供项目级串行写入、clean Current 读取与当前项目路径查询能力：
+
+```ts
+interface ProjectAuthorityAccess {
+  readCleanCurrent(): Promise<CurrentAuthoritySnapshot>;
+  getProjectPath(): string;
+  runSerializedWrite<T>(operation: () => Promise<T>): Promise<T>;
+}
+```
+
+`getProjectPath()` 只供 Core 内部 A3 定位 Candidate linked worktree；不得向 Renderer 或 Agent 暴露。A3 的 Accept 复用 A1 serialized write，A5 复用 clean Current 读取；不得向 A3 暴露 A1 的 GitAdapter、锁对象或解锁能力。
 
 A1 验收至少覆盖：
 
@@ -385,6 +395,37 @@ A1 验收至少覆盖：
 - 第二个应用实例不能同时获得同一项目的写锁；正常关闭释放锁，崩溃残留锁可安全识别；
 - dirty Current fail-closed，恢复只读取 `main` HEAD；
 - A3/A5 使用 A1 的锁和 Current guard，不重复实现 Git clean 规则。
+
+#### 7.1.2 A3 Candidate Transaction 边界
+
+A3 是 Candidate/Task 业务事务的唯一 owner，A4 与 Renderer 只通过角色化 interface 使用它：
+
+```text
+A4 / MCP adapter
+→ A3 Agent-facing interface
+→ A2 CompositionPipeline + Candidate transaction
+
+Renderer/Core control
+→ A3 control interface
+→ start/cancel/scope approval/accept/reject
+```
+
+A3 必须实现：
+
+- Candidate 创建时冻结 `baseRevision=main HEAD`；一个 Candidate 对应 `candidate/<candidateId>` + `.agent-music/worktrees/<candidateId>/`；Ready Candidate 的后续 Task 复用同一 worktree；
+- 正式 Task 只在用户确认后创建；A3 只保留一个 Active Task，TaskContext 不保存 userIntent、模型配置或 repair policy；
+- Task-bound MCP execution envelope 统一校验 `taskId/projectId/candidateId/baseRevision/expectedScopeRevision`；ID 全局唯一；
+- Scope Extension 只能扩大，A3 独占 `scope/scopeRevision` 写权限，Pending request 形成写入 barrier；
+- `allowedOperations` 从 Scope 与 P0 capability 实时推导，不持久化；
+- 普通 Candidate mutation 不排队；busy 返回 `TASK_BUSY`。Cancel/Reject 先失效授权，运行中的 mutation 在落盘前必须复检；
+- `finishTask` 同时执行 A3 事务校验与 A2 final validation；成功只 checkpoint `composition.abc`，使用 `--allow-empty`；
+- `project.json` 必须保持 Candidate baseRevision 版本；其他非忽略意外 Candidate 文件变化 fail-closed；
+- Cancel 回滚当前 Task；首 Task cancel 且无成功 checkpoint 时结束空 Candidate；Reject 可在 Active Task 中强终止整个 Candidate；
+- baseline 漂移后 Candidate 进入 `stale`，只能 Reject；
+- Accept 的成功点为新 `main` commit 成功；commit 前失败恢复旧 Current 并保留 Candidate，commit 后 cleanup 失败不回滚；
+- Reject 的成功点为 Candidate 授权失效；Accept/Reject cleanup 失败均进入独立 PendingCleanup，不阻塞新 Active Candidate；
+- 自动清理只处理存在 `.agent-music/candidate-cleanup/<candidateId>.json` marker 的资源；无 marker orphan 只报告；
+- 对外只暴露稳定 Candidate Command/Event 与领域错误码，不暴露 branch、worktree、checkpoint SHA、cleanup 路径和底层异常文本。
 
 ### 7.2 开发者 B：Electron + UI + openDAW
 
@@ -558,7 +599,7 @@ Canonical ABC
 
 **进入条件：**
 
-- A3 可创建 Candidate、执行 Task checkpoint、Accept、Reject 和取消回滚；
+- A3 可创建/复用 Candidate、执行 Task checkpoint、Scope Extension 授权、Accept、强 Reject、取消回滚与 stale baseline 保护；
 - B4 已能用 Fake Candidate Event 完成 Current/Candidate 切换。
 
 **通过标准：**
@@ -566,7 +607,7 @@ Canonical ABC
 - 创建 Candidate 后 UI 可切换 Current/Candidate 试听；
 - Candidate 更新只替换 Candidate Snapshot；
 - Reject 后 Current hash 和音乐内容不变；
-- Accept 后形成一个新的 Current commit；
+- Accept 后始终形成一个新的 Current commit；commit 后 cleanup failure 不回滚 Current；
 - Preview 切换不会留下旧 Transport 或音频状态。
 
 **解除阻塞：** Candidate 的真实产品事务闭环完成；I5 可接入 Agent。
@@ -578,7 +619,7 @@ Canonical ABC
 **进入条件：**
 
 - A4 可通过真实 descriptor 连接真实 MCP Server；
-- A3 已支持 `scopeRevision`、`replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask`；
+- A3 已支持完整 Task execution envelope、严格 `scopeRevision`、Scope Extension barrier、`replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask`；
 - B4 可展示计划、确认、Task 阶段和 Candidate 状态。
 
 **联调链：**

@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.6 |
-| 需求基线 | Agent Music Workstation PRD V1.8 Consolidated Decisions |
-| 状态 | P0 架构基线；技术 Gate 通过后冻结实现 |
-| 日期 | 2026-08-02 |
+| 架构版本 | V1.7 |
+| 需求基线 | Agent Music Workstation PRD V1.9 Candidate Transaction Decisions |
+| 状态 | P0 架构基线；A3 Candidate Transaction 决策已冻结 |
+| 日期 | 2026-08-13 |
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Mastra、MCP、Git/worktree、SQLite |
 
-> 本版冻结 D2 的两个 P0 缺口：Canonical ABC 以受控 `[I:MIDI vol N]` 保存每事件 `1..127` Velocity；`0` 保留为 Standard MIDI Note Off，不作为 Note onset Velocity。A2 提供专用 `updateGlobalMeter` 操作，并要求覆盖全部六轨的 `wholeProject` Scope。两项操作都会重新生成 Scope Mapping、PlaybackCompilation 与 TimelineViewModel。
+> 本版在 V1.6 Composition Pipeline 基线上冻结 A3 Candidate Transaction：Candidate/Task 双状态机、Candidate `baseRevision`、Task execution envelope、严格 Scope Extension、Candidate mutation 并发、checkpoint、Accept/Reject 线性化点、cleanup marker 与稳定领域错误。
 
 ---
 
@@ -44,7 +44,7 @@
 | ADR-009 | Scope Mapping | P0 实现 Tick Range 到 ABC 字符范围映射；Mapping 是缓存，不进入 Git。 |
 | ADR-010 | Scope | 内部只保留 `wholeProject` 或 `trackIds + [startTick,endTick)`。 |
 | ADR-011 | Current | 创建项目时即产生空白 Current；Current 为 `main` HEAD。 |
-| ADR-012 | Candidate | P0 单 Candidate，使用独立 branch + worktree。 |
+| ADR-012 | Candidate | P0 同一项目最多一个业务 Active Candidate，使用独立 branch + worktree；已结束 Candidate 的 PendingCleanup/orphan 不属于可操作 Candidate。 |
 | ADR-013 | Task checkpoint | 一个 Task 在 `finishTask` 成功后形成一个 Candidate checkpoint。 |
 | ADR-014 | Accept | 将 Candidate 最终树 squash 为一个正式 Current commit。 |
 | ADR-015 | 恢复 | 只保证最后成功 Current；P0 不恢复运行 Task 或 Candidate。 |
@@ -68,6 +68,14 @@
 | ADR-033 | RuntimeSnapshot 归属 | A2 不生成、不持有 RuntimeSnapshot；B3 在 Renderer 内根据 A2 的 openDAW 无关 `PlaybackCompilation` 构建并缓存 Snapshot。`ScopeMappingCache` 始终留在 Core，是 A2 的独立输出，不进入 RuntimeSnapshot 或 Renderer IPC。 |
 | ADR-034 | P0 Velocity | Canonical ABC 使用 `[I:MIDI vol N]`，`N` 为整数 `1..127`；`0` 保留为 Standard MIDI Note Off，不属于 Note onset Velocity。指令绑定恰好一个后续 Note/Chord onset，并与事件进入同一个 Scope span；Chord 内共享 Velocity，Tie continuation 禁止重新设置。缺省 Velocity 为 `100`。 |
 | ADR-035 | Global Meter 修改 | A2 暴露专用 `updateGlobalMeter` 操作，只接受覆盖全部六轨的 `wholeProject` Scope。该操作只修改唯一 `M:` 头这一底层工程事实，并验证曲长、Note/Rest、Velocity、Tempo 和 Key 不变后重建全部派生输出；不自动重排小节或改编音乐。Agent 根据用户意图继续通过音乐修改工具重排 wholeProject，最终由 `finishTask` 验证 Candidate 与新 Global Meter 一致。 |
+| ADR-036 | A3 Task 边界 | 正式 Task 只在用户确认后由 A3 创建；A3 `TaskContext` 只保存事务与授权状态。planning、awaiting_confirmation、repair policy、用户意图和模型配置属于 A4。 |
+| ADR-037 | Candidate 基线与 worktree | Candidate 创建时冻结 `baseRevision=main HEAD`，一个 Candidate 对应一个 `candidate/<candidateId>` branch 与 `.agent-music/worktrees/<candidateId>/` linked worktree；多个 Task 复用同一 worktree。 |
+| ADR-038 | Task 调用一致性 | `taskId`/`candidateId` 全局唯一；除 `getTaskContext({taskId})` bootstrap 外，Task-bound MCP 调用统一携带 project/candidate/baseRevision/expectedScopeRevision execution envelope，并由 A3 逐项核对。 |
+| ADR-039 | Scope Extension | Scope 只能扩大且满足 `oldScope ⊆ newScope`；A3 是 Scope/scopeRevision 唯一 owner。每个扩展有唯一 requestId，Pending 期间形成写入 barrier。 |
+| ADR-040 | Candidate 并发与状态 | Candidate 与 Task 使用独立状态机。普通 mutation 不排队，busy 返回 `TASK_BUSY`；Cancel/Reject 可先失效授权，运行中 mutation 在最终落盘前必须再次检查授权。 |
+| ADR-041 | Accept/Reject 事务点 | Accept 以新 `main` commit 成功为业务成功点；Reject 以 Candidate 授权失效为业务成功点。后续 branch/worktree cleanup 失败不回滚业务结果，也不阻塞新 Candidate。 |
+| ADR-042 | Candidate cleanup | 已结束 Candidate 通过 `.agent-music/candidate-cleanup/<candidateId>.json` marker 授权自动清理。启动时只自动清理有 marker 的残留；无 marker 资源不恢复、不猜测删除。 |
+| ADR-043 | Candidate 权威变化 | P0 Candidate 只允许 `composition.abc` 产生业务差异；`project.json` 必须保持 baseRevision 版本。checkpoint 只 stage `composition.abc`，成功 Task/Accept 均允许 empty commit。 |
 
 > **职责边界：Global Meter 修改与音乐重排分离。** `updateGlobalMeter` 允许 Task 编辑过程中暂时保留旧 ABC barline；A2 不自动拆分 Note/Rest、不自动添加 Tie，也不根据新拍号改编音乐。Agent 负责后续 wholeProject 重排；最终 Candidate 的 Meter/小节一致性属于 `finishTask` 验证边界。
 
@@ -292,7 +300,7 @@ interface ProjectManifest {
 
 派生状态不能单独成为工程事实来源。
 
-### 6.4 Current clean 规则
+### 6.4 Current clean 与 Candidate baseline guard
 
 Current 主工作区必须保持 Git clean：
 
@@ -300,9 +308,22 @@ Current 主工作区必须保持 Git clean：
 git status --porcelain == ""
 ```
 
-开始写 Task、Accept 和导出前检查。发现未提交修改时进入只读错误状态并要求恢复 `main` HEAD。
+Candidate 创建时冻结：
 
-Candidate worktree 不执行 clean 或外部漂移检查，因为 Task 内允许存在合法未提交修改。
+```text
+Candidate.baseRevision = main HEAD
+```
+
+所有“继续使用 Candidate”的入口——`startTask`（复用 Ready Candidate）、Task-bound read/write、Scope Extension、`finishTask`、Accept——都必须确认：
+
+```text
+Current clean
+AND main HEAD == Candidate.baseRevision
+```
+
+若 Current dirty，A3 返回 `CURRENT_NOT_CLEAN` 并阻塞本次操作，Candidate 保留，用户可先通过 A1 恢复 Current。只有 `main HEAD != Candidate.baseRevision` 时，A3 才将 Candidate 标记为 `stale`、立即失效 Active Task 授权，并拒绝继续编辑、验证或 Accept。`stale` Candidate 只允许 Reject；Reject 属于销毁操作，不受 baseline guard 阻止。
+
+Candidate Task 内允许 `composition.abc` 存在合法未提交修改，因此不要求 Candidate worktree 整体 clean；但 `project.json` 必须等于 `baseRevision` 版本，其他 tracked/untracked 非忽略变化属于 `UNEXPECTED_CANDIDATE_CHANGE`。
 
 ---
 
@@ -585,67 +606,102 @@ Music Core 在项目打开且 MCP Server ready 后写入用户运行时目录：
 ### 10.4 权限模型
 
 - `instanceToken` 只负责连接认证；
-- 写工具必须携带 Host 创建的有效 `taskId`；
-- Music Core 查询服务器端 TaskContext；
-- Agent 不能自行创建 Task、Candidate 或 Scope；
-- 连接 Token 不能绕过 Task Scope。
+- Agent 不能自行创建 Task、Candidate 或 Scope；正式 Task 只在用户确认后由 Core/A3 创建；
+- `taskId` 与 `candidateId` 使用全局唯一 ID；
+- `getTaskContext({ taskId })` 是 Task execution envelope 的 bootstrap 入口；
+- 除 bootstrap 与 Task 创建前的 `submitGenerationPlan` 外，所有 Task-bound MCP read/write 都必须携带 `taskId`、`projectId`、`candidateId`、`baseRevision`、`expectedScopeRevision`；
+- A3 必须逐项与服务器端 Active Task/Candidate 权威状态核对，调用方携带的字段不构成授权声明；
+- `allowedOperations` 不持久化，A3 根据当前 `TaskScope` 与 P0 capability 实时推导；
+- 连接 Token 不能绕过 Task Scope、Candidate state 或 baseline guard。
 
 ---
 
-## 11. TaskContext 与 Agent 工作流
+## 11. A3 Candidate / Task 与 A4 Agent Workflow
 
-### 11.1 TaskContext
+### 11.1 Candidate 与 TaskContext
+
+A3 将 Candidate 生命周期与当前 Active Task 生命周期分开建模：
 
 ```ts
+interface CandidateRecord {
+  candidateId: CandidateId;
+  projectId: ProjectId;
+  baseRevision: string;
+  state: 'active' | 'ready' | 'accepting' | 'stale';
+  latestCheckpoint?: string;
+  activeTask?: TaskContext;
+}
+
 interface TaskContext {
-  taskId: string;
-  projectId: string;
-  candidateId: string;
-  baselineRevision: string;
+  taskId: TaskId;
+  projectId: ProjectId;
+  candidateId: CandidateId;
   scope: TaskScope;
   scopeRevision: number;
-  allowedOperations: string[];
+  taskBaseCheckpoint: string;
+  state: 'editing' | 'validating';
+  pendingScopeExtension?: PendingScopeExtension;
+  createdAt: string;
+}
+
+interface PendingScopeExtension {
+  requestId: ScopeExtensionRequestId;
+  fromScopeRevision: number;
+  requestedScope: TaskScope;
+}
+```
+
+规则：
+
+- `Candidate.baseRevision` 表示 Candidate 从哪个 Current `main` Revision 创建，在整个 Candidate 生命周期内不变；
+- `Task.taskBaseCheckpoint` 只表示单个 Task 的取消回滚点，不与 Candidate baseline 混用；
+- A3 同时最多保留一个 Active Task；成功、取消或 Reject 后原 TaskContext 的执行授权销毁；
+- Ready Candidate 启动新 Task 时复用同一 worktree，并以 `latestCheckpoint` 作为新的 `taskBaseCheckpoint`；
+- `allowedOperations` 是 `scope + P0 capability` 的派生值，不写入 TaskContext。
+
+A4 单独持有 Agent 执行上下文：
+
+```ts
+interface AgentExecutionContext {
+  taskId: TaskId;
   userIntent: string;
   planSummary?: string;
   modelConfigurationId: string;
   maxRepairAttempts: number;
-  taskBaseCheckpoint: string;
-  createdAt: string;
+  repairAttempt: number;
 }
 ```
 
-冻结字段：
+`planning`、`awaiting_confirmation` 和 `repairing` 均属于 A4 Agent Workflow。正式 `TaskContext` 只在用户确认后创建。
 
-- project、candidate、baseline；
-- user intent 与模型配置；
-- `maxRepairAttempts`；
-- Task 起点 checkpoint。
+### 11.2 Scope Extension
 
-可变字段：
-
-- Scope 仅能在用户批准扩展后更新；
-- 每次扩展 `scopeRevision + 1`。
-
-### 11.2 Scope 扩展
+Scope Extension 只能扩大：
 
 ```text
-requestScopeExtension
-→ Task 写入暂停
-→ UI 显示新范围和原因
-→ 用户批准
-→ Music Core 扩展 TaskContext.scope
-→ scopeRevision + 1
-→ 同一 taskId 继续
+oldScope ⊆ requestedScope
 ```
 
-### 11.3 修复
+流程：
 
-- `maxRepairAttempts` 来自用户级配置；
-- Task 创建时冻结；
-- 必须是有限非负整数；
-- `finishTask` 验证失败后保留修改和 Editing 状态；
-- Agent 可以继续修复并再次调用 `finishTask`；
-- 达到上限后安全结束，不改变 Current。
+```text
+requestScopeExtension(executionEnvelope, requestedScope)
+→ A3 生成唯一 requestId，并记录 fromScopeRevision
+→ Pending barrier：Task-bound write、finishTask、再次扩展请求全部暂停
+→ Renderer 展示请求
+→ 用户 approve/reject(requestId)
+→ approve：再次校验 requestId、fromScopeRevision、oldScope ⊆ requestedScope
+             → scope = requestedScope
+             → scopeRevision + 1
+→ reject：scope/scopeRevision 不变
+→ Task 回到可编辑状态
+```
+
+旧 requestId、旧 `expectedScopeRevision` 或非超集 Scope 均 fail-closed。
+
+### 11.3 Repair ownership
+
+`finishTask` 验证失败时 A3 保留 Candidate 修改并将 Task 恢复为 `editing`，但 A3 不跟踪 repair attempt，也不决定是否再次调用模型。`maxRepairAttempts`、`repairAttempt` 和有限修复循环完全属于 A4 `AgentExecutionContext`。
 
 ---
 
@@ -655,21 +711,27 @@ requestScopeExtension
 
 #### `getTaskContext`
 
-返回 Task、Candidate、Scope、固定六轨、音乐上下文和允许操作。
+bootstrap 形式为：
+
+```ts
+getTaskContext({ taskId })
+```
+
+返回当前 Active Task 的 execution envelope、Scope、`scopeRevision`、Candidate 产品状态、固定六轨、音乐上下文，以及 A3 根据 Scope 实时推导的允许操作。已结束或失效 Task 返回稳定领域错误，不从历史记录恢复执行授权。
 
 #### `getScopedComposition`
 
-返回 Scope 内 Canonical ABC 和必要的前后只读上下文。Agent 不获得内部字符位置。
+调用方携带完整 `TaskExecutionEnvelope`。A3 校验 envelope、Candidate baseline 与 Task state 后，返回当前 Scope 内 Canonical ABC 和必要的前后只读上下文。Pending Scope Extension 只阻塞写入、`finishTask` 和再次扩展请求，不必阻塞只读读取。Agent 不获得内部字符位置。
 
 ### 12.2 计划与授权
 
 #### `submitGenerationPlan`
 
-首次生成前提交工程计划。用户确认前写工具不可用。
+首次生成前由 A4 提交工程计划。用户确认前不存在正式 A3 TaskContext，Task-bound 写工具不可用。
 
 #### `requestScopeExtension`
 
-只提出扩展请求，不能直接修改 Scope。
+只提出扩大 Scope 的请求，不能直接修改 Scope。调用携带完整 execution envelope 和 `requestedScope`；A3 创建唯一 `ScopeExtensionRequestId` 并进入 Pending barrier，Renderer 通过 A3 control command 批准或拒绝。
 
 ### 12.3 写入
 
@@ -678,6 +740,10 @@ requestScopeExtension
 ```ts
 replaceScopedMusic({
   taskId,
+  projectId,
+  candidateId,
+  baseRevision,
+  expectedScopeRevision,
   tracks: Array<{
     trackId,
     abc
@@ -688,8 +754,9 @@ replaceScopedMusic({
 内部流程：
 
 ```text
-validate MCP session and TaskContext
-→ validate scopeRevision and candidate state
+validate MCP session and full execution envelope
+→ reject if Candidate mutation is busy
+→ validate Candidate baseline, Task state, scopeRevision and Pending barrier
 → load valid Scope Mapping
 → locate allowed ABC spans
 → parse submitted ABC fragment
@@ -708,6 +775,10 @@ validate MCP session and TaskContext
 ```ts
 updateGlobalMeter({
   taskId,
+  projectId,
+  candidateId,
+  baseRevision,
+  expectedScopeRevision,
   numerator,
   denominator
 })
@@ -716,7 +787,9 @@ updateGlobalMeter({
 内部流程：
 
 ```text
-validate MCP session and TaskContext
+validate MCP session and full execution envelope
+→ reject if Candidate mutation is busy
+→ validate Candidate baseline, Task state, scopeRevision and Pending barrier
 → require wholeProject and all six trackIds
 → validate the requested Global Meter value
 → update the only M: header on a temporary copy
@@ -732,10 +805,13 @@ validate MCP session and TaskContext
 
 #### `finishTask`
 
-A2 向 A3 提供只读最终态校验 `CompositionPipeline.validateFinalMeterConsistency(source): ValidationReport`。该方法复用 Canonical ABC parser 与精确 PPQ 时值计算，只检查 barline 是否符合唯一 Global Meter；它不修改 ABC，也不进入普通 `compileCanonical`/`updateGlobalMeter` 的编辑中间态校验。P0 要求从 Tick 0 开始的每个非末尾小节恰好等于当前 Meter 的小节长度，允许最后一个小节不足整小节；不支持弱起导致的全局小节网格偏移。
+调用 `finishTask` 时必须携带完整 `TaskExecutionEnvelope`。A2 向 A3 提供只读最终态校验 `CompositionPipeline.validateFinalMeterConsistency(source): ValidationReport`。该方法复用 Canonical ABC parser 与精确 PPQ 时值计算，只检查 barline 是否符合唯一 Global Meter；它不修改 ABC，也不进入普通 `compileCanonical`/`updateGlobalMeter` 的编辑中间态校验。P0 要求从 Tick 0 开始的每个非末尾小节恰好等于当前 Meter 的小节长度，允许最后一个小节不足整小节；不支持弱起导致的全局小节网格偏移。
 
 执行完整验证：
 
+- execution envelope 与当前 Active Task/Candidate 完全匹配，且不存在 Pending Scope Extension；
+- Candidate 不是 `stale`，Current clean，`main HEAD == Candidate.baseRevision`；
+- `project.json` 与 `baseRevision` 完全一致，且 Candidate 没有除 `composition.abc` 之外的 tracked/untracked 非忽略变化；
 - Canonical ABC 可解析且无 Repeat；
 - 六个固定 Voice 完整；
 - 时间值可精确映射到 PPQ；
@@ -748,7 +824,7 @@ A2 向 A3 提供只读最终态校验 `CompositionPipeline.validateFinalMeterCon
 - Current 未被修改；
 - Candidate 文件状态完整。
 
-成功后创建一个 Candidate checkpoint。失败不提交，Task 保持 Editing。
+成功后只 stage `composition.abc` 并创建一个 Candidate checkpoint；即使无内容变化也使用 empty commit，保证每个成功 Task 对应唯一 checkpoint SHA。随后销毁 Active Task 授权并进入 Candidate Ready。失败不提交，音乐/结构验证失败时保留 Candidate 修改并恢复 Task `editing`。
 
 ### 12.5 不向 Agent 暴露
 
@@ -766,66 +842,187 @@ P1 增加：
 
 ---
 
-## 13. Candidate、Task 与 Git 状态机
+## 13. Candidate Transaction
 
-### 13.1 分支和 worktree
-
-```text
-main                         # Current
-candidate/<candidateId>      # P0 最多一个临时分支
-worktrees/<candidateId>/     # 独立 Candidate 工作目录
-```
-
-### 13.2 Candidate 可承载多个 Task
+### 13.1 Branch、worktree 与 A1 seam
 
 ```text
-Current commit C0
-→ Candidate branch from C0
-→ Task T1 → checkpoint P1
-→ Task T2 → checkpoint P2
-→ Task T3 → checkpoint P3
-→ Accept → squash final tree as Current C1
+main                                           # Current
+candidate/<candidateId>                        # Active Candidate branch
+.agent-music/worktrees/<candidateId>/          # Candidate linked worktree
+.agent-music/candidate-cleanup/<candidateId>.json # cleanup authorization marker
 ```
 
-P1/P2/P3 不进入正式 Current 历史。
+一个业务 Candidate 对应一个 branch + 一个 linked worktree；同一 Candidate 中的多个 Task 复用该 worktree。`.agent-music/` 已从 Current Git 状态中排除，因此 Candidate worktree 不污染 Current clean invariant。
 
-### 13.3 Task 事务
+A1 仍是当前项目 session、跨实例写锁和 Current serialized write 的 owner。A1 向 Core 内部 A3 提供：
+
+```ts
+interface ProjectAuthorityAccess {
+  readCleanCurrent(): Promise<CurrentAuthoritySnapshot>;
+  getProjectPath(): string;
+  runSerializedWrite<T>(operation: () => Promise<T>): Promise<T>;
+}
+```
+
+A3 不获得 A1 的 lock/GitAdapter 内部对象；Agent 与 Renderer 都不能访问 `projectPath`、Git 或文件写接口。
+
+### 13.2 Candidate / Task 状态机
+
+Candidate 与 Task 使用两个独立状态机：
 
 ```text
-Task start
-→ record taskBaseCheckpoint
-→ write call A: atomic apply
-→ write call B: atomic apply
-→ finishTask
+Candidate:
+active ↔ ready → accepting → [business object removed]
+   └────────────→ stale → Reject → [business object removed]
+
+Active Task:
+editing → validating
+   ↑          │
+   └──────────┘ validation failed
 ```
 
-规则：
+Task 成功、Cancel 或 Reject 后 Active Task 对象销毁；`completed/cancelled` 只属于日志，不作为 A3 可执行状态长期保存。
 
-- 单次工具调用失败只回滚该调用；
-- 成功调用可以暂不 Git commit；
-- `finishTask` 成功后一个 Task 生成一个 commit；
-- `finishTask` 失败保留修改；
-- 用户取消或放弃时 reset 到 `taskBaseCheckpoint`。
+`startTask`：
 
-### 13.4 Accept
+- 无 Candidate：从当前 clean `main` 创建 Candidate，冻结 `baseRevision`，再创建 Task；
+- Ready Candidate：复用同一 Candidate/worktree，以 `latestCheckpoint` 为 `taskBaseCheckpoint`；
+- Active/accepting/stale Candidate：拒绝创建新 Task。
 
-1. 确认没有未完成 Task；
-2. 停止 Candidate 播放；
-3. 检查 Current 工作区 Git clean；
-4. 重新解析、编译和验证 Candidate 最终树；
-5. 以一个正式 commit 写入 `main`；
-6. 通知 Renderer 将已预览的 Candidate RuntimeSnapshot 标记为 Current Snapshot；若缓存不存在则由 B3 从最新 Current `PlaybackCompilation` 重建；
-7. 删除 Candidate worktree 和 branch；
-8. 保留旧 Current Revision。
+Cancel：
 
-Accept 失败时 Current 不改变，Candidate 保留。
+- 立即失效 Task 授权；
+- reset 到 `taskBaseCheckpoint`；
+- 若 Candidate 已有成功 checkpoint，则恢复 Candidate Ready；
+- 若取消 Candidate 的首个 Task且从未产生成功 checkpoint，则结束这个空 Candidate并进入资源 cleanup。
 
-### 13.5 Reject 与恢复
+Reject 是强终止：无论是否有 Active Task，都先失效 Candidate/Task 授权并结束 Candidate 业务生命周期，Current 不变。
 
-- Reject 删除 Candidate branch/worktree；
-- P0 启动时可清理残留 Candidate；
-- 不尝试自动恢复运行中的 Task 或未接受 Candidate；
-- 永远不能将残留 Candidate 自动覆盖到 Current。
+### 13.3 Baseline、Scope 与 execution envelope guard
+
+所有 Task-bound read/write 以及复用 Candidate 的 `startTask`、`finishTask`、Accept 都执行统一 guard：
+
+```text
+Current clean
+main HEAD == Candidate.baseRevision
+request.projectId == task.projectId
+request.candidateId == task.candidateId
+request.baseRevision == candidate.baseRevision
+request.expectedScopeRevision == task.scopeRevision
+Task/Candidate state allows the operation
+no pending Scope Extension for writes/finish
+```
+
+Current dirty 时返回 `CURRENT_NOT_CLEAN` 并保留 Candidate；`main HEAD != baseRevision` 时 Candidate 才进入 `stale`、Active Task 授权失效。`stale` 只允许 Reject。
+
+### 13.4 Candidate mutation concurrency
+
+A3 不为普通 Candidate mutation 建队列。`replaceScopedMusic`、`updateGlobalMeter`、`finishTask` 和其他普通 mutation 通过单写 lease 互斥：已有 mutation 时新调用立即返回 `TASK_BUSY`。
+
+Cancel / Reject 不受 `TASK_BUSY` 限制：
+
+```text
+mutation starts with valid authorization lease
+→ A2 may perform parse/compile work
+→ user Cancel/Reject invalidates Task/Candidate authorization
+→ mutation reaches final commit point
+→ re-check lease + authorization
+→ invalid => discard result, do not atomic-replace Candidate
+```
+
+A2 的纯计算不要求持有 A1 Current serialized write。只有 Accept 对 `main` 的正式写入使用 A1 `runSerializedWrite`。
+
+### 13.5 Candidate authority and checkpoint
+
+P0 Candidate 允许产生业务差异的权威文件只有 `composition.abc`。
+
+`finishTask` 前必须确认：
+
+```text
+project.json == baseRevision:project.json
+no unexpected tracked changes
+no non-ignored untracked files
+```
+
+成功 checkpoint：
+
+```text
+git add -- composition.abc
+git commit --allow-empty
+```
+
+因此一个成功 Task 始终对应一个唯一 Candidate checkpoint SHA。Candidate checkpoint SHA 是 A3 内部实现，不进入 Renderer Product Contract。
+
+### 13.6 Accept linearization
+
+Accept 只允许 Ready Candidate 且没有 Active Task。步骤：
+
+1. 通过 A3 baseline/authority/final validation；
+2. 进入 A1 `runSerializedWrite`；
+3. 再次确认 Current clean 与 `main HEAD == baseRevision`；
+4. 将 Candidate 最终 `composition.abc` 写入 Current 主工作区并 stage；
+5. 创建新的 `main` commit，内容无变化时也允许 empty commit；
+6. **该 `main` commit 成功即为 Accept 的业务线性化点**；
+7. Candidate 业务对象立即结束，发出新的 Current Revision；
+8. 注册 cleanup marker 并 best-effort 删除旧 Candidate worktree/branch。
+
+故障语义：
+
+- `main` commit 前失败：恢复 Current authority files/index，`main` SHA 不前进，Candidate 保留以供重试；
+- `main` commit 成功后 cleanup 失败：Accept 仍然成功，Current 不回滚；残留进入 `PendingCandidateCleanup`，且不阻塞新 Candidate；
+- A3 不负责停止/切换 openDAW Runtime；它只发出产品状态/Current committed event，由 B3/B4 处理试听状态。
+
+### 13.7 Reject 与 cleanup
+
+Reject 的业务成功点是 Candidate 授权失效并结束业务生命周期。branch/worktree 删除属于基础设施 cleanup，失败不使 Reject 失败。
+
+结束 Candidate 后，A3 持久化 cleanup marker：
+
+```json
+{
+  "version": 1,
+  "candidateId": "<uuid>",
+  "cleanupAllowed": true
+}
+```
+
+marker 不进入 Git，不是 Candidate 业务状态。A3 只从 `candidateId` 推导固定 `candidate/<id>` 与 `.agent-music/worktrees/<id>` 路径，不信任 marker 中的任意路径输入；cleanup 成功后删除 marker。
+
+项目打开/启动恢复时：
+
+- 只自动清理存在有效 cleanup marker 的 branch/worktree；
+- 没有 marker 的 `candidate/*` 或 `.agent-music/worktrees/*` 不自动恢复，也不猜测删除；报告 `ORPHAN_CANDIDATE_RESOURCE`；
+- P0 仍只恢复 clean `main` Current，不恢复运行 Task 或未接受 Candidate；
+- Pending cleanup 与新的 Active Candidate 独立管理，不改变“业务上同时最多一个 Active Candidate”。
+
+### 13.8 Stable A3 errors
+
+A3 对 Renderer/A4/MCP 只暴露稳定领域错误码与结构化 details，例如：
+
+```text
+TASK_BUSY
+TASK_NOT_ACTIVE
+TASK_PROJECT_MISMATCH
+TASK_CANDIDATE_MISMATCH
+TASK_BASE_REVISION_MISMATCH
+TASK_SCOPE_EXTENSION_PENDING
+STALE_SCOPE_REVISION
+STALE_SCOPE_EXTENSION_REQUEST
+SCOPE_EXTENSION_NOT_SUPERSET
+OPERATION_NOT_ALLOWED
+CANDIDATE_NOT_FOUND
+CANDIDATE_NOT_READY
+CANDIDATE_STALE
+CURRENT_NOT_CLEAN
+CANDIDATE_BASELINE_CHANGED
+UNEXPECTED_CANDIDATE_CHANGE
+VALIDATION_FAILED
+CANDIDATE_TRANSACTION_FAILED
+ORPHAN_CANDIDATE_RESOURCE
+```
+
+Git stderr、文件系统异常文本和 A2 parser 原始异常只写内部结构化日志，不直接成为跨进程 Contract。
 
 ---
 
@@ -1038,25 +1235,31 @@ interface Settings {
 
 | 方向 | 命令/事件 |
 |---|---|
-| Renderer → Core | createScope、startTask、cancelTask、acceptCandidate、rejectCandidate、loadPreview、exportCurrent |
-| Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、replaceScopedMusic、finishTask |
-| Core → Renderer | runtimeSnapshot、taskStageChanged、candidateChanged、validationResult、currentCommitted、error |
+| Renderer → Core | createScope、startTask、cancelTask、approveScopeExtension、rejectScopeExtension、acceptCandidate、rejectCandidate、loadPreview、exportCurrent |
+| Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、replaceScopedMusic、updateGlobalMeter、finishTask |
+| Core → Renderer | candidateChanged、taskChanged、scopeExtensionRequested、validationResult、currentCommitted、candidateInvalidated、error |
 | Main → Services | openProject、closeProject、restartService、chooseExportPath |
 
-### 16.3 Task 阶段
+### 16.3 A3 与 A4 状态分工
+
+A4 Agent Workflow：
 
 ```text
 planning
 → awaiting_confirmation
-→ preparing_candidate
-→ editing
-→ compiling
-→ validating
-→ repairing
-→ candidate_ready
-→ accepting
-→ committed | failed | cancelled | ignored
+→ executing
+→ repairing (optional, bounded)
+→ completed | failed | cancelled | ignored
 ```
+
+A3 Candidate Transaction：
+
+```text
+Candidate: active ↔ ready → accepting | stale
+Task:      editing ↔ validating
+```
+
+Renderer 只消费产品状态，不获得 branch name、worktree path、Candidate checkpoint SHA、cleanup path 或 Git command。A4 通过 A3 Agent-facing interface 访问 Task-bound read/write；Renderer/Core control interface 负责 start/cancel、Scope Extension 审批、Accept/Reject。
 
 ---
 
@@ -1070,7 +1273,7 @@ planning
 4. 校验 `project.json` 与 `formatVersion`；
 5. 读取 Canonical ABC；
 6. Core 重建 Mapping、MIDI 和 TimelineViewModel，并由 Renderer/B3 构建 RuntimeSnapshot；
-7. 清理不保证恢复的旧 Task 锁和 Candidate 残留。
+7. A3 只按有效 cleanup marker 清理已授权 Candidate 残留；无 marker 的 Candidate 资源报告为 orphan，不恢复也不自动删除。
 
 ### 17.2 另存为
 
@@ -1152,7 +1355,7 @@ Gate 失败时 WAV 降为 P1。
 结构化日志可记录：
 
 ```text
-taskId, projectId, candidateId, baselineRevision,
+taskId, projectId, candidateId, baseRevision,
 scopeRevision, toolName, validationCode,
 repairAttempt, finalStatus, durationMs, modelConfigurationId
 ```
@@ -1194,8 +1397,10 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 - Scope Mapping 字符范围；
 - 跨边界事件只读；
 - 写工具原子性；
-- TaskContext、scopeRevision 和迟到结果；
-- `finishTask` 失败后的继续修复；
+- Candidate/Task 双状态机、Candidate `baseRevision`、Task execution envelope、scopeRevision 和迟到结果；
+- Scope 仅扩展、Pending barrier 与 stale Scope Extension request；
+- `TASK_BUSY` 与 Cancel/Reject 抢占授权；
+- `finishTask` 完整事务 + A2 校验、unexpected Candidate changes 和 empty checkpoint；
 - Tick 与屏幕坐标双向转换；
 - 多轨共享单一连续 Product Time Selection；
 - Timeline Clip 展示不依赖 openDAW Runtime UUID。
@@ -1211,10 +1416,12 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 
 ### 21.3 集成与故障注入
 
-- Candidate branch/worktree 创建和删除；
-- 多 Task checkpoint；
-- Accept squash；
-- Current clean 检查；
+- `.agent-music/worktrees/<candidateId>` Candidate branch/worktree 创建和删除；
+- 多 Task checkpoint、首 Task cancel 删除空 Candidate、后续 Task cancel 回滚到上一个 checkpoint；
+- Accept squash、empty Accept commit、Reject 强终止；
+- Current clean / baseRevision drift → stale；
+- Accept pre-commit failure 与 post-commit cleanup failure 两侧故障注入；
+- cleanup marker、PendingCleanup 与无 marker orphan；
 - 文件原子替换和 Git commit 阶段进程终止；
 - Renderer、Core 和 Agent Service 分别崩溃；
 - Windows 中文路径、长路径、Defender 和 stale lock；
@@ -1290,4 +1497,13 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 28. React UI 不直接读取或修改 openDAW BoxGraph，也不持久化 Runtime UUID。
 29. P2 手动编辑默认通过领域编辑命令更新 Canonical ABC，再重建 RuntimeSnapshot。
 30. MCP Endpoint、Instance Token 和 Runtime Descriptor 的生命周期由 Music Core 管理，Electron Main 不管理 MCP 连接信息。
-31. 同一项目同时最多一个可写应用实例；所有项目文件和 Current Git 写入必须经过同一项目级串行写入机制。
+31. 同一项目同时最多一个可写应用实例；所有 Current Git 正式写入必须经过 A1 项目级串行写入机制。
+32. 正式 Task 只在用户确认后创建；A3 不拥有 planning、awaiting_confirmation 或 repair loop。
+33. Candidate `baseRevision` 在 Candidate 生命周期内不可变；Task `taskBaseCheckpoint` 只用于单 Task 回滚。
+34. Candidate baseline 漂移后必须进入 `stale`，只允许 Reject。
+35. Scope Extension 只能扩大，Pending 期间形成写入 barrier，并以 requestId + scopeRevision 防止旧确认/旧结果生效。
+36. 普通 Candidate mutation 不排队，busy 返回 `TASK_BUSY`；Cancel/Reject 可以先失效授权。
+37. P0 Candidate 只有 `composition.abc` 可产生业务变化；checkpoint 只提交该文件，`project.json` 不得改变。
+38. 每个成功 Task 都产生唯一 Candidate checkpoint；每个成功 Accept 都产生唯一 Current Revision，均允许 empty commit。
+39. Accept 的线性化点是新 `main` commit 成功；Reject 的线性化点是 Candidate 授权失效。后续 cleanup 不得反向改变业务结果。
+40. 自动 Candidate cleanup 必须有持久化 cleanup marker 授权；无 marker 残留不恢复、不自动删除。
