@@ -1,0 +1,9 @@
+docs/
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.turbo/
+.agent-music/
+.worktrees/

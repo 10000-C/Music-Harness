@@ -141,3 +141,38 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Isolated development worktrees
+.worktrees/
+
+# Build and tool caches
+build/
+**/build/
+**/dist/
+**/coverage/
+.turbo/
+**/.turbo/
+
+# Local databases
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Agent Music runtime data
+.agent-music/
+**/.agent-music/
+runtime-descriptors/
+**/runtime-descriptors/
+exports/
+**/exports/
+worktrees/
+**/worktrees/
+
+# Operating system and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
