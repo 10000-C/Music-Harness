@@ -47,7 +47,12 @@ export type CompositionValidationIssueCode =
   | 'TRACK_LENGTH_MISMATCH'
   | 'GLOBAL_MAP_MISMATCH'
   | 'SCOPE_INVALID'
-  | 'SCOPE_MAPPING_STALE';
+  | 'SCOPE_MAPPING_STALE'
+  | 'SCOPE_CROSSES_EVENT'
+  | 'SCOPE_REPLACEMENT_INVALID'
+  | 'SCOPE_DURATION_MISMATCH'
+  | 'SCOPE_OUTSIDE_CHANGED'
+  | 'SCOPE_GLOBAL_CHANGE_REQUIRES_ALL_TRACKS';
 
 export interface CompositionValidationIssue {
   readonly code: CompositionValidationIssueCode;

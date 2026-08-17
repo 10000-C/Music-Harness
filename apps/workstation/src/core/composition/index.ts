@@ -4,6 +4,7 @@ export {
   createInitialCanonicalAbc,
 } from './canonical-abc.js';
 export { CompositionValidationError } from './composition-validation-error.js';
+export { CompositionPipeline } from './composition-service.js';
 export { compileComposition } from './composition-pipeline.js';
 export { createStandardMidiDocument } from './midi-document.js';
 export { createTimelineViewModel } from './timeline-view-model.js';
@@ -14,6 +15,7 @@ export {
   isScopeMappingCacheValid,
   queryScopeMapping,
 } from './scope-mapping.js';
+export { replaceScopedMusic } from './scoped-replacement.js';
 
 export type {
   AbcSpan,
@@ -27,6 +29,7 @@ export type {
   ValidationReport,
 } from './composition-types.js';
 export type { CompositionCompilation } from './composition-pipeline.js';
+export type { CanonicalizationResult } from './composition-service.js';
 export type {
   ProtectedScopeEvent,
   ScopeMappingCache,
@@ -37,3 +40,7 @@ export type {
   ScopedCompositionContext,
   ScopedTrackComposition,
 } from './scope-mapping.js';
+export type {
+  ScopedReplacementResult,
+  TrackReplacement,
+} from './scoped-replacement.js';
