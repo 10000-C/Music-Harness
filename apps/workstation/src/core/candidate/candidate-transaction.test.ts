@@ -22,7 +22,10 @@ import type {
   CandidateRepository,
   CandidateWorkspace,
 } from './candidate-repository.js';
-import { CandidateTransaction } from './candidate-transaction.js';
+import {
+  CandidateTransaction,
+  type CandidateControlPort,
+} from './candidate-transaction.js';
 
 const projectId = '00000000-0000-4000-8000-000000000050' as ProjectId;
 const candidateId = '00000000-0000-4000-8000-000000000051' as CandidateId;
@@ -1160,5 +1163,45 @@ describe('CandidateTransaction acceptCandidate', () => {
     });
     expect(nextTask.candidateId).not.toBe(candidateId);
     expect(repository.create).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('CandidateTransaction project-open reconciliation', () => {
+  it('returns cleanup status IDs without recovering Candidate/Task business state', async () => {
+    const { transaction, cleanup, repository } = createHarness();
+    cleanup.reconcile.mockResolvedValueOnce({
+      cleanedCandidateIds: [
+        '00000000-0000-4000-8000-000000000096' as CandidateId,
+      ],
+      pendingCandidateIds: [
+        '00000000-0000-4000-8000-000000000097' as CandidateId,
+      ],
+      orphanCandidateIds: [
+        '00000000-0000-4000-8000-000000000098' as CandidateId,
+      ],
+    });
+    const control: CandidateControlPort = transaction;
+
+    await expect(control.reconcileProjectResources()).resolves.toEqual({
+      cleanedCandidateIds: [
+        '00000000-0000-4000-8000-000000000096' as CandidateId,
+      ],
+      pendingCandidateIds: [
+        '00000000-0000-4000-8000-000000000097' as CandidateId,
+      ],
+      orphanCandidateIds: [
+        '00000000-0000-4000-8000-000000000098' as CandidateId,
+      ],
+    });
+    expect(cleanup.reconcile).toHaveBeenCalledWith('/project');
+    expect(repository.create).not.toHaveBeenCalled();
+    expect(repository.readAuthority).not.toHaveBeenCalled();
+
+    const taskAfterReconcile = await control.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    expect(taskAfterReconcile.candidateId).toBe(candidateId);
+    expect(repository.create).toHaveBeenCalledOnce();
   });
 });

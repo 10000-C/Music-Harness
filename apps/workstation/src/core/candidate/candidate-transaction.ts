@@ -137,7 +137,9 @@ const hasAllTracks = (scope: TaskScope): boolean =>
   scope.trackIds.length === TRACK_IDS.length &&
   TRACK_IDS.every((trackId) => scope.trackIds.includes(trackId));
 
-export class CandidateTransaction {
+export class CandidateTransaction
+  implements CandidateAgentPort, CandidateControlPort
+{
   private candidate: CandidateRecord | undefined;
   private mutationLease: MutationLease | undefined;
 
@@ -596,6 +598,12 @@ export class CandidateTransaction {
       await lease.settlement;
     }
     await this.attemptCleanup(candidate);
+  }
+
+  public async reconcileProjectResources(): Promise<CandidateRecoveryReport> {
+    return this.dependencies.cleanup.reconcile(
+      this.dependencies.project.getProjectPath(),
+    );
   }
 
   private createTask(
