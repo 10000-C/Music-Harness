@@ -130,6 +130,53 @@ describe('CandidateGitRepository', { concurrent: false }, () => {
     );
   });
 
+  it('removes unauthorized untracked paths when resetting to a checkpoint', async () => {
+    const current = await foundation.createProject(projectPath);
+    const workspace = await repository.create(
+      projectPath,
+      candidateId,
+      current.currentRevision,
+    );
+    const checkpoint = await repository.createCheckpoint(workspace, 'P1');
+    await writeFile(join(workspace.worktreePath, 'rogue.txt'), 'rogue');
+
+    await repository.resetTo(workspace, checkpoint);
+
+    expect(await git(workspace.worktreePath, 'status', '--porcelain')).toBe('');
+  });
+
+  it('does not commit Current when Accept authorization is already aborted', async () => {
+    const current = await foundation.createProject(projectPath);
+    const initial = await foundation.readCleanCurrent();
+    const workspace = await repository.create(
+      projectPath,
+      candidateId,
+      current.currentRevision,
+    );
+    await repository.writeComposition(
+      workspace,
+      `${initial.compositionSource}\n% candidate\n`,
+    );
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      repository.commitCompositionToCurrent(
+        projectPath,
+        workspace,
+        'Accept',
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ operation: 'commitCompositionToCurrent' });
+    expect(await git(projectPath, 'rev-parse', 'main')).toBe(
+      current.currentRevision,
+    );
+    expect(await readFile(join(projectPath, 'composition.abc'), 'utf8')).toBe(
+      initial.compositionSource,
+    );
+    expect(await git(projectPath, 'status', '--porcelain')).toBe('');
+  });
+
   it('rolls Current back before the main-commit linearization point and can retry', async () => {
     const current = await foundation.createProject(projectPath);
     const initial = await foundation.readCleanCurrent();
@@ -168,6 +215,35 @@ describe('CandidateGitRepository', { concurrent: false }, () => {
       'Accept retry',
     );
     expect(acceptedRevision).not.toBe(current.currentRevision);
+    expect(await git(projectPath, 'status', '--porcelain')).toBe('');
+  });
+
+  it('refuses to report Accept success when the Current worktree is not on main', async () => {
+    const current = await foundation.createProject(projectPath);
+    const initial = await foundation.readCleanCurrent();
+    const workspace = await repository.create(
+      projectPath,
+      candidateId,
+      current.currentRevision,
+    );
+    await repository.writeComposition(
+      workspace,
+      `${initial.compositionSource}\n% candidate\n`,
+    );
+    await git(projectPath, 'switch', '-c', 'other');
+
+    await expect(
+      repository.commitCompositionToCurrent(projectPath, workspace, 'Accept'),
+    ).rejects.toMatchObject({ operation: 'commitCompositionToCurrent' });
+    expect(await git(projectPath, 'rev-parse', 'main')).toBe(
+      current.currentRevision,
+    );
+    expect(await git(projectPath, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe(
+      'other',
+    );
+    expect(await readFile(join(projectPath, 'composition.abc'), 'utf8')).toBe(
+      initial.compositionSource,
+    );
     expect(await git(projectPath, 'status', '--porcelain')).toBe('');
   });
 });

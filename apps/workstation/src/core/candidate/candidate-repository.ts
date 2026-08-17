@@ -6,11 +6,10 @@ import {
   readFile,
   readdir,
   rename,
-  rm,
   stat,
   unlink,
 } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 
@@ -59,6 +58,7 @@ export interface CandidateRepository {
     projectPath: string,
     workspace: CandidateWorkspace,
     message: string,
+    signal?: AbortSignal,
   ): Promise<string>;
   remove(workspace: CandidateWorkspace): Promise<void>;
   listCandidateResourceIds(
@@ -91,10 +91,18 @@ const exists = async (path: string): Promise<boolean> => {
   }
 };
 
+const assertNotAborted = (signal: AbortSignal | undefined): void => {
+  if (signal?.aborted === true) {
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new Error('Candidate repository operation aborted');
+  }
+};
+
 const atomicWrite = async (path: string, source: string): Promise<void> => {
   const temporaryPath = join(
     dirname(path),
-    `.${path.split('/').at(-1) ?? 'candidate'}.${randomUUID()}.tmp`,
+    `.${basename(path)}.${randomUUID()}.tmp`,
   );
   const handle = await open(temporaryPath, 'w', 0o600);
   try {
@@ -237,6 +245,7 @@ export class CandidateGitRepository implements CandidateRepository {
   ): Promise<void> {
     try {
       await this.runGit(workspace.worktreePath, ['reset', '--hard', revision]);
+      await this.runGit(workspace.worktreePath, ['clean', '-fd']);
     } catch {
       throw new CandidateRepositoryError('resetTo');
     }
@@ -246,21 +255,64 @@ export class CandidateGitRepository implements CandidateRepository {
     projectPath: string,
     workspace: CandidateWorkspace,
     message: string,
+    signal?: AbortSignal,
   ): Promise<string> {
     try {
+      assertNotAborted(signal);
+      const currentBranch = (
+        await this.runGit(
+          projectPath,
+          ['symbolic-ref', '--quiet', '--short', 'HEAD'],
+          signal,
+        )
+      ).trim();
+      if (currentBranch !== 'main') {
+        throw new CandidateRepositoryError('commitCompositionToCurrent');
+      }
+    } catch {
+      throw new CandidateRepositoryError('commitCompositionToCurrent');
+    }
+
+    let originalMainRevision: string | undefined;
+    try {
+      originalMainRevision = (
+        await this.runGit(projectPath, ['rev-parse', 'main'])
+      ).trim();
+      assertNotAborted(signal);
+
       const source = await readFile(
         join(workspace.worktreePath, 'composition.abc'),
         'utf8',
       );
+      assertNotAborted(signal);
       await atomicWrite(join(projectPath, 'composition.abc'), source);
+      assertNotAborted(signal);
       await this.runGit(projectPath, ['add', '--', 'composition.abc']);
-      await this.runGit(projectPath, [
-        'commit',
-        '--allow-empty',
-        '-m',
-        message,
-      ]);
-      return (await this.runGit(projectPath, ['rev-parse', 'main'])).trim();
+      assertNotAborted(signal);
+
+      try {
+        await this.runGit(
+          projectPath,
+          ['commit', '--allow-empty', '-m', message],
+          signal,
+        );
+      } catch (error) {
+        const currentRevision = (
+          await this.runGit(projectPath, ['rev-parse', 'main'])
+        ).trim();
+        if (currentRevision !== originalMainRevision) {
+          return currentRevision;
+        }
+        throw error;
+      }
+
+      const currentRevision = (
+        await this.runGit(projectPath, ['rev-parse', 'main'])
+      ).trim();
+      if (currentRevision === originalMainRevision) {
+        throw new CandidateRepositoryError('commitCompositionToCurrent');
+      }
+      return currentRevision;
     } catch {
       await this.runGit(projectPath, [
         'restore',
@@ -348,11 +400,13 @@ export class CandidateGitRepository implements CandidateRepository {
   private async runGit(
     repositoryPath: string,
     args: readonly string[],
+    signal?: AbortSignal,
   ): Promise<string> {
     const result = await execFileAsync('git', ['-C', repositoryPath, ...args], {
       encoding: 'utf8',
       windowsHide: true,
       maxBuffer: 2 * 1024 * 1024,
+      ...(signal === undefined ? {} : { signal }),
     });
     return result.stdout;
   }

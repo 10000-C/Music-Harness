@@ -117,7 +117,7 @@ describe('ProjectFoundation lifecycle', () => {
   });
 
   it('does not expose a project path when no project is open', () => {
-    expect(() => foundation.getProjectPath()).toThrowError(
+    expect(() => foundation.getProjectPath()).toThrow(
       expect.objectContaining({ code: 'PROJECT_NOT_OPEN' }),
     );
   });

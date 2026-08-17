@@ -23,8 +23,14 @@ describe('TaskExecutionEnvelope', () => {
         expectedScopeRevision: -1,
       }),
     ).toBe(false);
-    const { candidateId: _candidateId, ...missingCandidate } = envelope;
-    expect(isTaskExecutionEnvelope(missingCandidate)).toBe(false);
+    expect(
+      isTaskExecutionEnvelope({
+        taskId: envelope.taskId,
+        projectId: envelope.projectId,
+        baseRevision: envelope.baseRevision,
+        expectedScopeRevision: envelope.expectedScopeRevision,
+      }),
+    ).toBe(false);
   });
 });
 

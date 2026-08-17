@@ -49,14 +49,16 @@ const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
   };
   const project = {
     getProjectPath: () => '/project',
-    readCleanCurrent: vi.fn(async () => {
+    readCleanCurrent: vi.fn(() => {
       if (currentState.dirty) {
-        throw new ProjectError(
-          'CURRENT_WORKTREE_DIRTY',
-          'lower-level dirty Current detail',
+        return Promise.reject(
+          new ProjectError(
+            'CURRENT_WORKTREE_DIRTY',
+            'lower-level dirty Current detail',
+          ),
         );
       }
-      return {
+      return Promise.resolve({
         currentRevision: currentState.revision,
         manifest: {
           formatVersion: PROJECT_FORMAT_VERSION,
@@ -65,45 +67,57 @@ const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
           tracks: TRACK_IDS,
         },
         compositionSource: initialSource,
-      };
+      });
     }),
-    runSerializedWrite: async <T>(operation: () => Promise<T>) => {
+    runSerializedWrite: <T>(operation: () => Promise<T>) => {
       serializedWrites();
       return operation();
     },
   } satisfies ProjectAuthorityAccess;
   const repository = {
-    create: vi.fn(async () => workspace),
-    readAuthority: vi.fn(async () => ({
-      projectManifestSource: '{}',
-      compositionSource: initialSource,
-    })),
-    writeComposition: vi.fn(async () => undefined),
-    inspectChanges: vi.fn(async () => ({
-      compositionChanged: false,
-      projectJsonChangedFromBase: false,
-      unexpectedPaths: [],
-    })),
-    createCheckpoint: vi.fn(async () => 'P1'),
-    resetTo: vi.fn(async () => undefined),
-    commitCompositionToCurrent: vi.fn(async () => {
-      currentState.revision = 'C1';
-      return 'C1';
-    }),
-    remove: vi.fn(async () => undefined),
-    listCandidateResourceIds: vi.fn(async () => []),
+    create: vi.fn(() => Promise.resolve(workspace)),
+    readAuthority: vi.fn(() =>
+      Promise.resolve({
+        projectManifestSource: '{}',
+        compositionSource: initialSource,
+      }),
+    ),
+    writeComposition: vi.fn(() => Promise.resolve()),
+    inspectChanges: vi.fn(() =>
+      Promise.resolve({
+        compositionChanged: false,
+        projectJsonChangedFromBase: false,
+        unexpectedPaths: [] as string[],
+      }),
+    ),
+    createCheckpoint: vi.fn(() => Promise.resolve('P1')),
+    resetTo: vi.fn(() => Promise.resolve()),
+    commitCompositionToCurrent: vi.fn(
+      (
+        ...args: Parameters<CandidateRepository['commitCompositionToCurrent']>
+      ) => {
+        void args;
+        currentState.revision = 'C1';
+        return Promise.resolve('C1');
+      },
+    ),
+    remove: vi.fn(() => Promise.resolve()),
+    listCandidateResourceIds: vi.fn(() => Promise.resolve([] as CandidateId[])),
   } satisfies CandidateRepository;
   const cleanup = {
-    authorizeAndAttempt: vi.fn(async () => {
+    authorizeAndAttempt: vi.fn(() => {
       if (options?.cleanupFails === true) {
-        throw new Error('cleanup failed');
+        return Promise.reject(new Error('cleanup failed'));
       }
+      return Promise.resolve();
     }),
-    reconcile: vi.fn(async () => ({
-      cleanedCandidateIds: [],
-      pendingCandidateIds: [],
-      orphanCandidateIds: [],
-    })),
+    reconcile: vi.fn(() =>
+      Promise.resolve({
+        cleanedCandidateIds: [] as CandidateId[],
+        pendingCandidateIds: [] as CandidateId[],
+        orphanCandidateIds: [] as CandidateId[],
+      }),
+    ),
   } satisfies CandidateCleanupManagerPort;
   const ids = [candidateId, taskId, scopeRequestId];
   const composition = new CompositionPipeline();
@@ -692,7 +706,9 @@ describe('CandidateTransaction A2-backed operations', () => {
     };
 
     const first = transaction.applyScopedMusicChange(input);
-    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    await vi.waitFor(() => {
+      expect(replace).toHaveBeenCalledOnce();
+    });
     await expect(
       transaction.applyScopedMusicChange(input),
     ).rejects.toMatchObject({ code: 'TASK_BUSY' });
@@ -723,7 +739,9 @@ describe('CandidateTransaction A2-backed operations', () => {
       envelope: envelopeFor(task),
       replacements: [{ trackId: 'track.drums', abc: 'z4' }],
     });
-    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    await vi.waitFor(() => {
+      expect(replace).toHaveBeenCalledOnce();
+    });
 
     await expect(
       transaction.cancelTask({ projectId, candidateId, taskId }),
@@ -732,6 +750,44 @@ describe('CandidateTransaction A2-backed operations', () => {
     gate.resolve(result);
     await expect(mutation).rejects.toMatchObject({ code: 'TASK_NOT_ACTIVE' });
     expect(repository.writeComposition).not.toHaveBeenCalled();
+  });
+
+  it('rejects Scope Extension requests while an ordinary mutation is in flight', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    vi.spyOn(composition, 'replaceScopedMusic').mockReturnValue({
+      changedTrackIds: ['track.drums'],
+      compilation,
+    });
+    const writeGate = deferred<undefined>();
+    repository.writeComposition.mockImplementationOnce(() => writeGate.promise);
+    const envelope = envelopeFor(task);
+    const mutation = transaction.applyScopedMusicChange({
+      envelope,
+      replacements: [{ trackId: 'track.drums', abc: 'z4' }],
+    });
+    await vi.waitFor(() => {
+      expect(repository.writeComposition).toHaveBeenCalledOnce();
+    });
+
+    await expect(
+      transaction.requestScopeExtension({
+        envelope,
+        requestedScope: {
+          type: 'wholeProject',
+          trackIds: ['track.drums', 'track.bass'],
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'TASK_BUSY' });
+
+    writeGate.resolve(undefined);
+    await expect(mutation).resolves.toBe(compilation);
   });
 
   it('waits for an entered repository write before Cancel resets final state', async () => {
@@ -747,15 +803,15 @@ describe('CandidateTransaction A2-backed operations', () => {
       changedTrackIds: ['track.drums'],
       compilation,
     });
-    const writeGate = deferred<void>();
+    const writeGate = deferred<undefined>();
     repository.writeComposition.mockImplementationOnce(() => writeGate.promise);
     const mutation = transaction.applyScopedMusicChange({
       envelope: envelopeFor(task),
       replacements: [{ trackId: 'track.drums', abc: 'z4' }],
     });
-    await vi.waitFor(() =>
-      expect(repository.writeComposition).toHaveBeenCalledOnce(),
-    );
+    await vi.waitFor(() => {
+      expect(repository.writeComposition).toHaveBeenCalledOnce();
+    });
 
     const cancellation = transaction.cancelTask({
       projectId,
@@ -787,15 +843,15 @@ describe('CandidateTransaction A2-backed operations', () => {
       changedTrackIds: ['track.drums'],
       compilation,
     });
-    const writeGate = deferred<void>();
+    const writeGate = deferred<undefined>();
     repository.writeComposition.mockImplementationOnce(() => writeGate.promise);
     const mutation = transaction.applyScopedMusicChange({
       envelope: envelopeFor(task),
       replacements: [{ trackId: 'track.drums', abc: 'z4' }],
     });
-    await vi.waitFor(() =>
-      expect(repository.writeComposition).toHaveBeenCalledOnce(),
-    );
+    await vi.waitFor(() => {
+      expect(repository.writeComposition).toHaveBeenCalledOnce();
+    });
 
     const rejection = transaction.rejectCandidate({ projectId, candidateId });
     await Promise.resolve();
@@ -1077,6 +1133,7 @@ describe('CandidateTransaction acceptCandidate', () => {
       '/project',
       workspace,
       expect.stringContaining(candidateId),
+      expect.anything(),
     );
     expect(cleanup.authorizeAndAttempt).toHaveBeenCalledWith(
       '/project',
@@ -1091,6 +1148,86 @@ describe('CandidateTransaction acceptCandidate', () => {
     expect(nextTask.candidateId).not.toBe(candidateId);
     expect(nextTask.baseRevision).toBe('C1');
     expect(repository.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets Reject preempt an Accept that has not committed main yet', async () => {
+    const { transaction, repository, cleanup, currentState } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+    const commitGate = deferred<undefined>();
+    repository.commitCompositionToCurrent.mockImplementationOnce(
+      (_projectPath, _workspace, _message, ...rest: unknown[]) =>
+        new Promise<string>((resolve, reject) => {
+          let aborted = false;
+          const signal = rest[0] as AbortSignal | undefined;
+          signal?.addEventListener(
+            'abort',
+            () => {
+              aborted = true;
+              reject(new Error('accept aborted fixture'));
+            },
+            { once: true },
+          );
+          void commitGate.promise.then(() => {
+            if (!aborted) {
+              currentState.revision = 'C1';
+              resolve('C1');
+            }
+          });
+        }),
+    );
+
+    const acceptance = transaction.acceptCandidate({ projectId, candidateId });
+    await vi.waitFor(() => {
+      expect(repository.commitCompositionToCurrent).toHaveBeenCalledOnce();
+    });
+    const rejection = transaction.rejectCandidate({ projectId, candidateId });
+    commitGate.resolve(undefined);
+
+    await expect(rejection).resolves.toBeUndefined();
+    await expect(acceptance).rejects.toMatchObject({
+      code: 'CANDIDATE_TRANSACTION_FAILED',
+    });
+    expect(currentState.revision).toBe('C0');
+    expect(cleanup.authorizeAndAttempt).toHaveBeenCalledOnce();
+  });
+
+  it('keeps Accept authoritative when main commits before Reject can preempt it', async () => {
+    const { transaction, repository, currentState } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+    const commitGate = deferred<undefined>();
+    repository.commitCompositionToCurrent.mockImplementationOnce(
+      (_projectPath, _workspace, _message, ...rest: unknown[]) =>
+        new Promise<string>((resolve) => {
+          const commit = (): void => {
+            currentState.revision = 'C1';
+            resolve('C1');
+          };
+          const signal = rest[0] as AbortSignal | undefined;
+          signal?.addEventListener('abort', commit, { once: true });
+          void commitGate.promise.then(commit);
+        }),
+    );
+
+    const acceptance = transaction.acceptCandidate({ projectId, candidateId });
+    await vi.waitFor(() => {
+      expect(repository.commitCompositionToCurrent).toHaveBeenCalledOnce();
+    });
+    const rejection = transaction.rejectCandidate({ projectId, candidateId });
+    commitGate.resolve(undefined);
+
+    await expect(acceptance).resolves.toMatchObject({ currentRevision: 'C1' });
+    await expect(rejection).rejects.toMatchObject({
+      code: 'CANDIDATE_NOT_FOUND',
+    });
+    expect(currentState.revision).toBe('C1');
   });
 
   it('restores Ready state when Current commit fails before linearization', async () => {
@@ -1167,6 +1304,20 @@ describe('CandidateTransaction acceptCandidate', () => {
 });
 
 describe('CandidateTransaction project-open reconciliation', () => {
+  it('normalizes cleanup failures to the stable A3 error boundary', async () => {
+    const { transaction, cleanup } = createHarness();
+    cleanup.reconcile.mockRejectedValueOnce(
+      new Error('filesystem failure fixture'),
+    );
+
+    await expect(transaction.reconcileProjectResources()).rejects.toMatchObject(
+      {
+        code: 'CANDIDATE_TRANSACTION_FAILED',
+        message: 'Unable to reconcile Candidate resources',
+      },
+    );
+  });
+
   it('returns cleanup status IDs without recovering Candidate/Task business state', async () => {
     const { transaction, cleanup, repository } = createHarness();
     cleanup.reconcile.mockResolvedValueOnce({

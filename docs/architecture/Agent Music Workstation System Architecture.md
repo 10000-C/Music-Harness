@@ -970,6 +970,7 @@ Accept 只允许 Ready Candidate 且没有 Active Task。步骤：
 故障语义：
 
 - `main` commit 前失败：恢复 Current authority files/index，`main` SHA 不前进，Candidate 保留以供重试；
+- `accepting` 期间若 Reject 先于 `main` commit 成功到达，则 Reject 先失效 Candidate 授权并取消尚未线性化的 Accept，Current 保持旧版本；若 `main` commit 已成功，则 Accept 已越过线性化点并获胜，随后针对旧 Candidate 的 Reject 返回 Candidate 已结束；
 - `main` commit 成功后 cleanup 失败：Accept 仍然成功，Current 不回滚；残留进入 `PendingCandidateCleanup`，且不阻塞新 Candidate；
 - A3 不负责停止/切换 openDAW Runtime；它只发出产品状态/Current committed event，由 B3/B4 处理试听状态。
 

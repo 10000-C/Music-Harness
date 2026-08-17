@@ -81,16 +81,31 @@ export interface CandidateControlPort {
   reconcileProjectResources(): Promise<CandidateRecoveryReport>;
 }
 
+type Awaitable<T> = T | Promise<T>;
+
+interface CandidateCompositionPort {
+  compileCanonical(
+    ...args: Parameters<CompositionPipeline['compileCanonical']>
+  ): Awaitable<ReturnType<CompositionPipeline['compileCanonical']>>;
+  getScopedComposition(
+    ...args: Parameters<CompositionPipeline['getScopedComposition']>
+  ): Awaitable<ReturnType<CompositionPipeline['getScopedComposition']>>;
+  replaceScopedMusic(
+    ...args: Parameters<CompositionPipeline['replaceScopedMusic']>
+  ): Awaitable<ReturnType<CompositionPipeline['replaceScopedMusic']>>;
+  updateGlobalMeter(
+    ...args: Parameters<CompositionPipeline['updateGlobalMeter']>
+  ): Awaitable<ReturnType<CompositionPipeline['updateGlobalMeter']>>;
+  validateFinalMeterConsistency(
+    ...args: Parameters<CompositionPipeline['validateFinalMeterConsistency']>
+  ): Awaitable<
+    ReturnType<CompositionPipeline['validateFinalMeterConsistency']>
+  >;
+}
+
 export interface CandidateTransactionDependencies {
   readonly project: ProjectAuthorityAccess;
-  readonly composition: Pick<
-    CompositionPipeline,
-    | 'compileCanonical'
-    | 'getScopedComposition'
-    | 'replaceScopedMusic'
-    | 'updateGlobalMeter'
-    | 'validateFinalMeterConsistency'
-  >;
+  readonly composition: CandidateCompositionPort;
   readonly repository: CandidateRepository;
   readonly cleanup: CandidateCleanupManagerPort;
   readonly createId: () => string;
@@ -111,7 +126,7 @@ interface ActiveTask {
   scopeRevision: number;
   readonly taskBaseCheckpoint: string;
   state: TaskState;
-  pendingScopeExtension?: PendingScopeExtension;
+  pendingScopeExtension: PendingScopeExtension | undefined;
   readonly createdAt: string;
 }
 
@@ -122,7 +137,15 @@ interface CandidateRecord {
   readonly workspace: CandidateWorkspace;
   state: CandidateState;
   latestCheckpoint?: string;
-  activeTask?: ActiveTask;
+  activeTask: ActiveTask | undefined;
+  acceptLease: AcceptLease | undefined;
+}
+
+interface AcceptLease {
+  readonly abortController: AbortController;
+  committed: boolean;
+  readonly settlement: Promise<void>;
+  readonly settle: () => void;
 }
 
 interface MutationLease {
@@ -202,6 +225,8 @@ export class CandidateTransaction
         baseRevision: current.currentRevision,
         workspace,
         state: 'active',
+        activeTask: undefined,
+        acceptLease: undefined,
       };
       const task = this.createTask(
         candidate,
@@ -216,17 +241,19 @@ export class CandidateTransaction
     }
   }
 
-  public async getTaskContext(taskId: TaskId): Promise<TaskContextView> {
-    const candidate = this.candidate;
-    const task = candidate?.activeTask;
-    if (
-      candidate === undefined ||
-      task === undefined ||
-      task.taskId !== taskId
-    ) {
-      throw new CandidateError('TASK_NOT_ACTIVE', 'Task is not active');
+  public getTaskContext(taskId: TaskId): Promise<TaskContextView> {
+    try {
+      const candidate = this.candidate;
+      const task = candidate?.activeTask;
+      if (candidate === undefined || task?.taskId !== taskId) {
+        throw new CandidateError('TASK_NOT_ACTIVE', 'Task is not active');
+      }
+      return Promise.resolve(this.toTaskContextView(candidate, task));
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
-    return this.toTaskContextView(candidate, task);
   }
 
   public async getScopedComposition(
@@ -258,7 +285,9 @@ export class CandidateTransaction
     readonly envelope: TaskExecutionEnvelope;
     readonly requestedScope: TaskScope;
   }): Promise<PendingScopeExtensionView> {
-    const { candidate, task } = await this.guardTaskEnvelope(input.envelope);
+    this.assertTaskMutationIdle(input.envelope.taskId);
+    const { task } = await this.guardTaskEnvelope(input.envelope);
+    this.assertTaskMutationIdle(input.envelope.taskId);
     if (task.pendingScopeExtension !== undefined) {
       throw new CandidateError(
         'TASK_SCOPE_EXTENSION_PENDING',
@@ -281,55 +310,67 @@ export class CandidateTransaction
     return this.toPendingScopeExtensionView(task, pending);
   }
 
-  public async approveScopeExtension(input: {
+  public approveScopeExtension(input: {
     readonly taskId: TaskId;
     readonly requestId: ScopeExtensionRequestId;
   }): Promise<TaskContextView> {
-    const { candidate, task } = this.resolveActiveTask(input.taskId);
-    const pending = task.pendingScopeExtension;
-    if (pending === undefined || pending.requestId !== input.requestId) {
-      throw new CandidateError(
-        'STALE_SCOPE_EXTENSION_REQUEST',
-        'Scope Extension request is no longer current',
-      );
-    }
-    if (
-      pending.fromScopeRevision !== task.scopeRevision ||
-      !this.isScopeSuperset(task.scope, pending.requestedScope)
-    ) {
-      throw new CandidateError(
-        'STALE_SCOPE_EXTENSION_REQUEST',
-        'Scope Extension request was based on stale authorization state',
-      );
-    }
+    try {
+      const { candidate, task } = this.resolveActiveTask(input.taskId);
+      const pending = task.pendingScopeExtension;
+      if (pending?.requestId !== input.requestId) {
+        throw new CandidateError(
+          'STALE_SCOPE_EXTENSION_REQUEST',
+          'Scope Extension request is no longer current',
+        );
+      }
+      if (
+        pending.fromScopeRevision !== task.scopeRevision ||
+        !this.isScopeSuperset(task.scope, pending.requestedScope)
+      ) {
+        throw new CandidateError(
+          'STALE_SCOPE_EXTENSION_REQUEST',
+          'Scope Extension request was based on stale authorization state',
+        );
+      }
 
-    task.scope = pending.requestedScope;
-    task.scopeRevision += 1;
-    task.pendingScopeExtension = undefined;
-    return this.toTaskContextView(candidate, task);
+      task.scope = pending.requestedScope;
+      task.scopeRevision += 1;
+      task.pendingScopeExtension = undefined;
+      return Promise.resolve(this.toTaskContextView(candidate, task));
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 
-  public async rejectScopeExtension(input: {
+  public rejectScopeExtension(input: {
     readonly taskId: TaskId;
     readonly requestId: ScopeExtensionRequestId;
   }): Promise<TaskContextView> {
-    const { candidate, task } = this.resolveActiveTask(input.taskId);
-    const pending = task.pendingScopeExtension;
-    if (pending === undefined || pending.requestId !== input.requestId) {
-      throw new CandidateError(
-        'STALE_SCOPE_EXTENSION_REQUEST',
-        'Scope Extension request is no longer current',
-      );
-    }
-    if (pending.fromScopeRevision !== task.scopeRevision) {
-      throw new CandidateError(
-        'STALE_SCOPE_EXTENSION_REQUEST',
-        'Scope Extension request was based on a stale Scope revision',
-      );
-    }
+    try {
+      const { candidate, task } = this.resolveActiveTask(input.taskId);
+      const pending = task.pendingScopeExtension;
+      if (pending?.requestId !== input.requestId) {
+        throw new CandidateError(
+          'STALE_SCOPE_EXTENSION_REQUEST',
+          'Scope Extension request is no longer current',
+        );
+      }
+      if (pending.fromScopeRevision !== task.scopeRevision) {
+        throw new CandidateError(
+          'STALE_SCOPE_EXTENSION_REQUEST',
+          'Scope Extension request was based on a stale Scope revision',
+        );
+      }
 
-    task.pendingScopeExtension = undefined;
-    return this.toTaskContextView(candidate, task);
+      task.pendingScopeExtension = undefined;
+      return Promise.resolve(this.toTaskContextView(candidate, task));
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+    }
   }
 
   public async applyScopedMusicChange(input: {
@@ -473,12 +514,10 @@ export class CandidateTransaction
         };
       } catch (error) {
         if (
-          candidate !== undefined &&
-          task !== undefined &&
+          task?.state === 'validating' &&
+          candidate?.activeTask === task &&
           this.candidate === candidate &&
-          candidate.activeTask === task &&
-          candidate.state === 'active' &&
-          task.state === 'validating'
+          candidate.state === 'active'
         ) {
           task.state = 'editing';
         }
@@ -494,7 +533,7 @@ export class CandidateTransaction
   }): Promise<CandidateView | undefined> {
     const candidate = this.requireCandidate(input.projectId, input.candidateId);
     const task = candidate.activeTask;
-    if (task === undefined || task.taskId !== input.taskId) {
+    if (task?.taskId !== input.taskId) {
       throw new CandidateError('TASK_NOT_ACTIVE', 'Task is not active');
     }
 
@@ -539,37 +578,27 @@ export class CandidateTransaction
       );
     }
 
+    let acceptLease: AcceptLease | undefined;
     try {
       await this.validateReadyCandidate(candidate);
-      if (
-        this.candidate !== candidate ||
-        candidate.state !== 'ready' ||
-        candidate.activeTask !== undefined
-      ) {
-        throw new CandidateError(
-          'CANDIDATE_NOT_READY',
-          'Candidate changed while final Accept validation was running',
-        );
-      }
+      this.assertReadyCandidateStillAuthorized(candidate);
 
       candidate.state = 'accepting';
+      acceptLease = this.beginAccept(candidate);
       const currentRevision =
         await this.dependencies.project.runSerializedWrite(async () => {
           await this.assertCandidateBaseline(candidate);
-          if (this.candidate !== candidate || candidate.state !== 'accepting') {
-            throw new CandidateError(
-              'CANDIDATE_NOT_READY',
-              'Candidate authorization ended before Current commit',
-            );
-          }
+          this.assertAcceptingCandidateStillAuthorized(candidate);
           return this.dependencies.repository.commitCompositionToCurrent(
             this.dependencies.project.getProjectPath(),
             candidate.workspace,
             `Accept Candidate ${candidate.candidateId}`,
+            acceptLease?.abortController.signal,
           );
         });
 
       // Business linearization point: main commit has succeeded.
+      acceptLease.committed = true;
       this.candidate = undefined;
       await this.attemptCleanup(candidate);
       return {
@@ -582,6 +611,13 @@ export class CandidateTransaction
         candidate.state = 'ready';
       }
       throw normalizeCandidateError(error, 'Unable to accept Candidate');
+    } finally {
+      if (acceptLease !== undefined) {
+        if (candidate.acceptLease === acceptLease) {
+          candidate.acceptLease = undefined;
+        }
+        acceptLease.settle();
+      }
     }
   }
 
@@ -590,20 +626,42 @@ export class CandidateTransaction
     readonly candidateId: CandidateId;
   }): Promise<void> {
     const candidate = this.requireCandidate(input.projectId, input.candidateId);
-    const lease = candidate.activeTask
+    const acceptLease =
+      candidate.state === 'accepting' ? candidate.acceptLease : undefined;
+    const mutationLease = candidate.activeTask
       ? this.mutationLeaseFor(candidate.activeTask.taskId)
       : undefined;
+
+    // Reject linearizes by invalidating Candidate authorization immediately.
     this.candidate = undefined;
-    if (lease?.writeEntered === true) {
-      await lease.settlement;
+
+    if (acceptLease !== undefined) {
+      acceptLease.abortController.abort();
+      await acceptLease.settlement;
+      if (acceptLease.committed) {
+        throw new CandidateError(
+          'CANDIDATE_NOT_FOUND',
+          'Candidate was already accepted',
+        );
+      }
+    } else if (mutationLease?.writeEntered === true) {
+      await mutationLease.settlement;
     }
+
     await this.attemptCleanup(candidate);
   }
 
   public async reconcileProjectResources(): Promise<CandidateRecoveryReport> {
-    return this.dependencies.cleanup.reconcile(
-      this.dependencies.project.getProjectPath(),
-    );
+    try {
+      return await this.dependencies.cleanup.reconcile(
+        this.dependencies.project.getProjectPath(),
+      );
+    } catch (error) {
+      throw normalizeCandidateError(
+        error,
+        'Unable to reconcile Candidate resources',
+      );
+    }
   }
 
   private createTask(
@@ -619,6 +677,7 @@ export class CandidateTransaction
       scopeRevision: 0,
       taskBaseCheckpoint,
       state: 'editing',
+      pendingScopeExtension: undefined,
       createdAt: this.dependencies.now(),
     };
   }
@@ -628,7 +687,7 @@ export class CandidateTransaction
     candidateId: CandidateId,
   ): CandidateRecord {
     const candidate = this.candidate;
-    if (candidate === undefined || candidate.candidateId !== candidateId) {
+    if (candidate?.candidateId !== candidateId) {
       throw new CandidateError(
         'CANDIDATE_NOT_FOUND',
         'Candidate was not found',
@@ -655,11 +714,7 @@ export class CandidateTransaction
       );
     }
     const task = candidate?.activeTask;
-    if (
-      candidate === undefined ||
-      task === undefined ||
-      task.taskId !== taskId
-    ) {
+    if (candidate === undefined || task?.taskId !== taskId) {
       throw new CandidateError('TASK_NOT_ACTIVE', 'Task is not active');
     }
     return { candidate, task };
@@ -677,11 +732,7 @@ export class CandidateTransaction
       );
     }
     const task = candidate?.activeTask;
-    if (
-      candidate === undefined ||
-      task === undefined ||
-      task.taskId !== envelope.taskId
-    ) {
+    if (candidate === undefined || task?.taskId !== envelope.taskId) {
       throw new CandidateError('TASK_NOT_ACTIVE', 'Task is not active');
     }
     if (task.projectId !== envelope.projectId) {
@@ -775,6 +826,32 @@ export class CandidateTransaction
         'VALIDATION_FAILED',
         'Candidate final validation failed',
         { validation },
+      );
+    }
+  }
+
+  private assertReadyCandidateStillAuthorized(
+    candidate: CandidateRecord,
+  ): void {
+    if (
+      this.candidate !== candidate ||
+      candidate.state !== 'ready' ||
+      candidate.activeTask !== undefined
+    ) {
+      throw new CandidateError(
+        'CANDIDATE_NOT_READY',
+        'Candidate changed while final Accept validation was running',
+      );
+    }
+  }
+
+  private assertAcceptingCandidateStillAuthorized(
+    candidate: CandidateRecord,
+  ): void {
+    if (this.candidate !== candidate || candidate.state !== 'accepting') {
+      throw new CandidateError(
+        'CANDIDATE_NOT_READY',
+        'Candidate authorization ended before Current commit',
       );
     }
   }
@@ -878,10 +955,34 @@ export class CandidateTransaction
     return lease;
   }
 
+  private beginAccept(candidate: CandidateRecord): AcceptLease {
+    let settle = (): void => undefined;
+    const settlement = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const lease: AcceptLease = {
+      abortController: new AbortController(),
+      committed: false,
+      settlement,
+      settle,
+    };
+    candidate.acceptLease = lease;
+    return lease;
+  }
+
   private mutationLeaseFor(taskId: TaskId): MutationLease | undefined {
     return this.mutationLease?.taskId === taskId
       ? this.mutationLease
       : undefined;
+  }
+
+  private assertTaskMutationIdle(taskId: TaskId): void {
+    if (this.mutationLeaseFor(taskId) !== undefined) {
+      throw new CandidateError(
+        'TASK_BUSY',
+        'Another Candidate mutation is already active',
+      );
+    }
   }
 
   private async runOrdinaryMutation<T>(

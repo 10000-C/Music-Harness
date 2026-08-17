@@ -1186,6 +1186,8 @@ Set Candidate state `accepting` before the serialized Current write. If anything
 
 After the repository returns C1, never recreate the old Candidate business object.
 
+Accept/Reject arbitration is linearization-based: while Candidate is `accepting`, Reject may still invalidate authorization and abort the Current write until the repository has successfully advanced `main`. If `main` advances first, Accept wins and the old Candidate is already gone; if Reject wins first, Accept fails and Current stays at the old revision.
+
 - [ ] **Step 4: Write the pre-commit failure behavior test**
 
 Use a repository fake that rejects `commitCompositionToCurrent`. Assert:

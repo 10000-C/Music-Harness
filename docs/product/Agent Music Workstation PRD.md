@@ -786,6 +786,7 @@ Candidate 不允许正式导出。
 - Candidate baseline 漂移后进入 `stale`，只能 Reject；
 - Accept 的事务成功点是新的 `main` commit 成功：commit 前失败必须保持旧 Current 并保留 Candidate；commit 成功后即视为 Accept 成功，后续 branch/worktree 清理失败不得回滚 Current；
 - Reject 的业务成功点是 Candidate 授权失效并结束业务生命周期，物理清理失败不得恢复 Candidate；
+- Accept 已进入 `accepting` 但新的 `main` commit 尚未成功时，Reject 仍可抢占：Reject 先使 Candidate 授权失效并取消尚未线性化的 Accept，Current 保持旧版本；若新的 `main` commit 已成功，则 Accept 已线性化并获胜，针对旧 Candidate 的 Reject 不再生效；
 - Accept/Reject 的残留资源进入待清理状态，不阻塞新的 Active Candidate；
 - Git Current 不得被损坏结果覆盖；无法恢复时只打开最后有效 Current；
 - 对外只返回稳定 A3 领域错误码与结构化 details，不直接透传 Git、文件系统或 parser 原始异常文本。

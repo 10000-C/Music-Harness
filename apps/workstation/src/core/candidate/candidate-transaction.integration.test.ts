@@ -1,7 +1,6 @@
 import {
   TRACK_IDS,
   type CandidateId,
-  type ProjectId,
   type TaskId,
   type TaskScope,
 } from '@agent-music/contracts';
@@ -81,7 +80,7 @@ describe(
       );
 
       const firstTask = await transaction.startTask({
-        projectId: created.projectId as ProjectId,
+        projectId: created.projectId,
         scope: wholeProjectScope,
       });
       await expect(
@@ -100,7 +99,7 @@ describe(
       );
 
       const secondTask = await transaction.startTask({
-        projectId: created.projectId as ProjectId,
+        projectId: created.projectId,
         scope: wholeProjectScope,
       });
       expect(secondTask.taskId).toBe(task2Id);
@@ -120,7 +119,7 @@ describe(
       );
 
       await transaction.rejectCandidate({
-        projectId: created.projectId as ProjectId,
+        projectId: created.projectId,
         candidateId,
       });
     });
@@ -145,7 +144,7 @@ describe(
         `${created.currentRevision}^{tree}`,
       );
       const task = await transaction.startTask({
-        projectId: created.projectId as ProjectId,
+        projectId: created.projectId,
         scope: wholeProjectScope,
       });
       await transaction.finishTask({
@@ -157,7 +156,7 @@ describe(
       });
 
       const accepted = await transaction.acceptCandidate({
-        projectId: created.projectId as ProjectId,
+        projectId: created.projectId,
         candidateId,
       });
 

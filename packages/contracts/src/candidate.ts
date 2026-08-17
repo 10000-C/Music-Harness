@@ -149,11 +149,11 @@ interface CandidateEventBase {
 export type CandidateEvent =
   | (CandidateEventBase & {
       readonly type: 'candidate.changed';
-      readonly candidate?: CandidateView;
+      readonly candidate?: CandidateView | undefined;
     })
   | (CandidateEventBase & {
       readonly type: 'task.changed';
-      readonly task?: TaskContextView;
+      readonly task?: TaskContextView | undefined;
     })
   | (CandidateEventBase & {
       readonly type: 'candidate.scopeExtensionRequested';
@@ -203,7 +203,9 @@ export const isTaskExecutionEnvelope = (
   value.baseRevision.length > 0 &&
   isNonNegativeInteger(value.expectedScopeRevision);
 
-export const isCandidateCommand = (value: unknown): value is CandidateCommand => {
+export const isCandidateCommand = (
+  value: unknown,
+): value is CandidateCommand => {
   if (!isRecord(value) || typeof value.requestId !== 'string') {
     return false;
   }

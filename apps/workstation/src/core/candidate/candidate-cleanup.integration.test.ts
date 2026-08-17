@@ -79,28 +79,25 @@ describe('CandidateCleanupManager', () => {
     await registry.authorize(projectPath, candidateA);
     await registry.authorize(projectPath, candidateB);
     const removed: CandidateId[] = [];
-    const unsupported = (): never => {
-      throw new Error('unsupported in cleanup test');
-    };
+    const unsupported = (): Promise<never> =>
+      Promise.reject(new Error('unsupported in cleanup test'));
     const repository = {
-      create: async () => unsupported(),
-      readAuthority: async () => unsupported(),
-      writeComposition: async () => unsupported(),
-      inspectChanges: async () => unsupported(),
-      createCheckpoint: async () => unsupported(),
-      resetTo: async () => unsupported(),
-      commitCompositionToCurrent: async () => unsupported(),
-      remove: async (workspace: CandidateWorkspace) => {
+      create: () => unsupported(),
+      readAuthority: () => unsupported(),
+      writeComposition: () => unsupported(),
+      inspectChanges: () => unsupported(),
+      createCheckpoint: () => unsupported(),
+      resetTo: () => unsupported(),
+      commitCompositionToCurrent: () => unsupported(),
+      remove: (workspace: CandidateWorkspace) => {
         removed.push(workspace.candidateId);
         if (workspace.candidateId === candidateB) {
-          throw new Error('simulated cleanup failure');
+          return Promise.reject(new Error('simulated cleanup failure'));
         }
+        return Promise.resolve();
       },
-      listCandidateResourceIds: async () => [
-        candidateA,
-        candidateB,
-        candidateC,
-      ],
+      listCandidateResourceIds: () =>
+        Promise.resolve([candidateA, candidateB, candidateC]),
     } satisfies CandidateRepository;
     const manager = new CandidateCleanupManager(repository, registry);
 
