@@ -124,5 +124,55 @@ describe(
         candidateId,
       });
     });
+
+    it('creates a unique Current revision for an empty Accept without changing the tree', async () => {
+      const created = await foundation.createProject(projectPath);
+      const repository = new CandidateGitRepository();
+      const transaction = new CandidateTransaction({
+        project: foundation,
+        composition: new CompositionPipeline(),
+        repository,
+        cleanup: new CandidateCleanupManager(repository),
+        createId: (() => {
+          const ids = [candidateId, task1Id];
+          return () => ids.shift() ?? '00000000-0000-4000-8000-000000000079';
+        })(),
+        now: () => '2026-08-13T00:00:00.000Z',
+      });
+      const currentTree = await git(
+        projectPath,
+        'rev-parse',
+        `${created.currentRevision}^{tree}`,
+      );
+      const task = await transaction.startTask({
+        projectId: created.projectId as ProjectId,
+        scope: wholeProjectScope,
+      });
+      await transaction.finishTask({
+        taskId: task.taskId,
+        projectId: task.projectId,
+        candidateId: task.candidateId,
+        baseRevision: task.baseRevision,
+        expectedScopeRevision: task.scopeRevision,
+      });
+
+      const accepted = await transaction.acceptCandidate({
+        projectId: created.projectId as ProjectId,
+        candidateId,
+      });
+
+      expect(accepted.currentRevision).not.toBe(created.currentRevision);
+      expect(await git(projectPath, 'rev-parse', 'main')).toBe(
+        accepted.currentRevision,
+      );
+      expect(
+        await git(
+          projectPath,
+          'rev-parse',
+          `${accepted.currentRevision}^{tree}`,
+        ),
+      ).toBe(currentTree);
+      expect(await git(projectPath, 'status', '--porcelain')).toBe('');
+    });
   },
 );

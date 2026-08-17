@@ -37,6 +37,7 @@ const wholeProjectScope: TaskScope = {
 
 const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
   const currentState = { revision: 'C0', dirty: false };
+  const serializedWrites = vi.fn();
   const workspace: CandidateWorkspace = {
     candidateId,
     branchName: `candidate/${candidateId}`,
@@ -63,7 +64,10 @@ const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
         compositionSource: initialSource,
       };
     }),
-    runSerializedWrite: async <T>(operation: () => Promise<T>) => operation(),
+    runSerializedWrite: async <T>(operation: () => Promise<T>) => {
+      serializedWrites();
+      return operation();
+    },
   } satisfies ProjectAuthorityAccess;
   const repository = {
     create: vi.fn(async () => workspace),
@@ -79,7 +83,10 @@ const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
     })),
     createCheckpoint: vi.fn(async () => 'P1'),
     resetTo: vi.fn(async () => undefined),
-    commitCompositionToCurrent: vi.fn(async () => 'C1'),
+    commitCompositionToCurrent: vi.fn(async () => {
+      currentState.revision = 'C1';
+      return 'C1';
+    }),
     remove: vi.fn(async () => undefined),
     listCandidateResourceIds: vi.fn(async () => []),
   } satisfies CandidateRepository;
@@ -114,6 +121,7 @@ const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
     workspace,
     currentState,
     composition,
+    serializedWrites,
   };
 };
 
@@ -1001,5 +1009,156 @@ describe('CandidateTransaction finishTask', () => {
       code: 'TASK_SCOPE_EXTENSION_PENDING',
     });
     expect(repository.createCheckpoint).not.toHaveBeenCalled();
+  });
+});
+
+describe('CandidateTransaction acceptCandidate', () => {
+  it('accepts only a Ready Candidate and rejects Active or stale state', async () => {
+    const active = createHarness();
+    await active.transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await expect(
+      active.transaction.acceptCandidate({ projectId, candidateId }),
+    ).rejects.toMatchObject({ code: 'CANDIDATE_NOT_READY' });
+    expect(active.repository.commitCompositionToCurrent).not.toHaveBeenCalled();
+
+    const stale = createHarness();
+    const staleTask = await stale.transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    stale.currentState.revision = 'C1';
+    await expect(
+      stale.transaction.requestScopeExtension({
+        envelope: envelopeFor(staleTask),
+        requestedScope: wholeProjectScope,
+      }),
+    ).rejects.toMatchObject({ code: 'CANDIDATE_BASELINE_CHANGED' });
+    await expect(
+      stale.transaction.acceptCandidate({ projectId, candidateId }),
+    ).rejects.toMatchObject({ code: 'CANDIDATE_STALE' });
+    expect(stale.repository.commitCompositionToCurrent).not.toHaveBeenCalled();
+  });
+
+  it('validates Ready Candidate, serializes Current commit, then removes business state', async () => {
+    const {
+      transaction,
+      project,
+      repository,
+      cleanup,
+      serializedWrites,
+      currentState,
+      workspace,
+    } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+    repository.inspectChanges.mockClear();
+    project.readCleanCurrent.mockClear();
+
+    await expect(
+      transaction.acceptCandidate({ projectId, candidateId }),
+    ).resolves.toEqual({
+      projectId,
+      candidateId,
+      currentRevision: 'C1',
+    });
+    expect(repository.inspectChanges).toHaveBeenCalled();
+    expect(serializedWrites).toHaveBeenCalledOnce();
+    expect(project.readCleanCurrent).toHaveBeenCalled();
+    expect(repository.commitCompositionToCurrent).toHaveBeenCalledWith(
+      '/project',
+      workspace,
+      expect.stringContaining(candidateId),
+    );
+    expect(cleanup.authorizeAndAttempt).toHaveBeenCalledWith(
+      '/project',
+      workspace,
+    );
+    expect(currentState.revision).toBe('C1');
+
+    const nextTask = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    expect(nextTask.candidateId).not.toBe(candidateId);
+    expect(nextTask.baseRevision).toBe('C1');
+    expect(repository.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('restores Ready state when Current commit fails before linearization', async () => {
+    const { transaction, repository, cleanup, currentState } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+    repository.commitCompositionToCurrent.mockRejectedValueOnce(
+      new Error('pre-commit failure fixture'),
+    );
+
+    await expect(
+      transaction.acceptCandidate({ projectId, candidateId }),
+    ).rejects.toMatchObject({ code: 'CANDIDATE_TRANSACTION_FAILED' });
+    expect(currentState.revision).toBe('C0');
+    expect(cleanup.authorizeAndAttempt).not.toHaveBeenCalled();
+
+    const retryTask = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    expect(retryTask.candidateId).toBe(candidateId);
+    await transaction.cancelTask({
+      projectId,
+      candidateId,
+      taskId: retryTask.taskId,
+    });
+  });
+
+  it('does not enter serialized Current write when final Ready validation fails', async () => {
+    const { transaction, repository, serializedWrites } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+    repository.inspectChanges.mockResolvedValueOnce({
+      compositionChanged: false,
+      projectJsonChangedFromBase: true,
+      unexpectedPaths: [],
+    });
+
+    await expect(
+      transaction.acceptCandidate({ projectId, candidateId }),
+    ).rejects.toMatchObject({ code: 'UNEXPECTED_CANDIDATE_CHANGE' });
+    expect(serializedWrites).not.toHaveBeenCalled();
+    expect(repository.commitCompositionToCurrent).not.toHaveBeenCalled();
+  });
+
+  it('keeps Accept successful after commit even when physical cleanup remains pending', async () => {
+    const { transaction, repository, cleanup } = createHarness({
+      cleanupFails: true,
+    });
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+
+    await expect(
+      transaction.acceptCandidate({ projectId, candidateId }),
+    ).resolves.toMatchObject({ currentRevision: 'C1' });
+    expect(cleanup.authorizeAndAttempt).toHaveBeenCalledOnce();
+
+    const nextTask = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    expect(nextTask.candidateId).not.toBe(candidateId);
+    expect(repository.create).toHaveBeenCalledTimes(2);
   });
 });

@@ -519,6 +519,70 @@ export class CandidateTransaction {
     }
   }
 
+  public async acceptCandidate(input: {
+    readonly projectId: ProjectId;
+    readonly candidateId: CandidateId;
+  }): Promise<CurrentCommittedResult> {
+    const candidate = this.requireCandidate(input.projectId, input.candidateId);
+    if (candidate.state === 'stale') {
+      throw new CandidateError(
+        'CANDIDATE_STALE',
+        'Candidate baseline is stale',
+      );
+    }
+    if (candidate.state !== 'ready' || candidate.activeTask !== undefined) {
+      throw new CandidateError(
+        'CANDIDATE_NOT_READY',
+        'Only a Task-free Ready Candidate can be accepted',
+      );
+    }
+
+    try {
+      await this.validateReadyCandidate(candidate);
+      if (
+        this.candidate !== candidate ||
+        candidate.state !== 'ready' ||
+        candidate.activeTask !== undefined
+      ) {
+        throw new CandidateError(
+          'CANDIDATE_NOT_READY',
+          'Candidate changed while final Accept validation was running',
+        );
+      }
+
+      candidate.state = 'accepting';
+      const currentRevision =
+        await this.dependencies.project.runSerializedWrite(async () => {
+          await this.assertCandidateBaseline(candidate);
+          if (this.candidate !== candidate || candidate.state !== 'accepting') {
+            throw new CandidateError(
+              'CANDIDATE_NOT_READY',
+              'Candidate authorization ended before Current commit',
+            );
+          }
+          return this.dependencies.repository.commitCompositionToCurrent(
+            this.dependencies.project.getProjectPath(),
+            candidate.workspace,
+            `Accept Candidate ${candidate.candidateId}`,
+          );
+        });
+
+      // Business linearization point: main commit has succeeded.
+      this.candidate = undefined;
+      await this.attemptCleanup(candidate);
+      return {
+        projectId: candidate.projectId,
+        candidateId: candidate.candidateId,
+        currentRevision,
+      };
+    } catch (error) {
+      if (this.candidate === candidate && candidate.state === 'accepting') {
+        candidate.state = 'ready';
+      }
+      throw normalizeCandidateError(error, 'Unable to accept Candidate');
+    }
+  }
+
   public async rejectCandidate(input: {
     readonly projectId: ProjectId;
     readonly candidateId: CandidateId;
@@ -663,6 +727,46 @@ export class CandidateTransaction {
       throw new CandidateError(
         'CANDIDATE_BASELINE_CHANGED',
         'Current revision no longer matches Candidate baseline',
+      );
+    }
+  }
+
+  private async validateReadyCandidate(
+    candidate: CandidateRecord,
+  ): Promise<void> {
+    await this.assertCandidateBaseline(candidate);
+    const changes = await this.dependencies.repository.inspectChanges(
+      candidate.workspace,
+    );
+    if (
+      changes.projectJsonChangedFromBase ||
+      changes.unexpectedPaths.length > 0
+    ) {
+      throw new CandidateError(
+        'UNEXPECTED_CANDIDATE_CHANGE',
+        'Candidate contains unauthorized authority or filesystem changes',
+        {
+          projectJsonChangedFromBase: changes.projectJsonChangedFromBase,
+          unexpectedPaths: changes.unexpectedPaths,
+        },
+      );
+    }
+
+    const authority = await this.dependencies.repository.readAuthority(
+      candidate.workspace,
+    );
+    await this.dependencies.composition.compileCanonical(
+      authority.compositionSource,
+    );
+    const validation =
+      await this.dependencies.composition.validateFinalMeterConsistency(
+        authority.compositionSource,
+      );
+    if (!validation.valid) {
+      throw new CandidateError(
+        'VALIDATION_FAILED',
+        'Candidate final validation failed',
+        { validation },
       );
     }
   }
