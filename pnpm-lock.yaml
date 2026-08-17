@@ -43,6 +43,9 @@ importers:
       abcjs:
         specifier: 6.6.4
         version: 6.6.4
+      midi-file:
+        specifier: 1.2.4
+        version: 1.2.4
     devDependencies:
       '@types/node':
         specifier: 24.10.1
@@ -981,6 +984,12 @@ packages:
         integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==,
       }
 
+  midi-file@1.2.4:
+    resolution:
+      {
+        integrity: sha512-B5SnBC6i2bwJIXTY9MElIydJwAmnKx+r5eJ1jknTLetzLflEl0GWveuBB6ACrQpecSRkOB6fhTx1PwXk2BVxnA==,
+      }
+
   minimatch@10.2.6:
     resolution:
       {
@@ -1870,6 +1879,8 @@ snapshots:
   magic-string@0.30.21:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  midi-file@1.2.4: {}
 
   minimatch@10.2.6:
     dependencies:

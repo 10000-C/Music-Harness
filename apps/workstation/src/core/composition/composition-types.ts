@@ -45,7 +45,9 @@ export type CompositionValidationIssueCode =
   | 'ABC_NOT_CANONICAL'
   | 'ABC_DURATION_NOT_EXACT'
   | 'TRACK_LENGTH_MISMATCH'
-  | 'GLOBAL_MAP_MISMATCH';
+  | 'GLOBAL_MAP_MISMATCH'
+  | 'SCOPE_INVALID'
+  | 'SCOPE_MAPPING_STALE';
 
 export interface CompositionValidationIssue {
   readonly code: CompositionValidationIssueCode;

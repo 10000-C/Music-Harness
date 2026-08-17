@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@agent-music/contracts": "workspace:*",
-    "abcjs": "6.6.4"
+    "abcjs": "6.6.4",
+    "midi-file": "1.2.4"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
