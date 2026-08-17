@@ -178,6 +178,10 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
     return this.authority.readCleanCurrent(session.projectPath);
   }
 
+  getProjectPath(): string {
+    return this.requireSession().projectPath;
+  }
+
   runSerializedWrite<T>(operation: () => Promise<T>): Promise<T> {
     const session = this.requireSession();
     if (session.state !== 'ready') {

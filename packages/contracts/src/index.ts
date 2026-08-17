@@ -1,4 +1,9 @@
 export {
+  CANDIDATE_ERROR_CODES,
+  isCandidateCommand,
+  isTaskExecutionEnvelope,
+} from './candidate.js';
+export {
   TRACK_IDS,
   isTaskScope,
   isTick,
@@ -6,6 +11,24 @@ export {
   isTrackId,
 } from './domain.js';
 
+export type {
+  CandidateCommand,
+  CandidateErrorCode,
+  CandidateEvent,
+  CandidateOperation,
+  CandidateRecoveryReport,
+  CandidateState,
+  CandidateValidationIssue,
+  CandidateValidationReport,
+  CandidateView,
+  CurrentCommittedResult,
+  FinishTaskResult,
+  PendingScopeExtensionView,
+  ScopeExtensionRequestId,
+  TaskContextView,
+  TaskExecutionEnvelope,
+  TaskState,
+} from './candidate.js';
 export type {
   CandidateId,
   ProjectId,

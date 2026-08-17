@@ -1,5 +1,5 @@
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { GitAdapter } from './git-adapter.js';
@@ -108,6 +108,18 @@ describe('ProjectFoundation lifecycle', () => {
     await expect(foundation.readCleanCurrent()).rejects.toMatchObject({
       code: 'PROJECT_NOT_OPEN',
     });
+  });
+
+  it('exposes the active canonical project path to Core modules', async () => {
+    await foundation.createProject(projectPath);
+
+    expect(foundation.getProjectPath()).toBe(resolve(projectPath));
+  });
+
+  it('does not expose a project path when no project is open', () => {
+    expect(() => foundation.getProjectPath()).toThrowError(
+      expect.objectContaining({ code: 'PROJECT_NOT_OPEN' }),
+    );
   });
 });
 
