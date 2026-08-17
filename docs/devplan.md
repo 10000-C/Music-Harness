@@ -1,6 +1,6 @@
 # Agent Music Workstation P0 十天双人模块化开发计划
 
-**版本：** 1.1
+**版本：** 1.2
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -21,9 +21,9 @@
 
 开发必须遵循：
 
-- `docs/product/Agent Music Workstation PRD.md` V1.6；
-- `docs/architecture/Agent Music Workstation System Architecture.md` V1.4；
-- `docs/architecture/spike.md` 中 Spike-001～009 的技术结论。
+- `docs/product/Agent Music Workstation PRD.md` V1.7；
+- `docs/architecture/Agent Music Workstation System Architecture.md` V1.5；
+- `docs/architecture/spike.md` 中 Spike-001～010 的技术结论；其中 Spike-010 只冻结已证明的稳定/拒绝边界，不冻结最终 ABC 白名单或 Velocity 语法选择。
 
 TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模块和回归测试，不重新设计同一问题。
 
@@ -37,7 +37,7 @@ TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模
 本计划不修改：
 
 - Electron Main、Renderer、Music Core Utility Process 和 Agent Service 的进程拓扑；
-- Renderer ↔ Core 的 typed IPC / RuntimeSnapshot 通信；
+- Renderer ↔ Core 的 typed IPC / PlaybackCompilation 通信；
 - Agent ↔ Core 的 MCP Streamable HTTP 通信；
 - MCP Server 的部署位置和六个 P0 Tool；
 - Canonical ABC → MIDI → openDAW Runtime 的链路；
@@ -57,7 +57,7 @@ Electron Main
 ├── Music Core Utility Process
 └── Built-in Agent Service
 
-Renderer ↔ Music Core：typed IPC / RuntimeSnapshot
+Renderer ↔ Music Core：typed IPC / PlaybackCompilation + TimelineViewModel
 Agent Service ↔ Music Core：MCP Streamable HTTP
 Agent Service ↔ SQLite
 Music Core ↔ Project Git Repository
@@ -125,7 +125,7 @@ UI、时间轴、Clip、播放头、Transport 和 openDAW SDK 共享同一 Rende
 
 两人只沿架构已经存在的 seam 集成：
 
-1. **Renderer ↔ Music Core：** typed IPC、RuntimeSnapshot、Command/Event；
+1. **Renderer ↔ Music Core：** typed IPC、PlaybackCompilation、TimelineViewModel、Command/Event；
 2. **Agent ↔ Music Core：** MCP Streamable HTTP。
 
 由于 Agent 和 Music Core 都由 A 负责，开发者 A 仍必须保持 MCP 隔离：内置 Agent 不得直接调用 Core 内部类、写文件或执行 Git。
@@ -219,7 +219,7 @@ B 负责：
 
 B 负责所有直接依赖 `@opendaw/studio-sdk` 的实现，无论对应文件最终位于 Renderer 目录还是架构指定的 Adapter 目录：
 
-- Standard MIDI / RuntimeSnapshot 到 openDAW Project 的适配；
+- Standard MIDI Document 与音乐元数据到 openDAW Project / RuntimeSnapshot 的适配；
 - 固定六轨 AudioUnit、Track、Region 和 NoteEvent；
 - 产品 Track ID 与 openDAW UUID 的运行时映射；
 - Tempo、Meter 和 Key wrapper；
@@ -266,7 +266,7 @@ B：选择输出路径，调用 openDAW Offline Renderer，显示进度并处理
 | Contracts 范围 | 主维护人 | 必须 Review |
 |---|---|---|
 | Project、Task、Scope、MCP、Provider | A | B |
-| IPC、RuntimeSnapshot、Renderer Event | B | A |
+| IPC、PlaybackCompilation、RuntimeSnapshot、Renderer Event | B | A |
 | Domain Track/Tick、错误码 | 共同 | 双方 |
 
 Day 2 后：
@@ -305,7 +305,7 @@ apps/workstation/src/core/opendaw/
 A 在 B 未完成 Renderer/openDAW 前使用：
 
 - Spike 中的 Canonical ABC fixtures；
-- 固定 RuntimeSnapshot/Adapter Contract fixture；
+- 固定 PlaybackCompilation/Adapter Contract fixture；
 - Fake Core Event consumer；
 - 本地 fake Chat Completions Provider；
 - 真实 MCP Server/Client；
@@ -348,7 +348,7 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 | 编号 | 模块 | 主要范围 | 直接依赖 | 稳定输出 |
 |---|---|---|---|---|
 | **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、显式恢复、另存为；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；同项目单写实例；稳定 Project Command/Event |
-| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、MIDI、RuntimeSnapshot 构建 | Contracts、Spike fixtures | Canonical ABC、Standard MIDI Document、RuntimeSnapshot |
+| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、PlaybackCompilation、TimelineViewModel、ValidationReport |
 | **A3** | Candidate Transaction | Candidate worktree、Task 状态机、checkpoint、Accept/Reject、取消回滚；所有 Current 写入经 A1 串行写入机制 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 Candidate Command/Event |
 | **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Mastra Agent Loop、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask` |
 | **A5** | Persistence & Export Preparation | SQLite、Settings、安全脱敏、复用 A1 clean Current 读取校验、ABC/MIDI 导出数据、WAV 输入准备 | A1、A2 | 可恢复 Agent 状态；经过 Current 校验的导出输入 |
@@ -392,7 +392,7 @@ A1 验收至少覆盖：
 |---|---|---|---|---|
 | **B1** | Desktop Shell | Electron Main、Preload、进程监督、路径选择、openDAW 资源路径 | IPC Contracts | 安全启动并监督 Core/Agent 的桌面壳 |
 | **B2** | Workstation UI | 六轨工作区、时间轴、Scope、Agent 面板、错误呈现 | B1、Fake Core Client | 可消费固定 Project/Task/Candidate 状态的产品界面 |
-| **B3** | openDAW Runtime | SDK Adapter、六轨 Runtime、资源加载、Transport、RuntimeSnapshot load | RuntimeSnapshot Contracts、Spike fixtures | 可加载正式 Snapshot 并稳定播放的 openDAW Runtime |
+| **B3** | openDAW Runtime | SDK Adapter；消费 A2 PlaybackCompilation 构建 RuntimeSnapshot；六轨 Runtime、资源加载、Transport、Snapshot load | PlaybackCompilation、RuntimeSnapshot Contracts、Spike fixtures | 可从正式编译结果构建、加载 Snapshot 并稳定播放的 openDAW Runtime |
 | **B4** | Preview & Confirmation | Current/Candidate 试听、确认流程、Accept/Reject UI、Core Event 消费 | B2、B3、A3 的稳定输出 | 完整 Candidate 预览和确认交互 |
 | **B5** | WAV & Windows Delivery | Offline Render、进度、取消、尾音、桌面文件输出、Windows 构建 | B1、B3、A5 的稳定输出 | 可从 Current 导出 WAV 的 Windows 可运行构建 |
 
@@ -442,7 +442,7 @@ flowchart LR
     end
 
     B1 -->|I1 进程启动 / health / IPC| A1
-    A2 -->|I2 RuntimeSnapshot / typed IPC| B3
+    A2 -->|I2 PlaybackCompilation / typed IPC| B3
     A1 -->|I3 Project Command / Core Event| B2
     A3 -->|I4 Candidate Command / Event| B4
     A4 -->|I5 Task / Confirmation Event| B4
@@ -454,7 +454,7 @@ flowchart LR
 | 依赖 | 上游必须稳定的输出 | 下游可开始的工作 |
 |---|---|---|
 | A1 → A3 | Current Git、跨实例写锁、项目级串行写入和 Project Command/Event | Candidate branch/worktree、事务状态机及安全 Accept |
-| A2 → A3 | Canonical ABC、Scope Mapping、MIDI、RuntimeSnapshot | `replaceScopedMusic` 和 `finishTask` 完整验证 |
+| A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic` 和 `finishTask` 完整验证 |
 | A1/A3 → A4 | A1 的 projectId/项目生命周期，A3 的 TaskContext、Candidate 和六个 Tool 业务状态 | runtime descriptor 与 Agent 真实 MCP Tool Loop |
 | A1/A2 → A5 | A1 的 clean Current 读取校验、A2 的重新编译能力 | 正式 ABC/MIDI/WAV 导出准备 |
 | B1 → B2 | 安全 Preload 和 typed IPC Client | 真实桌面 UI |
@@ -508,16 +508,17 @@ flowchart LR
 
 **进入条件：**
 
-- A2 可以从 Canonical ABC 生成正式 RuntimeSnapshot；
-- B3 可以加载 Spike fixture 并播放六轨。
+- A2 可以从 Canonical ABC 生成正式 PlaybackCompilation；
+- B3 可以从该 Bundle 构建 RuntimeSnapshot，并加载播放六轨。
 
 **联调链：**
 
 ```text
 Canonical ABC
 → A2 Composition Pipeline
-→ RuntimeSnapshot / typed IPC
-→ B3 openDAW Runtime
+→ Standard MIDI Document + TimelineViewModel + 音乐元数据 / typed IPC
+→ B3 构建 RuntimeSnapshot
+→ openDAW Runtime
 → 六轨播放
 ```
 
@@ -528,7 +529,7 @@ Canonical ABC
 - 不比较 openDAW 随机 UUID；
 - Snapshot load/reload 不泄漏旧 Runtime 状态。
 
-**解除阻塞：** B4 可使用真实音乐数据实现 Preview；A3 可将 RuntimeSnapshot 构建纳入 `finishTask` 验证。
+**解除阻塞：** B4 可使用真实音乐数据实现 Preview；A3 只将 A2 编译与校验纳入 `finishTask`，不依赖 B3 或 RuntimeSnapshot 构建。
 
 ### I3：Project Foundation → Workstation UI
 
@@ -666,7 +667,7 @@ git status --short
 
 ## 13. Day 10 Definition of Done
 
-- [ ] PRD V1.6 P0 验收逐项记录。
+- [ ] PRD V1.7 P0 验收逐项记录。
 - [ ] TG-001～TG-010 正式回归可重复运行。
 - [ ] Windows 应用可启动、创建项目、关闭和重开。
 - [ ] 首次生成与局部修改两条 E2E 通过。

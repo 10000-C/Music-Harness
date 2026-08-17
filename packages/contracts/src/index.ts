@@ -18,6 +18,21 @@ export type {
   WholeProjectScope,
 } from './domain.js';
 
+export { isPlaybackCompilation, isTimelineViewModel } from './composition.js';
+
+export type {
+  KeyEvent,
+  MeterEvent,
+  MidiNoteEvent,
+  PlaybackCompilation,
+  StandardMidiDocument,
+  StandardMidiTrack,
+  TempoEvent,
+  TimelineClip,
+  TimelineTrack,
+  TimelineViewModel,
+} from './composition.js';
+
 export {
   PROJECT_FORMAT_VERSION,
   PROJECT_PPQ,

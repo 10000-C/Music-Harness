@@ -1360,3 +1360,84 @@ Provider Adapter 必须将 SSE 拼接、JSON 参数校验、超时、AbortSignal
 C:\Users\TreeHey\AppData\Local\Temp\agent-music-workstation-spikes\tg004-008\evidence\tg-008-chat-completions.json
 C:\Users\TreeHey\AppData\Local\Temp\agent-music-workstation-spikes\tg004-008\evidence\run-summary.json
 ```
+
+---
+
+## Spike-010：A2 Canonical ABC 白名单与 Velocity 稳定边界
+
+- **日期**：2026-08-02
+- **状态**：PASS（完成边界探测，不等于冻结最终白名单）
+- **关联模块**：A2 Composition Pipeline
+- **ABC Parser**：`abcjs@6.6.4`
+- **Node.js**：`24.14.0`
+- **项目 PPQ**：960
+- **执行断言**：12
+
+> 架构采用说明：本 Spike 只验证 A2 的 Canonical ABC 与领域/MIDI 边界。根据 ADR-033，A2 不构建 RuntimeSnapshot；本文更早 Spike 中出现的 RuntimeSnapshot 是 openDAW 集成技术产物，正式实现归 B3，不与 ScopeMappingCache 合并。
+
+### 1. 目的
+
+Spike-002 的 TG-001/TG-002 只用单音、单声部事件证明了 Canonicalization 和 Scope Mapping 机制，没有证明 PRD 所需 Rest、Chord、Tie 与 Velocity 的正式表示。本 Spike 先回答哪些语法可稳定解析、映射和生成播放事件，以及哪些输入必须由 Music Core 额外约束；不在此处冻结最终 P0 白名单。
+
+### 2. 已稳定通过的候选能力
+
+| 能力 | 结果 | 已验证边界 |
+|---|---|---|
+| Rest | PASS | 可解析并保留稳定源码 span；进入领域时间线但不产生 MIDI Note。 |
+| Chord | PASS | 一个 ABC token 稳定产生多个同起点、同时值的 MIDI Note。 |
+| Tie | PASS | 同小节和跨小节 Tie 可合并为一个持续发声事件；Scope Mapping 必须为一个领域事件保留多个 ABC span。 |
+| Tied Chord | PASS | 三个 chord pitch 分别形成延长后的发声事件。 |
+| Accidental | PASS | 升降号在同小节延续，并在下一小节按 ABC 规则重置。 |
+| Octave | PASS | `,`、大写、小写和 `'` 稳定映射为 MIDI octave。 |
+| Duration | PASS，需双重校验 | abcjs 无 warning 且可精确映射到整数 PPQ Tick 时可接受；任一条件失败即拒绝。 |
+
+### 3. Velocity 结果
+
+`abcjs` 支持以下内联指令：
+
+```abc
+[I:MIDI vol 0]C [I:MIDI vol 64]D [I:MIDI vol 127][CEG]
+```
+
+验证结果：
+
+- `0`、`1`、`64`、`127` 均逐值进入音频事件，不发生档位化；
+- 指令只作用于后续一个发声事件；
+- 作用于 Chord 时，同一 Velocity 应用于 Chord 内全部 pitch；
+- `-1` 和 `128` 会被 abcjs 静默截断为 `0` 和 `127`，因此 Music Core 必须在交给 abcjs 前拒绝越界值；
+- `pp/mf/ff` 等动态记号会根据拍位产生不同数值，只适合作为有限音乐动态语义，不适合作为任意 `0–127` Canonical Velocity；
+- abcjs 为内联 MIDI 指令返回的 `startChar/endChar` 是 `-1/-1`，无法仅依赖 Tune Object 构建安全 Scope span。
+
+因此，`[I:MIDI vol N]` 是“可实现任意 Velocity”的候选表示，但尚未冻结。若采用，A2 必须有受控 tokenizer/serializer：
+
+1. 将每条 Velocity 指令绑定到恰好一个后续 Note 或 Chord；
+2. 把指令文本与 Note/Chord token 一并纳入该领域事件的 ABC span；
+3. 在 abcjs 解析前验证 `N` 是 `0..127` 的整数；
+4. 禁止指令悬空、连续覆盖或跨 Rest 隐式作用；
+5. 明确 P0 Chord 只支持共享 Velocity，除非后续 Spike 证明可稳定表达 chord 内独立 pitch velocity。
+
+### 4. 当前未证明的边界
+
+以下能力不进入已稳定候选集合，后续若要纳入 P0 白名单必须追加验证：
+
+- Chord 内每个 pitch 的独立 Velocity；
+- Tuplet；
+- Broken Rhythm；
+- Grace Note；
+- Tie 以外的 Ornament 和 Articulation；
+- 一条产品轨道内的多个同时 ABC Voice。
+
+### 5. 对 A2 的当前约束
+
+- 所有 abcjs parser warning 均 fail-closed，包括 `Duration not representable`；
+- 除检查 abcjs warning 外，仍需独立检查 `duration × 4 × 960` 是整数；
+- Tie chain 是一个领域持续事件，Mapping 允许 `abcSpans[]` 包含多个 token；
+- Rest 参与轨道长度和 Scope Mapping，但不产生 MIDI Note；
+- Spike 只给出稳定候选与拒绝边界，最终白名单和 Velocity Canonical 语法仍需单独决策。
+
+### 6. 证据索引
+
+```text
+/tmp/amw-a2-spike/abc-boundary-results.json
+/workspace/scratch/382953ca49ba/a2-spike/abc-boundary-spike.mjs
+```

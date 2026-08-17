@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.4 |
-| 需求基线 | Agent Music Workstation PRD V1.6 Consolidated Decisions |
+| 架构版本 | V1.5 |
+| 需求基线 | Agent Music Workstation PRD V1.7 Consolidated Decisions |
 | 状态 | P0 架构基线；技术 Gate 通过后冻结实现 |
-| 日期 | 2026-07-31 |
+| 日期 | 2026-08-02 |
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Mastra、MCP、Git/worktree、SQLite |
 
-> 本版在已通过技术 Gate 的基础上，将 P0 工作区固化为自研 React UI + openDAW SDK/Core Runtime：不 fork 或内嵌 openDAW Studio UI；P2 手动编辑也默认通过自研编辑器和 Music Core 领域命令更新 Canonical ABC。MCP Endpoint、Instance Token 与 Runtime Descriptor 的生命周期统一归 Music Core 管理，Electron Main 仅负责桌面壳和进程监督。
+> 本版明确 A2 Composition Pipeline 不包含 `RuntimeSnapshot`：A2 只产生 openDAW 无关的编译结果，B3 `OpenDawRuntimeAdapter` 消费这些结果并构建、缓存 RuntimeSnapshot。同时明确全局音乐属性的 Scope 权限；Canonical ABC 的 P0 语法白名单与 Velocity 持久化表示先由 Spike-010 划定稳定候选和拒绝边界，不提前冻结。
 
 ---
 
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.6 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.7 冲突时，以 PRD 为准。
 
 ---
 
@@ -65,6 +65,7 @@
 | ADR-030 | 另存为 | 复制 Current 权威文件，生成新项目和新 Git 历史，不保留旧历史。 |
 | ADR-031 | UI 写入边界 | React UI 只能产生 Product Scope、Transport 命令和领域编辑命令；不得直接修改 openDAW BoxGraph。 |
 | ADR-032 | openDAW UI 策略 | openDAW Studio UI 不进入 P0/P2 默认架构；只有产品范围转为完整 DAW 时才单独评估 fork 或局部移植。 |
+| ADR-033 | RuntimeSnapshot 归属 | A2 不生成、不持有 RuntimeSnapshot；B3 在 Renderer 内根据 A2 的 openDAW 无关 `PlaybackCompilation` 构建并缓存 Snapshot。`ScopeMappingCache` 始终留在 Core，是 A2 的独立输出，不进入 RuntimeSnapshot 或 Renderer IPC。 |
 
 ---
 
@@ -137,7 +138,7 @@ flowchart LR
     MAIN --> RENDERER
     MAIN --> CORE
     MAIN --> AGENT
-    RENDERER <-->|typed IPC / RuntimeSnapshot| CORE
+    RENDERER <-->|typed IPC / PlaybackCompilation + TimelineViewModel| CORE
     AGENT <-->|MCP Streamable HTTP\n127.0.0.1 ephemeral| CORE
     AGENT <--> DB
     CORE <--> FS
@@ -158,7 +159,7 @@ flowchart LR
 - 自研 React 六轨时间轴、Clip 展示、Transport、Playhead、Loop 和连续 Scope 选区；
 - Agent 对话、确认、Current/Candidate 状态；
 - 通过 `OpenDawRuntimeAdapter` 管理一个活动 openDAW Runtime；
-- 从 Music Core 接收 `TimelineViewModel` 和 `RuntimeSnapshot`，不依赖 openDAW Studio UI；
+- 从 Music Core 接收 `TimelineViewModel` 和 `PlaybackCompilation`，由 `OpenDawRuntimeAdapter` 构建 RuntimeSnapshot；
 - 不直接读取或修改 openDAW BoxGraph；
 - 不直接读写项目文件或 Git。
 
@@ -168,7 +169,8 @@ flowchart LR
 - 进程内项目写入串行化与不同应用实例打开同一项目的写锁；
 - Canonical ABC Parser/Normalizer/Serializer；
 - Scope Mapping；
-- MIDI、Scope Mapping 与 RuntimeSnapshot 编译；
+- 领域事件、MIDI、Scope Mapping 与 TimelineViewModel 编译；
+- 不依赖 openDAW SDK，不生成或持有 RuntimeSnapshot；
 - MCP Tool Host；
 - MCP Endpoint、Instance Token 和运行时描述文件生命周期；
 - TaskContext、Candidate 和 Git/worktree；
@@ -280,9 +282,9 @@ interface ProjectManifest {
 
 1. `main` HEAD 对应的 Current 权威文件；
 2. Candidate worktree 内的当前 Task 状态；
-3. Canonical ABC 解析出的 AST、事件、MIDI、Scope Mapping 和 RuntimeSnapshot；
+3. Canonical ABC 解析出的 AST、事件、MIDI、Scope Mapping 和 TimelineViewModel；
 4. SQLite 中的对话和执行记录；
-5. Renderer UI 和播放临时状态。
+5. Renderer 内由 B3 构建的 RuntimeSnapshot、UI 和播放临时状态。
 
 派生状态不能单独成为工程事实来源。
 
@@ -336,9 +338,11 @@ const PROJECT_PPQ = 960;
 
 | 对象 | P0 模型 | 规则 |
 |---|---|---|
-| Meter | 单个 GlobalMeter | 可在 `wholeProject` 修改；不支持局部变拍。 |
-| Tempo | TempoMap | 支持局部 Tempo Event。 |
-| Key | KeyMap | 支持局部 Key Event 和已验证调式。 |
+| Meter | 单个 GlobalMeter | 仅可在覆盖全部六轨的 `wholeProject` 修改；不支持局部变拍。 |
+| Tempo | TempoMap | 支持局部 Tempo Event；任何修改都要求 Scope 覆盖全部六轨。 |
+| Key | KeyMap | 支持局部 Key Event 和已验证调式；任何修改都要求 Scope 覆盖全部六轨。 |
+
+Meter、Tempo 与 Key 都是项目全局时间线语义，不因事件在某条 Voice 中编码而成为单轨属性。当前 TaskScope 未覆盖全部六轨时，相关写工具必须要求用户确认 Scope 扩展；不得忽略 `trackIds` 直接修改全局事件。
 
 ### 7.4 跨 Scope 事件
 
@@ -454,6 +458,7 @@ type TaskScope =
 - 多轨选择共享同一个连续时间区间；
 - 不支持多个离散时间区间；
 - Agent 不接触 ABC 字符位置。
+- Tempo Map 或 Key Map 修改要求 `trackIds` 恰好覆盖全部六条固定轨道；Global Meter 还要求 `type === "wholeProject"`；
 
 ### 9.2 Scope Mapping Cache
 
@@ -665,7 +670,7 @@ validate MCP session and TaskContext
 → validate fragment duration and protected boundaries
 → apply to temporary copy
 → normalize and compile
-→ rebuild Mapping and Candidate RuntimeSnapshot
+→ rebuild Mapping, MIDI and TimelineViewModel
 → atomic replace Candidate files
 ```
 
@@ -682,7 +687,7 @@ validate MCP session and TaskContext
 - 时间值可精确映射到 PPQ；
 - Scope Mapping 可重建；
 - MIDI 可生成；
-- RuntimeSnapshot 可构建；
+- TimelineViewModel 可生成；
 - Current 未被修改；
 - Candidate 文件状态完整。
 
@@ -752,7 +757,7 @@ Task start
 3. 检查 Current 工作区 Git clean；
 4. 重新解析、编译和验证 Candidate 最终树；
 5. 以一个正式 commit 写入 `main`；
-6. Current RuntimeSnapshot 替换为 Candidate Snapshot；
+6. 通知 Renderer 将已预览的 Candidate RuntimeSnapshot 标记为 Current Snapshot；若缓存不存在则由 B3 从最新 Current `PlaybackCompilation` 重建；
 7. 删除 Candidate worktree 和 branch；
 8. 保留旧 Current Revision。
 
@@ -775,21 +780,35 @@ Accept 失败时 Current 不改变，Candidate 保留。
 composition.abc
 → parse + normalize
 → domain events on PPQ timeline
-→ Standard MIDI Document
-→ RuntimeSnapshot
+→ A2 CompositionCompilation
+→ PlaybackCompilation / TimelineViewModel
+→ B3 RuntimeSnapshot
 → active openDAW Runtime
 ```
 
 ```ts
-compile(source: CanonicalAbc): {
+interface PlaybackCompilation {
+  midiDocument: StandardMidiDocument;
+  totalTicks: Tick;
+  trackIds: readonly TrackId[];
+  meterMap: readonly MeterEvent[];
+  tempoMap: readonly TempoEvent[];
+  keyMap: readonly KeyEvent[];
+}
+
+interface CompositionCompilation {
   normalizedAbc: string;
   domainEvents: DomainEvent[];
-  midiDocument: StandardMidiDocument;
   scopeMapping: ScopeMappingCache;
-  runtimeSnapshot: RuntimeSnapshot;
+  playback: PlaybackCompilation;
+  timelineViewModel: TimelineViewModel;
   validationReport: ValidationReport;
 }
+
+function compile(source: CanonicalAbc): CompositionCompilation;
 ```
+
+两个结构都不含 openDAW 类型。`ScopeMappingCache` 只服务 Core 内 Tick 与 Canonical ABC span 的转换，不进入 `PlaybackCompilation`、Renderer IPC 或 RuntimeSnapshot。A2 不导入 openDAW 类型，也不序列化 openDAW Project。
 
 ### 14.2 Mapping 与运行时 ID
 
@@ -805,7 +824,7 @@ ABC parse event
 
 ### 14.3 Current / Candidate 试听
 
-内存中缓存：
+Renderer/B3 内存中缓存：
 
 - Current RuntimeSnapshot；
 - Candidate RuntimeSnapshot。
@@ -847,6 +866,7 @@ Renderer 自行完成 Tick 与屏幕坐标转换、小节线、Clip 绘制、Pla
 
 ```ts
 interface OpenDawRuntimeAdapter {
+  buildSnapshot(compilation: PlaybackCompilation): Promise<RuntimeSnapshot>;
   loadSnapshot(snapshot: RuntimeSnapshot): Promise<void>;
   play(): Promise<void>;
   pause(): void;
@@ -871,8 +891,8 @@ React Editor
 → Domain Edit Command
 → Music Core 范围与不变量校验
 → 更新 Canonical ABC
-→ 重新编译 MIDI、Scope Mapping 与 RuntimeSnapshot
-→ OpenDawRuntimeAdapter 加载新 Snapshot
+→ A2 重新编译 MIDI、Scope Mapping 与 TimelineViewModel
+→ B3 构建并加载新 RuntimeSnapshot
 ```
 
 用户编辑和 Agent 编辑必须共享 Music Core 的写入、验证、Candidate 和 Git 状态机。不得采用“openDAW Studio UI 先修改 BoxGraph，再反向同步 ABC”的双向事实来源。
@@ -954,7 +974,7 @@ interface Settings {
 - 跨进程消息使用共享 TypeScript Schema 和运行时验证；
 - Command 包含 `requestId` 和幂等键；
 - Event 包含 `projectId`、`taskId`、`candidateId` 和序列号；
-- 大 MIDI 和 RuntimeSnapshot 使用 transferable buffer 或内部临时文件；
+- 跨进程只传输 A2 的 `PlaybackCompilation`、`TimelineViewModel` 及业务 Command/Event；其中大 MIDI 使用 transferable buffer 或内部临时文件，ScopeMapping 和 RuntimeSnapshot 都不跨 Core/Renderer 边界；
 - Renderer 不获得任意文件路径访问。
 
 ### 16.2 主要方向
@@ -992,7 +1012,7 @@ planning
 3. 读取 `main` HEAD；
 4. 校验 `project.json` 与 `formatVersion`；
 5. 读取 Canonical ABC；
-6. 重建 Mapping、MIDI 和 RuntimeSnapshot；
+6. Core 重建 Mapping、MIDI 和 TimelineViewModel，并由 Renderer/B3 构建 RuntimeSnapshot；
 7. 清理不保证恢复的旧 Task 锁和 Candidate 残留。
 
 ### 17.2 另存为
@@ -1126,7 +1146,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 - MCP Tool Schema 和错误码；
 - HTTP Endpoint、Token 和运行时描述文件；
 - IPC Command/Event；
-- `TimelineViewModel`、RuntimeSnapshot compiler 与 `OpenDawRuntimeAdapter` 输入输出；
+- `PlaybackCompilation`、`TimelineViewModel` 与 `OpenDawRuntimeAdapter.buildSnapshot/loadSnapshot` 输入输出；
 - Chat Completions 的流式、Tool Call、取消和超时；
 - React 组件只能接收 `TimelineViewModel` 和 Runtime Adapter 接口，不能导入 BoxGraph/Box 类型。
 

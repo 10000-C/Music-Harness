@@ -1,8 +1,8 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.6 Consolidated Decisions\
+**版本：** V1.7 Consolidated Decisions\
 **状态：** P0 产品范围已确认；技术 Gate 通过后冻结实现\
-**日期：** 2026-07-31\
+**日期：** 2026-08-02\
 **开发周期：** 10–15 天\
 **团队规模：** 2 人\
 **首发平台：** Windows 10/11\
@@ -20,7 +20,13 @@
 - **P1：** P0 稳定后实现，不阻塞首发。
 - **P2：** 后续能力，不为其提前引入 P0 状态复杂度。
 
-### 1.2 本版相对 V1.5 的主要调整
+### 1.2 本版相对 V1.6 的主要调整
+
+- 明确 Tempo Map、Key Map 和 Global Meter 都是项目全局语义：Tempo/Key 修改的 Scope 必须覆盖全部六轨；Meter 修改还必须使用 `wholeProject`。
+- Canonical ABC 的具体 P0 语法白名单和 Velocity 持久化表示暂不冻结，先以 Spike 验证稳定运行边界。
+- 明确 RuntimeSnapshot 属于 openDAW Runtime/Adapter 的播放派生状态，不属于 Composition Pipeline；Scope Mapping 与 RuntimeSnapshot 相互独立。
+
+### 1.3 V1.6 的工作区调整
 
 - P0 产品工作区改为自研 React UI，不 fork、内嵌或直接复用 openDAW Studio UI。
 - openDAW 仅作为 SDK/Core Runtime，负责播放、音频图、运行时工程对象、Solo/Mute 和离线渲染。
@@ -231,6 +237,8 @@ P0 通过 Adapter 使用 openDAW SDK/Core Runtime，包括：
 - Current / Candidate RuntimeSnapshot 加载；
 - 必要的音源和整曲离线渲染。
 
+RuntimeSnapshot 由 openDAW Runtime/Adapter 根据 Music Core 输出的 `PlaybackCompilation`（Standard MIDI Document、总 Tick、固定轨道映射及 Tempo/Meter/Key 元数据）构建、加载与缓存；Music Core 的 Composition Pipeline 不生成 RuntimeSnapshot。Scope Mapping 只负责 Tick 与 Canonical ABC 范围映射，留在 Core，不进入 Snapshot 或 Renderer IPC。
+
 P0 不 fork、内嵌或直接复用 openDAW Studio UI，也不抽取其 Timeline、Piano Roll 或 Mixer UI。产品 UI 不读取或直接修改 openDAW BoxGraph；所有编曲事实和正式编辑仍由 Music Core 基于 Canonical ABC 处理。
 
 P0：
@@ -282,6 +290,8 @@ type TaskScope =
 - 可同时覆盖一个或多个固定轨道，但所有轨道共享同一时间区间；
 - 不支持多个不连续时间区间；
 - Agent 不接触 ABC 字符位置。
+- Tempo Map 或 Key Map 修改必须覆盖全部六条固定轨道；若当前 Scope 未覆盖全部六轨，必须先走 Scope 扩展确认。
+- Global Meter 修改必须同时满足 `wholeProject` 和覆盖全部六条固定轨道。
 
 ### 5.2 无选区任务
 
@@ -534,7 +544,7 @@ P0 不显示：
 - 同时只运行一个 openDAW 播放 Runtime；
 - 切换试听目标时先停止 Transport，再加载目标 Snapshot；
 - 播放位置按 Tick 尽量保持；
-- Candidate 更新时只重建 Candidate Snapshot。
+- Candidate 更新时，Music Core 先重建 openDAW 无关的编译结果，再由 openDAW Runtime/Adapter 只重建 Candidate Snapshot。
 
 ---
 
