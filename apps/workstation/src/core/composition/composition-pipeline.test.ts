@@ -68,4 +68,15 @@ describe('Composition Pipeline derived outputs', () => {
       durationTick: 960,
     });
   });
+
+  it('writes canonical event velocity into semantic and binary MIDI', () => {
+    const source = canonicalizeExternalAbc(composition('[I:MIDI vol 41]C4 |'));
+    const result = compileComposition(source);
+    const midi = parseMidi(result.playback.midiDocument.fileBytes);
+
+    expect(result.playback.midiDocument.tracks[0]?.notes[0]?.velocity).toBe(41);
+    expect(
+      midi.tracks[1]?.find((event) => event.type === 'noteOn'),
+    ).toMatchObject({ type: 'noteOn', velocity: 41 });
+  });
 });

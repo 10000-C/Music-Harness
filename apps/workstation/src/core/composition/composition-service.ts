@@ -11,6 +11,11 @@ import {
 import type { ValidationReport } from './composition-types.js';
 import { CompositionValidationError } from './composition-validation-error.js';
 import {
+  updateGlobalMeter,
+  type GlobalMeterUpdateResult,
+} from './global-meter.js';
+import type { GlobalMeterValue } from './meter-policy.js';
+import {
   getScopedComposition,
   type ScopedComposition,
 } from './scope-mapping.js';
@@ -63,5 +68,13 @@ export class CompositionPipeline {
     replacements: readonly TrackReplacement[],
   ): ScopedReplacementResult {
     return replaceScopedMusic(compilation, scope, replacements);
+  }
+
+  public updateGlobalMeter(
+    compilation: CompositionCompilation,
+    scope: TaskScope,
+    meter: GlobalMeterValue,
+  ): GlobalMeterUpdateResult {
+    return updateGlobalMeter(compilation, scope, meter);
   }
 }

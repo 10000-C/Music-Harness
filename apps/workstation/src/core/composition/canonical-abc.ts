@@ -19,6 +19,7 @@ import type {
   DomainTrack,
 } from './composition-types.js';
 import { failCompositionValidation } from './composition-validation-error.js';
+import { isSupportedGlobalMeter } from './meter-policy.js';
 
 const TICKS_PER_WHOLE_NOTE = PROJECT_PPQ * 4;
 const DEFAULT_VELOCITY = 100;
@@ -33,6 +34,8 @@ const CHORD_TOKEN = new RegExp(
 );
 const REST_TOKEN = new RegExp(`^z(?:${NOTE_DURATION})?$`);
 const REPEAT_MARKER = /\|:|:\||\|[1-9]|\[[1-9]/;
+const INLINE_INSTRUCTION = /\[I:[^\]\n]*\]/g;
+const VELOCITY_INSTRUCTION = /^\[I:MIDI vol (0|[1-9]\d?|1[01]\d|12[0-7])\]$/;
 
 interface ParsedPitch {
   readonly endTie?: boolean;
@@ -41,6 +44,8 @@ interface ParsedPitch {
 
 interface ParsedVoiceItem {
   readonly el_type: string;
+  readonly cmd?: string;
+  readonly params?: readonly unknown[];
   readonly startChar?: number;
   readonly endChar?: number;
   readonly duration?: number | readonly number[];
@@ -61,6 +66,7 @@ interface ParsedVoiceItem {
 
 interface SequenceItem {
   readonly el_type: string;
+  readonly volume?: number;
   readonly elem?: {
     readonly startChar?: number;
     readonly endChar?: number;
@@ -76,7 +82,13 @@ interface ParsedContainer {
   readonly initialKey: string;
   readonly tune: TuneObject;
   readonly voices: readonly (readonly ParsedVoiceItem[])[];
+  readonly velocityDirectives: ReadonlyMap<number, VelocityDirective>;
   readonly hasRepeat: boolean;
+}
+
+interface VelocityDirective {
+  readonly velocity: number;
+  readonly span: AbcSpan;
 }
 
 interface TrackBuildResult {
@@ -164,8 +176,10 @@ const validateHeaders = (
     meterMatch === null ||
     lengthMatch === null ||
     tempoMatch === null ||
-    Number(meterMatch[1]) <= 0 ||
-    Number(meterMatch[2]) <= 0 ||
+    !isSupportedGlobalMeter({
+      numerator: Number(meterMatch[1]),
+      denominator: Number(meterMatch[2]),
+    }) ||
     Number(lengthMatch[1]) <= 0 ||
     Number(lengthMatch[2]) <= 0 ||
     initialTempo <= 0 ||
@@ -214,6 +228,79 @@ const collectVoices = (tune: TuneObject): readonly ParsedVoiceItem[][] => {
   return voices;
 };
 
+const isTieContinuation = (item: ParsedVoiceItem): boolean =>
+  item.pitches !== undefined &&
+  item.pitches.length > 0 &&
+  item.pitches.every((pitch) => pitch.endTie === true);
+
+const collectVelocityDirectives = (
+  source: string,
+  voices: readonly (readonly ParsedVoiceItem[])[],
+): ReadonlyMap<number, VelocityDirective> => {
+  if (/%%MIDI\b/.test(source)) {
+    return failCompositionValidation(
+      'ABC_UNSUPPORTED_SYNTAX',
+      'Velocity must use the canonical inline [I:MIDI vol N] form',
+    );
+  }
+
+  const notesByStartChar = new Map<number, ParsedVoiceItem>();
+  for (const item of voices.flat()) {
+    if (item.el_type === 'note' && item.startChar !== undefined) {
+      notesByStartChar.set(item.startChar, item);
+    }
+  }
+
+  const directives = new Map<number, VelocityDirective>();
+  for (const match of source.matchAll(INLINE_INSTRUCTION)) {
+    const token = match[0];
+    const startChar = match.index;
+    const velocityMatch = VELOCITY_INSTRUCTION.exec(token);
+    if (velocityMatch?.[1] === undefined) {
+      return failCompositionValidation(
+        'ABC_UNSUPPORTED_SYNTAX',
+        `Unsupported or invalid P0 ABC instruction: ${token}`,
+      );
+    }
+
+    const endChar = startChar + token.length;
+    let tokenStartChar = endChar;
+    while (/\s/.test(source[tokenStartChar] ?? '')) {
+      tokenStartChar += 1;
+    }
+    const note =
+      notesByStartChar.get(endChar) ?? notesByStartChar.get(tokenStartChar);
+    const noteStartChar = note?.startChar;
+    if (
+      note === undefined ||
+      noteStartChar === undefined ||
+      note.rest !== undefined ||
+      isTieContinuation(note) ||
+      directives.has(noteStartChar)
+    ) {
+      return failCompositionValidation(
+        'ABC_UNSUPPORTED_SYNTAX',
+        'Velocity must bind to exactly one following Note or Chord onset',
+      );
+    }
+
+    directives.set(noteStartChar, {
+      velocity: Number(velocityMatch[1]),
+      span: { startChar, endChar },
+    });
+  }
+  const parsedVelocityCount = voices
+    .flat()
+    .filter((item) => item.el_type === 'midi').length;
+  if (parsedVelocityCount !== directives.size) {
+    return failCompositionValidation(
+      'ABC_UNSUPPORTED_SYNTAX',
+      'Velocity must use the canonical inline [I:MIDI vol N] form',
+    );
+  }
+  return directives;
+};
+
 const parseContainer = (rawSource: string): ParsedContainer => {
   const source = normalizeLineEndings(rawSource).trimEnd() + '\n';
   validateContainerShape(source);
@@ -244,11 +331,13 @@ const parseContainer = (rawSource: string): ParsedContainer => {
     );
   }
 
+  const voices = collectVoices(tune);
   return {
     source,
     ...headers,
     tune,
-    voices: collectVoices(tune),
+    voices,
+    velocityDirectives: collectVelocityDirectives(source, voices),
     hasRepeat: REPEAT_MARKER.test(source),
   };
 };
@@ -344,28 +433,91 @@ const localDirectiveToken = (source: string, item: ParsedVoiceItem): string => {
   );
 };
 
+const velocityDirectiveToken = (item: ParsedVoiceItem): string => {
+  const velocity = item.params?.[0];
+  if (
+    item.el_type !== 'midi' ||
+    item.cmd !== 'vol' ||
+    typeof velocity !== 'number' ||
+    !Number.isInteger(velocity) ||
+    velocity < 0 ||
+    velocity > 127
+  ) {
+    return failCompositionValidation(
+      'ABC_UNSUPPORTED_SYNTAX',
+      'Only integer [I:MIDI vol N] instructions from 0 through 127 are supported',
+    );
+  }
+  return `[I:MIDI vol ${String(velocity)}]`;
+};
+
 const serializeParsedVoice = (
   source: string,
   voice: readonly ParsedVoiceItem[],
-): string =>
-  voice
-    .map((item) => {
-      switch (item.el_type) {
-        case 'note':
-          return validateNoteItem(source, item);
-        case 'bar':
-          return '|';
-        case 'tempo':
-        case 'key':
-          return localDirectiveToken(source, item);
-        default:
+): string => {
+  const tokens: string[] = [];
+  let velocityPending = false;
+
+  for (const item of voice) {
+    switch (item.el_type) {
+      case 'midi':
+        if (velocityPending) {
           return failCompositionValidation(
             'ABC_UNSUPPORTED_SYNTAX',
-            `Unsupported P0 ABC element: ${item.el_type}`,
+            'A Velocity instruction cannot overwrite another instruction',
           );
-      }
-    })
-    .join(' ');
+        }
+        tokens.push(velocityDirectiveToken(item));
+        velocityPending = true;
+        break;
+      case 'note':
+        if (
+          velocityPending &&
+          (item.rest !== undefined || isTieContinuation(item))
+        ) {
+          return failCompositionValidation(
+            'ABC_UNSUPPORTED_SYNTAX',
+            'Velocity must bind to a Note or Chord onset',
+          );
+        }
+        tokens.push(validateNoteItem(source, item));
+        velocityPending = false;
+        break;
+      case 'bar':
+        if (velocityPending) {
+          return failCompositionValidation(
+            'ABC_UNSUPPORTED_SYNTAX',
+            'A Velocity instruction cannot cross a bar',
+          );
+        }
+        tokens.push('|');
+        break;
+      case 'tempo':
+      case 'key':
+        if (velocityPending) {
+          return failCompositionValidation(
+            'ABC_UNSUPPORTED_SYNTAX',
+            'A Velocity instruction cannot cross a global directive',
+          );
+        }
+        tokens.push(localDirectiveToken(source, item));
+        break;
+      default:
+        return failCompositionValidation(
+          'ABC_UNSUPPORTED_SYNTAX',
+          `Unsupported P0 ABC element: ${item.el_type}`,
+        );
+    }
+  }
+
+  if (velocityPending) {
+    return failCompositionValidation(
+      'ABC_UNSUPPORTED_SYNTAX',
+      'A Velocity instruction cannot be left dangling',
+    );
+  }
+  return tokens.join(' ');
+};
 
 const serializeRepeatedVoices = (
   parsed: ParsedContainer,
@@ -394,12 +546,40 @@ const serializeRepeatedVoices = (
 
   return sequence.map((voice) => {
     const tokens: string[] = [];
+    let pendingVelocity: number | undefined;
     for (const item of voice) {
-      if (item.el_type === 'note' && item.elem !== undefined) {
-        tokens.push(
-          validateNoteItem(parsed.source, item.elem as ParsedVoiceItem),
-        );
+      if (
+        item.el_type === 'vol' &&
+        item.volume !== undefined &&
+        Number.isInteger(item.volume) &&
+        item.volume >= 0 &&
+        item.volume <= 127 &&
+        pendingVelocity === undefined
+      ) {
+        pendingVelocity = item.volume;
+      } else if (item.el_type === 'note' && item.elem !== undefined) {
+        const note = item.elem as ParsedVoiceItem;
+        if (
+          pendingVelocity !== undefined &&
+          (note.rest !== undefined || isTieContinuation(note))
+        ) {
+          return failCompositionValidation(
+            'ABC_REPEAT_EXPANSION_FAILED',
+            'Repeat expansion produced an invalid Velocity target',
+          );
+        }
+        if (pendingVelocity !== undefined) {
+          tokens.push(`[I:MIDI vol ${String(pendingVelocity)}]`);
+        }
+        tokens.push(validateNoteItem(parsed.source, note));
+        pendingVelocity = undefined;
       } else if (item.el_type === 'bar') {
+        if (pendingVelocity !== undefined) {
+          return failCompositionValidation(
+            'ABC_REPEAT_EXPANSION_FAILED',
+            'Repeat expansion left a dangling Velocity instruction',
+          );
+        }
         tokens.push('|');
       } else if (
         !['instrument', 'channel', 'name', 'tempo', 'key', 'meter'].includes(
@@ -411,6 +591,12 @@ const serializeRepeatedVoices = (
           `Repeat expansion produced unsupported element: ${item.el_type}`,
         );
       }
+    }
+    if (pendingVelocity !== undefined) {
+      return failCompositionValidation(
+        'ABC_REPEAT_EXPANSION_FAILED',
+        'Repeat expansion left a dangling Velocity instruction',
+      );
     }
     return tokens.join(' ');
   });
@@ -457,6 +643,56 @@ const exactDurationTick = (duration: number): Tick => {
     );
   }
   return tick(value);
+};
+
+const durationFactor = (suffix: string): number => {
+  if (suffix === '') {
+    return 1;
+  }
+  if (/^\d+$/.test(suffix)) {
+    return Number(suffix);
+  }
+  const fraction = /^(\d*)\/(\d+)$/.exec(suffix);
+  if (fraction !== null) {
+    return Number(fraction[1] === '' ? '1' : fraction[1]) / Number(fraction[2]);
+  }
+  if (/^\/+$/u.test(suffix)) {
+    return 1 / 2 ** suffix.length;
+  }
+  return failCompositionValidation(
+    'ABC_UNSUPPORTED_SYNTAX',
+    `Unsupported P0 ABC duration suffix: ${suffix}`,
+  );
+};
+
+const eventDurationTick = (token: string, defaultLength: string): Tick => {
+  const untied = token.endsWith('-') ? token.slice(0, -1) : token;
+  let suffix: string;
+  if (untied.startsWith('[')) {
+    suffix = untied.slice(untied.lastIndexOf(']') + 1);
+  } else if (untied.startsWith('z')) {
+    suffix = untied.slice(1);
+  } else {
+    const pitch = new RegExp(`^${PITCH}`).exec(untied)?.[0];
+    if (pitch === undefined) {
+      return failCompositionValidation(
+        'ABC_UNSUPPORTED_SYNTAX',
+        `Cannot read P0 ABC event duration: ${token}`,
+      );
+    }
+    suffix = untied.slice(pitch.length);
+  }
+
+  const length = /^(\d+)\/(\d+)$/.exec(defaultLength);
+  if (length?.[1] === undefined || length[2] === undefined) {
+    return failCompositionValidation(
+      'ABC_STRUCTURE_INVALID',
+      'Canonical ABC has an invalid default note length',
+    );
+  }
+  return exactDurationTick(
+    (Number(length[1]) / Number(length[2])) * durationFactor(suffix),
+  );
 };
 
 const sameMap = (
@@ -528,14 +764,14 @@ const buildTrack = (
       continue;
     }
 
-    validateNoteItem(parsed.source, item);
     if (typeof item.duration !== 'number') {
       return failCompositionValidation(
         'ABC_STRUCTURE_INVALID',
         `Missing duration in ${trackId}`,
       );
     }
-    const tokenDuration = exactDurationTick(item.duration);
+    const token = validateNoteItem(parsed.source, item);
+    const tokenDuration = eventDurationTick(token, parsed.defaultLength);
     const itemSpan = spanFor(parsed.source, item);
     const spans = [...pendingDirectiveSpans, itemSpan];
     pendingDirectiveSpans = [];
@@ -552,11 +788,7 @@ const buildTrack = (
       continue;
     }
 
-    const isTieContinuation =
-      item.pitches !== undefined &&
-      item.pitches.length > 0 &&
-      item.pitches.every((pitch) => pitch.endTie === true);
-    if (isTieContinuation) {
+    if (isTieContinuation(item)) {
       const previous = events.at(-1);
       if (previous?.type !== 'note') {
         return failCompositionValidation(
@@ -581,14 +813,19 @@ const buildTrack = (
         `ABC audio setup did not produce pitches for ${trackId}`,
       );
     }
+    const velocityDirective = parsed.velocityDirectives.get(itemSpan.startChar);
     events.push({
       type: 'note',
       trackId,
       startTick: cursor,
       durationTick: tokenDuration,
       pitches: audioNotes.map((audioNote) => audioNote.pitch),
-      velocity: DEFAULT_VELOCITY,
-      abcSpans: spans,
+      velocity: velocityDirective?.velocity ?? DEFAULT_VELOCITY,
+      abcSpans: [
+        ...spans.slice(0, -1),
+        ...(velocityDirective === undefined ? [] : [velocityDirective.span]),
+        itemSpan,
+      ],
     });
     cursor = tick(cursor + tokenDuration);
   }
@@ -632,7 +869,7 @@ export const compileCanonicalAbc = (
   const meter = parsed.tune.getMeterFraction();
   const initialTempo: TempoEvent = {
     tick: tick(0),
-    bpm: parsed.tune.getBpm(),
+    bpm: parsed.initialTempo,
   };
   const initialKey = initialKeyEvent(parsed.tune);
   const meterMap: readonly MeterEvent[] = [

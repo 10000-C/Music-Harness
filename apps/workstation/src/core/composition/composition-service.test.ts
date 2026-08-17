@@ -49,4 +49,21 @@ describe('CompositionPipeline facade', () => {
       ),
     ).toBe(true);
   });
+
+  it('exposes global Meter changes through the A2 facade', () => {
+    const pipeline = new CompositionPipeline();
+    const compilation = pipeline.compileCanonical(
+      pipeline.createInitialComposition(),
+    );
+
+    const result = pipeline.updateGlobalMeter(
+      compilation,
+      { type: 'wholeProject', trackIds: TRACK_IDS },
+      { numerator: 7, denominator: 8 },
+    );
+
+    expect(result.compilation.meterMap).toEqual([
+      { tick: 0, numerator: 7, denominator: 8 },
+    ]);
+  });
 });

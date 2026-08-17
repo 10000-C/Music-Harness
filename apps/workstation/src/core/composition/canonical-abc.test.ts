@@ -104,6 +104,61 @@ describe('Canonical ABC', () => {
     ).toEqual([48, 60, 72, 84]);
   });
 
+  it('preserves event velocity from 0 through 127 for notes and chords', () => {
+    const body = '[I:MIDI vol 0]C [I:MIDI vol 64]D [I:MIDI vol 127][CEG] z |';
+    const source = canonicalizeExternalAbc(
+      sourceWithBodies(
+        Object.fromEntries(TRACK_IDS.map((trackId) => [trackId, body])),
+      ),
+    );
+
+    expect(source).toContain(
+      '[V:track.drums] [I:MIDI vol 0] C [I:MIDI vol 64] D [I:MIDI vol 127] [CEG] z |',
+    );
+    expect(
+      compileCanonicalAbc(source).tracks[0]?.events.map((event) =>
+        event.type === 'note' ? event.velocity : null,
+      ),
+    ).toEqual([0, 64, 127, null]);
+  });
+
+  it('expands repeats without losing event velocity', () => {
+    const repeated = sourceWithBodies(
+      Object.fromEntries(
+        TRACK_IDS.map((trackId) => [trackId, '|: [I:MIDI vol 37]C D :|']),
+      ),
+    );
+
+    const canonical = canonicalizeExternalAbc(repeated);
+
+    expect(canonical).toContain(
+      '[V:track.drums] [I:MIDI vol 37] C D | [I:MIDI vol 37] C D |',
+    );
+    expect(
+      compileCanonicalAbc(canonical).tracks[0]?.events.map((event) =>
+        event.type === 'note' ? event.velocity : null,
+      ),
+    ).toEqual([37, 100, 37, 100]);
+  });
+
+  it('keeps onset velocity across a tied event', () => {
+    const source = canonicalizeExternalAbc(
+      sourceWithBodies(
+        Object.fromEntries(
+          TRACK_IDS.map((trackId) => [trackId, '[I:MIDI vol 42]C2-C2 |']),
+        ),
+      ),
+    );
+    const event = compileCanonicalAbc(source).tracks[0]?.events[0];
+
+    expect(event).toMatchObject({
+      type: 'note',
+      durationTick: 3840,
+      velocity: 42,
+    });
+    expect(event?.abcSpans).toHaveLength(3);
+  });
+
   it('retains identical global tempo and key maps across all voices', () => {
     const body = 'C2 [Q:1/4=90] [K:G] D2 |';
     const source = canonicalizeExternalAbc(
@@ -129,8 +184,26 @@ describe('Canonical ABC', () => {
     ['broken rhythm', 'C>D E2 |'],
     ['grace notes', '{C}D3 |'],
     ['decorations', '!trill!C4 |'],
-    ['unfrozen velocity syntax', '[I:MIDI vol 64]C4 |'],
   ])('fails closed for unsupported %s', (_name, body) => {
+    expect(() =>
+      canonicalizeExternalAbc(
+        sourceWithBodies(
+          Object.fromEntries(TRACK_IDS.map((trackId) => [trackId, body])),
+        ),
+      ),
+    ).toThrow(CompositionValidationError);
+  });
+
+  it.each([
+    ['negative', '[I:MIDI vol -1]C4 |'],
+    ['above 127', '[I:MIDI vol 128]C4 |'],
+    ['fractional', '[I:MIDI vol 63.5]C4 |'],
+    ['crosses a rest', '[I:MIDI vol 64]z C3 |'],
+    ['is overwritten', '[I:MIDI vol 64][I:MIDI vol 32]C4 |'],
+    ['is dangling', 'C4 [I:MIDI vol 64]|'],
+    ['targets a tie continuation', 'C2-[I:MIDI vol 64]C2 |'],
+    ['uses a non-canonical directive', '%%MIDI vol 64\nC4 |'],
+  ])('rejects velocity that %s', (_name, body) => {
     expect(() =>
       canonicalizeExternalAbc(
         sourceWithBodies(

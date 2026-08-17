@@ -1,6 +1,6 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.7 Consolidated Decisions\
+**版本：** V1.8 Consolidated Decisions\
 **状态：** P0 产品范围已确认；技术 Gate 通过后冻结实现\
 **日期：** 2026-08-02\
 **开发周期：** 10–15 天\
@@ -20,11 +20,11 @@
 - **P1：** P0 稳定后实现，不阻塞首发。
 - **P2：** 后续能力，不为其提前引入 P0 状态复杂度。
 
-### 1.2 本版相对 V1.6 的主要调整
+### 1.2 本版相对 V1.7 的主要调整
 
-- 明确 Tempo Map、Key Map 和 Global Meter 都是项目全局语义：Tempo/Key 修改的 Scope 必须覆盖全部六轨；Meter 修改还必须使用 `wholeProject`。
-- Canonical ABC 的具体 P0 语法白名单和 Velocity 持久化表示暂不冻结，先以 Spike 验证稳定运行边界。
-- 明确 RuntimeSnapshot 属于 openDAW Runtime/Adapter 的播放派生状态，不属于 Composition Pipeline；Scope Mapping 与 RuntimeSnapshot 相互独立。
+- 冻结 P0 Velocity：支持每事件 `0..127`，一个 Chord 内所有 pitch 共享 Velocity，Tie chain 只在起音处设置。
+- 补齐 Agent 修改全局拍号的正式能力：仅允许覆盖全部六轨的 `wholeProject` Task，并使用专用 `updateGlobalMeter` 工具。
+- P0 MCP Tool 由 6 个增为 7 个；轨道片段替换与全局拍号修改保持不同的授权和写入接口。
 
 ### 1.3 V1.6 的工作区调整
 
@@ -216,6 +216,14 @@ P0 固定六条角色轨道：
 | 其他 MIDI CC | 尽量透明保留 | 不支持 |
 
 “不支持 Agent 修改”不等于读取、播放、保存或导出时删除这些事件。
+
+Velocity 的 P0 行为：
+
+- 支持整数 `0..127`；
+- 没有显式值时使用 Canonical 默认值 `100`；
+- 一个 Note 或 Chord 对应一个 Velocity；Chord 内所有 pitch 共享该值；
+- Tie chain 的 Velocity 属于起音，延续 token 不重新设置；
+- Velocity 与对应事件作为同一个 Scope 写入单元。
 
 ### 4.7 产品 UI 与 openDAW Runtime 边界
 
@@ -490,14 +498,15 @@ P0 不保证：
 
 ## 9. P0 MCP Tool List
 
-P0 向 Agent 暴露 6 个高层工具：
+P0 向 Agent 暴露 7 个高层工具：
 
 1. `getTaskContext`：读取当前项目、Candidate、Task Scope、能力和状态；
 2. `getScopedComposition`：读取 Scope 内 Canonical ABC 和必要的只读上下文；
 3. `submitGenerationPlan`：首次生成前提交工程计划；
 4. `requestScopeExtension`：申请扩大当前 Task Scope；
 5. `replaceScopedMusic`：提交 Scope 内 ABC 片段，由 Music Core 定位并原子替换；
-6. `finishTask`：执行完整验证，成功后创建一个 Task checkpoint。
+6. `updateGlobalMeter`：在覆盖全部六轨的 `wholeProject` Task 中修改唯一全局拍号；
+7. `finishTask`：执行完整验证，成功后创建一个 Task checkpoint。
 
 Agent 不获得以下工具：
 
@@ -812,17 +821,18 @@ P0 发布必须满足：
 22. Canonical ABC 不含 Repeat 简写；
 23. 合法跨边界持续音不会被误改；
 24. Tempo Map 可以播放和导出；
-25. 全局拍号可以修改和导出；
-26. P0 不支持局部变拍；
-27. 支持工具链验证通过的调式和局部 Key Event；
-28. P0 使用自研 React 时间轴与 Transport，不加载 openDAW Studio UI，Piano Roll 不显示；
-29. P0 Agent 不具有音色与混音写权限；
-30. 自动修复次数可配置且必须有限；
-31. API Key 不进入项目、Git、SQLite 或日志；
-32. MIDI 和 ABC 只能从 Current 导出；
-33. Candidate 不能导出；
-34. WAV 在 Gate 通过后从 Current 导出；
-35. “另存为”生成新项目且不保留原 Git 历史。
+25. 每事件 Velocity `0..127` 可以生成、局部修改、播放和导出；
+26. 全局拍号可以修改和导出；
+27. P0 不支持局部变拍；
+28. 支持工具链验证通过的调式和局部 Key Event；
+29. P0 使用自研 React 时间轴与 Transport，不加载 openDAW Studio UI，Piano Roll 不显示；
+30. P0 Agent 不具有音色与混音写权限；
+31. 自动修复次数可配置且必须有限；
+32. API Key 不进入项目、Git、SQLite 或日志；
+33. MIDI 和 ABC 只能从 Current 导出；
+34. Candidate 不能导出；
+35. WAV 在 Gate 通过后从 Current 导出；
+36. “另存为”生成新项目且不保留原 Git 历史。
 
 ---
 
@@ -867,3 +877,5 @@ P0 发布必须满足：
 37. 模型配置与 API Key 保存在用户级 `settings.json`。
 38. 对话和 Task 记录保存在应用级 SQLite，不是工程事实。
 39. “另存为”不保留原 Git 历史。
+40. P0 Velocity 使用每 Note/Chord 的 `0..127` 整数；Chord 内共享，Tie chain 只在起音处设置。
+41. Global Meter 使用专用写工具修改，必须由覆盖全部六轨的 `wholeProject` Task 授权。

@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.5 |
-| 需求基线 | Agent Music Workstation PRD V1.7 Consolidated Decisions |
+| 架构版本 | V1.6 |
+| 需求基线 | Agent Music Workstation PRD V1.8 Consolidated Decisions |
 | 状态 | P0 架构基线；技术 Gate 通过后冻结实现 |
 | 日期 | 2026-08-02 |
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Mastra、MCP、Git/worktree、SQLite |
 
-> 本版明确 A2 Composition Pipeline 不包含 `RuntimeSnapshot`：A2 只产生 openDAW 无关的编译结果，B3 `OpenDawRuntimeAdapter` 消费这些结果并构建、缓存 RuntimeSnapshot。同时明确全局音乐属性的 Scope 权限；Canonical ABC 的 P0 语法白名单与 Velocity 持久化表示先由 Spike-010 划定稳定候选和拒绝边界，不提前冻结。
+> 本版冻结 D2 的两个 P0 缺口：Canonical ABC 以受控 `[I:MIDI vol N]` 保存每事件 `0..127` Velocity；A2 提供专用 `updateGlobalMeter` 操作，并要求覆盖全部六轨的 `wholeProject` Scope。两项操作都会重新生成 Scope Mapping、PlaybackCompilation 与 TimelineViewModel。
 
 ---
 
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.7 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.8 冲突时，以 PRD 为准。
 
 ---
 
@@ -66,6 +66,8 @@
 | ADR-031 | UI 写入边界 | React UI 只能产生 Product Scope、Transport 命令和领域编辑命令；不得直接修改 openDAW BoxGraph。 |
 | ADR-032 | openDAW UI 策略 | openDAW Studio UI 不进入 P0/P2 默认架构；只有产品范围转为完整 DAW 时才单独评估 fork 或局部移植。 |
 | ADR-033 | RuntimeSnapshot 归属 | A2 不生成、不持有 RuntimeSnapshot；B3 在 Renderer 内根据 A2 的 openDAW 无关 `PlaybackCompilation` 构建并缓存 Snapshot。`ScopeMappingCache` 始终留在 Core，是 A2 的独立输出，不进入 RuntimeSnapshot 或 Renderer IPC。 |
+| ADR-034 | P0 Velocity | Canonical ABC 使用 `[I:MIDI vol N]`，`N` 为整数 `0..127`。指令绑定恰好一个后续 Note/Chord onset，并与事件进入同一个 Scope span；Chord 内共享 Velocity，Tie continuation 禁止重新设置。缺省 Velocity 为 `100`。 |
+| ADR-035 | Global Meter 修改 | A2 暴露专用 `updateGlobalMeter` 操作，只接受覆盖全部六轨的 `wholeProject` Scope。操作只修改唯一 `M:` 头，并验证曲长、Note/Rest、Velocity、Tempo 和 Key 不变后重建全部派生输出。 |
 
 ---
 
@@ -338,7 +340,7 @@ const PROJECT_PPQ = 960;
 
 | 对象 | P0 模型 | 规则 |
 |---|---|---|
-| Meter | 单个 GlobalMeter | 仅可在覆盖全部六轨的 `wholeProject` 修改；不支持局部变拍。 |
+| Meter | 单个 GlobalMeter | 仅可在覆盖全部六轨的 `wholeProject` 修改；不支持局部变拍。分子为 `1..255`，分母为 `1..128` 的 2 次幂，以保证 ABC 与 Standard MIDI 均可稳定表示。 |
 | Tempo | TempoMap | 支持局部 Tempo Event；任何修改都要求 Scope 覆盖全部六轨。 |
 | Key | KeyMap | 支持局部 Key Event 和已验证调式；任何修改都要求 Scope 覆盖全部六轨。 |
 
@@ -428,10 +430,30 @@ Music Core 自身负责：
 - Canonical ABC 规范；
 - Repeat 展开策略；
 - 持久化 Serializer；
-- P0 支持语法白名单；
+- P0 支持语法白名单与 fail-closed 校验；
 - 解析器版本兼容和缓存失效。
 
 第三方库内部 Tune Object 不作为持久化领域模型。
+
+### 8.4 P0 语法白名单与 Velocity
+
+P0 Canonical ABC 支持：
+
+- Note、显式 `z` Rest、Chord、Tie；
+- 升降/还原号、八度；
+- 可精确映射至 PPQ=960 的显式时值；
+- 全局 `M:`、`Q:`、`K:` 及局部 `[Q:]`、`[K:]`；
+- 每事件 `[I:MIDI vol N]` Velocity。
+
+Velocity 规则：
+
+- `N` 只允许整数 `0..127`；没有指令时使用 `100`；
+- 指令绑定恰好一个后续 Note/Chord onset，并与该事件 token 一起进入 `abcSpans`；
+- 禁止悬空、连续覆盖、跨 Rest、跨全局指令或绑定 Tie continuation；
+- Chord 内所有 pitch 共享 Velocity；Tie chain 使用 onset Velocity；
+- abcjs 的越界静默截断不得进入领域结果，Music Core 必须在解析前拒绝。
+
+P0 明确不支持 Tuplet、Broken Rhythm、Grace、Tie 之外的 Ornament/Articulation、单轨内部多 Voice 或 Chord 内独立 pitch Velocity。
 
 ---
 
@@ -674,7 +696,31 @@ validate MCP session and TaskContext
 → atomic replace Candidate files
 ```
 
-局部 Task 的替换片段必须保持对应 Scope 的 Tick 长度。只有 `wholeProject` 可以改变整曲长度或全局拍号。
+局部 Task 的替换片段必须保持对应 Scope 的 Tick 长度。只有 `wholeProject` 可以改变整曲长度；全局拍号必须通过下述专用操作修改。
+
+#### `updateGlobalMeter`
+
+```ts
+updateGlobalMeter({
+  taskId,
+  numerator,
+  denominator
+})
+```
+
+内部流程：
+
+```text
+validate MCP session and TaskContext
+→ require wholeProject and all six trackIds
+→ validate ABC/MIDI Meter boundary
+→ update the only M: header on a temporary copy
+→ compile and verify all non-Meter musical facts are unchanged
+→ rebuild Mapping, MIDI and TimelineViewModel
+→ atomic replace Candidate files
+```
+
+该工具不接受局部时间范围，不通过 `replaceScopedMusic` 的轨道 fragment 间接修改全局拍号。
 
 ### 12.4 完成
 
@@ -685,6 +731,8 @@ validate MCP session and TaskContext
 - Canonical ABC 可解析且无 Repeat；
 - 六个固定 Voice 完整；
 - 时间值可精确映射到 PPQ；
+- Velocity 指令合法并与 Note/Chord Scope span 绑定；
+- Global Meter 唯一且可生成标准 MIDI Time Signature；
 - Scope Mapping 可重建；
 - MIDI 可生成；
 - TimelineViewModel 可生成；
@@ -1130,6 +1178,8 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 
 - Canonical ABC Repeat 展开与规范化；
 - ABC 时值到 PPQ=960 的精确映射；
+- Velocity `0..127` 的 tokenizer、Chord/Tie 约束、Scope span 与 MIDI 往返；
+- Global Meter 的 wholeProject/all-track 授权、ABC/MIDI 边界和非 Meter 语义不变式；
 - 固定六 Voice 不变量；
 - Canonical Scope 包含关系；
 - Scope Mapping 字符范围；

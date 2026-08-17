@@ -82,6 +82,24 @@ describe('Scope Mapping cache', () => {
     });
   });
 
+  it('binds a velocity directive to the same Scope span as its note', () => {
+    const source = canonicalizeExternalAbc(
+      composition('[I:MIDI vol 52]C D E F |'),
+    );
+    const result = compileComposition(source);
+    const scoped = getScopedComposition(result, {
+      type: 'timeRange',
+      trackIds: ['track.drums'],
+      startTick: tick(0),
+      endTick: tick(960),
+    });
+
+    expect(scoped.tracks[0]?.abc).toBe('[I:MIDI vol 52] C');
+    expect(result.scopeMapping.tracks['track.drums'][0]?.abcSpans).toHaveLength(
+      2,
+    );
+  });
+
   it('matches an independent containment filter for deterministic ranges', () => {
     const body = Array.from({ length: 7 }, () => 'C D E F |').join(' ');
     const source = canonicalizeExternalAbc(composition(body));

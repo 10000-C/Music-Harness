@@ -1,6 +1,6 @@
 # Agent Music Workstation P0 十天双人模块化开发计划
 
-**版本：** 1.2
+**版本：** 1.3
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -21,9 +21,9 @@
 
 开发必须遵循：
 
-- `docs/product/Agent Music Workstation PRD.md` V1.7；
-- `docs/architecture/Agent Music Workstation System Architecture.md` V1.5；
-- `docs/architecture/spike.md` 中 Spike-001～010 的技术结论；其中 Spike-010 只冻结已证明的稳定/拒绝边界，不冻结最终 ABC 白名单或 Velocity 语法选择。
+- `docs/product/Agent Music Workstation PRD.md` V1.8；
+- `docs/architecture/Agent Music Workstation System Architecture.md` V1.6；
+- `docs/architecture/spike.md` 中 Spike-001～010 的技术结论；Spike-010 的 Velocity 候选已按 ADR-034 纳入 P0。
 
 TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模块和回归测试，不重新设计同一问题。
 
@@ -39,7 +39,7 @@ TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模
 - Electron Main、Renderer、Music Core Utility Process 和 Agent Service 的进程拓扑；
 - Renderer ↔ Core 的 typed IPC / PlaybackCompilation 通信；
 - Agent ↔ Core 的 MCP Streamable HTTP 通信；
-- MCP Server 的部署位置和六个 P0 Tool；
+- MCP Server 的部署位置和七个 P0 Tool；
 - Canonical ABC → MIDI → openDAW Runtime 的链路；
 - Current、Candidate、Task checkpoint 和 Git/worktree 状态机；
 - ABC、MIDI、WAV 的既定导出链；
@@ -143,12 +143,12 @@ A 负责：
 - `project.json`、`composition.abc` 和 clean `main` HEAD；
 - Git、Candidate branch/worktree、Task checkpoint；
 - Canonical ABC 解析、Repeat 展开、规范化和序列化；
-- 固定六 Voice、PPQ=960 和支持语法验证；
+- 固定六 Voice、PPQ=960、P0 语法白名单和每事件 Velocity `0..127`；
 - Scope Mapping、`scopeRevision`、跨边界事件保护；
-- `replaceScopedMusic` 原子事务；
+- `replaceScopedMusic` 与 `updateGlobalMeter` 原子事务；
 - ABC → Standard MIDI Document；
 - MCP Server、Instance Token、runtime descriptor；
-- 六个 P0 MCP Tool 的 Schema、授权和业务语义；
+- 七个 P0 MCP Tool 的 Schema、授权和业务语义；
 - `finishTask`、Accept、Reject、取消和迟到结果保护；
 - Current-only 导出前检查、重新读取和重新编译；
 - ABC/MIDI 导出数据；
@@ -348,7 +348,7 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 | 编号 | 模块 | 主要范围 | 直接依赖 | 稳定输出 |
 |---|---|---|---|---|
 | **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、显式恢复、另存为；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；同项目单写实例；稳定 Project Command/Event |
-| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、PlaybackCompilation、TimelineViewModel、ValidationReport |
+| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Meter 修改、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateGlobalMeter`、PlaybackCompilation、TimelineViewModel、ValidationReport |
 | **A3** | Candidate Transaction | Candidate worktree、Task 状态机、checkpoint、Accept/Reject、取消回滚；所有 Current 写入经 A1 串行写入机制 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 Candidate Command/Event |
 | **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Mastra Agent Loop、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask` |
 | **A5** | Persistence & Export Preparation | SQLite、Settings、安全脱敏、复用 A1 clean Current 读取校验、ABC/MIDI 导出数据、WAV 输入准备 | A1、A2 | 可恢复 Agent 状态；经过 Current 校验的导出输入 |
@@ -454,8 +454,8 @@ flowchart LR
 | 依赖 | 上游必须稳定的输出 | 下游可开始的工作 |
 |---|---|---|
 | A1 → A3 | Current Git、跨实例写锁、项目级串行写入和 Project Command/Event | Candidate branch/worktree、事务状态机及安全 Accept |
-| A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic` 和 `finishTask` 完整验证 |
-| A1/A3 → A4 | A1 的 projectId/项目生命周期，A3 的 TaskContext、Candidate 和六个 Tool 业务状态 | runtime descriptor 与 Agent 真实 MCP Tool Loop |
+| A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask` 完整验证 |
+| A1/A3 → A4 | A1 的 projectId/项目生命周期，A3 的 TaskContext、Candidate 和七个 Tool 业务状态 | runtime descriptor 与 Agent 真实 MCP Tool Loop |
 | A1/A2 → A5 | A1 的 clean Current 读取校验、A2 的重新编译能力 | 正式 ABC/MIDI/WAV 导出准备 |
 | B1 → B2 | 安全 Preload 和 typed IPC Client | 真实桌面 UI |
 | B2/B3 → B4 | 产品交互状态和可播放 Runtime | Current/Candidate 预览及确认流程 |
@@ -578,7 +578,7 @@ Canonical ABC
 **进入条件：**
 
 - A4 可通过真实 descriptor 连接真实 MCP Server；
-- A3 已支持 `scopeRevision`、`replaceScopedMusic` 和 `finishTask`；
+- A3 已支持 `scopeRevision`、`replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask`；
 - B4 可展示计划、确认、Task 阶段和 Candidate 状态。
 
 **联调链：**
@@ -594,7 +594,7 @@ Fake Chat Completions Provider
 
 **通过标准：**
 
-- `tools/list` 只有六个 P0 Tool；
+- `tools/list` 只有七个 P0 Tool；
 - Agent 提交计划并等待用户确认；
 - Agent 经 MCP 生成可试听 Candidate；
 - `finishTask` 成功形成 checkpoint；
@@ -667,7 +667,7 @@ git status --short
 
 ## 13. Day 10 Definition of Done
 
-- [ ] PRD V1.7 P0 验收逐项记录。
+- [ ] PRD V1.8 P0 验收逐项记录。
 - [ ] TG-001～TG-010 正式回归可重复运行。
 - [ ] Windows 应用可启动、创建项目、关闭和重开。
 - [ ] 首次生成与局部修改两条 E2E 通过。

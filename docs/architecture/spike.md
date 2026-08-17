@@ -1366,7 +1366,7 @@ C:\Users\TreeHey\AppData\Local\Temp\agent-music-workstation-spikes\tg004-008\evi
 ## Spike-010：A2 Canonical ABC 白名单与 Velocity 稳定边界
 
 - **日期**：2026-08-02
-- **状态**：PASS（完成边界探测，不等于冻结最终白名单）
+- **状态**：PASS / ADOPTED（边界探测完成；Velocity 候选已由 ADR-034 纳入 P0）
 - **关联模块**：A2 Composition Pipeline
 - **ABC Parser**：`abcjs@6.6.4`
 - **Node.js**：`24.14.0`
@@ -1408,7 +1408,7 @@ Spike-002 的 TG-001/TG-002 只用单音、单声部事件证明了 Canonicaliza
 - `pp/mf/ff` 等动态记号会根据拍位产生不同数值，只适合作为有限音乐动态语义，不适合作为任意 `0–127` Canonical Velocity；
 - abcjs 为内联 MIDI 指令返回的 `startChar/endChar` 是 `-1/-1`，无法仅依赖 Tune Object 构建安全 Scope span。
 
-因此，`[I:MIDI vol N]` 是“可实现任意 Velocity”的候选表示，但尚未冻结。若采用，A2 必须有受控 tokenizer/serializer：
+因此，`[I:MIDI vol N]` 是“可实现任意 Velocity”的稳定候选表示。ADR-034 已采用该表示，A2 必须有受控 tokenizer/serializer：
 
 1. 将每条 Velocity 指令绑定到恰好一个后续 Note 或 Chord；
 2. 把指令文本与 Note/Chord token 一并纳入该领域事件的 ABC span；
@@ -1433,9 +1433,26 @@ Spike-002 的 TG-001/TG-002 只用单音、单声部事件证明了 Canonicaliza
 - 除检查 abcjs warning 外，仍需独立检查 `duration × 4 × 960` 是整数；
 - Tie chain 是一个领域持续事件，Mapping 允许 `abcSpans[]` 包含多个 token；
 - Rest 参与轨道长度和 Scope Mapping，但不产生 MIDI Note；
-- Spike 只给出稳定候选与拒绝边界，最终白名单和 Velocity Canonical 语法仍需单独决策。
+- Spike 原始结论只给出稳定候选与拒绝边界；最终 P0 采用结果见下节和 ADR-034/ADR-035。
 
-### 6. 证据索引
+### 6. D2 采用结果与实现回归
+
+2026-08-02 的 D2 决策采用：
+
+- `[I:MIDI vol N]`，`N` 为整数 `0..127`；
+- 指令只绑定一个后续 Note/Chord onset，并与事件进入同一个 Scope span；
+- Chord 内共享 Velocity，Tie continuation 不重新设置；
+- 没有指令时使用默认值 `100`；
+- Tuplet、Broken Rhythm、Grace、Tie 之外的 Ornament/Articulation、单轨内部多 Voice 和 Chord 内独立 pitch Velocity 不属于当前 PRD P0。
+
+全局拍号修改的 TDD 回归还发现 abcjs `getBpm()` 会在 6/8 下将明确的 `Q:1/4=120` 派生为 80，且会按 Meter 改写整小节 Rest 的解析时长。正式 A2 因此：
+
+- 从 Canonical `Q:1/4=N` 读取初始 Tempo，不使用 Meter 相关的 `getBpm()` 派生值；
+- 从显式事件 token 与 `L:` 独立计算 Tick 时值，不接受 Meter 改写音乐事件时长；
+- `updateGlobalMeter` 修改后验证 totalTicks、Note/Rest、Velocity、Tempo 和 Key 均不变；
+- Global Meter 仅允许覆盖全部六轨的 `wholeProject` Scope，并重建 Standard MIDI Time Signature、Scope Mapping 与 TimelineViewModel。
+
+### 7. 证据索引
 
 ```text
 /tmp/amw-a2-spike/abc-boundary-results.json

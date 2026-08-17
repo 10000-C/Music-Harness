@@ -79,6 +79,24 @@ describe('scoped music replacement', () => {
     );
   });
 
+  it('updates velocity inside Scope and regenerates MIDI without touching later events', () => {
+    const source = canonicalizeExternalAbc(composition('C D E F |'));
+    const before = compileComposition(source);
+
+    const result = replaceScopedMusic(before, scope(['track.drums'], 0, 960), [
+      { trackId: 'track.drums', abc: '[I:MIDI vol 73]C' },
+    ]);
+
+    expect(result.compilation.canonicalAbc).toContain(
+      '[V:track.drums] [I:MIDI vol 73] C D E F |',
+    );
+    expect(
+      result.compilation.playback.midiDocument.tracks[0]?.notes.map(
+        (note) => note.velocity,
+      ),
+    ).toEqual([73, 100, 100, 100]);
+  });
+
   it('rejects crossing events, duration changes, and unauthorized tracks', () => {
     const tied = compileComposition(
       canonicalizeExternalAbc(composition('C2-C2 | D2 z2 |', 'z4 | z4 |')),
