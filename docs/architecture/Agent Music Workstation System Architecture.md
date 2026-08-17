@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.2 |
-| 需求基线 | Agent Music Workstation PRD V1.5 Consolidated Decisions |
+| 架构版本 | V1.4 |
+| 需求基线 | Agent Music Workstation PRD V1.6 Consolidated Decisions |
 | 状态 | P0 架构基线；技术 Gate 通过后冻结实现 |
-| 日期 | 2026-07-29 |
+| 日期 | 2026-07-31 |
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Mastra、MCP、Git/worktree、SQLite |
 
-> 本版删除 Section 领域模型、版本化 Mapping、P0 稳定 Note/Event ID、P0 音色混音工具和完整 Scope Diff；增加 Canonical ABC 完全展开、P0 Scope Mapping、Canonical Scope、Task 级 checkpoint、localhost HTTP MCP 和精简项目事实文件。
+> 本版在已通过技术 Gate 的基础上，将 P0 工作区固化为自研 React UI + openDAW SDK/Core Runtime：不 fork 或内嵌 openDAW Studio UI；P2 手动编辑也默认通过自研编辑器和 Music Core 领域命令更新 Canonical ABC。MCP Endpoint、Instance Token 与 Runtime Descriptor 的生命周期统一归 Music Core 管理，Electron Main 仅负责桌面壳和进程监督。
 
 ---
 
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.5 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.6 冲突时，以 PRD 为准。
 
 ---
 
@@ -35,8 +35,8 @@
 |---|---|---|
 | ADR-001 | 产品形态 | Electron 本地桌面应用，不开发独立 Web 端。 |
 | ADR-002 | 桌面 UI | React + TypeScript，运行于 Electron Renderer。 |
-| ADR-003 | 音乐工作区 | fork/内嵌 openDAW，P0 复用 Track、Clip、时间轴、Transport 和音频运行时。 |
-| ADR-004 | Piano Roll | P0 不显示；后续用户音符编辑时再启用。 |
+| ADR-003 | 音乐工作区 | P0 自研 React 时间轴、Clip 展示、Transport 和连续 Scope；通过 Adapter 使用 openDAW SDK/Core Runtime，不 fork 或内嵌 openDAW Studio UI。 |
+| ADR-004 | Piano Roll | P0 不显示；P2 默认自研 React 编辑器，经 Music Core 更新 Canonical ABC 后重建 Runtime，不直接启用 openDAW Studio UI。 |
 | ADR-005 | Agent Runtime | Mastra 承载单 Agent Loop、会话、计划和有限修复。 |
 | ADR-006 | Agent 写入边界 | 所有 Agent 工程写入统一经过 Local MCP。 |
 | ADR-007 | 编曲事实来源 | 单一 `composition.abc` 是编曲唯一事实来源。 |
@@ -56,13 +56,15 @@
 | ADR-021 | 项目文件 | P0 Git 权威文件仅 `project.json` 与 `composition.abc`。 |
 | ADR-022 | MCP 进程 | MCP Server 位于 Music Core Utility Process。 |
 | ADR-023 | MCP Transport | 使用只监听 localhost 的 Streamable HTTP；P0 不实现 stdio Bridge。 |
-| ADR-024 | Endpoint 发现 | 随机端口 + 用户运行时目录中的实例描述文件。 |
+| ADR-024 | Endpoint 发现 | Music Core 使用随机端口，并在用户运行时目录创建、维护和删除实例描述文件。 |
 | ADR-025 | MCP 权限 | Instance Token 负责连接；服务器端 TaskContext 负责写入授权。 |
 | ADR-026 | 模型协议 | P0 只支持 OpenAI-compatible Chat Completions。 |
 | ADR-027 | 对话存储 | 应用级 SQLite 保存对话、Task 和执行记录，不作为工程事实。 |
 | ADR-028 | 模型配置 | 用户级 `~/.agent-music/settings.json` 保存 Endpoint、API Key 和参数。 |
 | ADR-029 | 试听 | Current/Candidate 各缓存 RuntimeSnapshot，只运行一个 openDAW Runtime。 |
 | ADR-030 | 另存为 | 复制 Current 权威文件，生成新项目和新 Git 历史，不保留旧历史。 |
+| ADR-031 | UI 写入边界 | React UI 只能产生 Product Scope、Transport 命令和领域编辑命令；不得直接修改 openDAW BoxGraph。 |
+| ADR-032 | openDAW UI 策略 | openDAW Studio UI 不进入 P0/P2 默认架构；只有产品范围转为完整 DAW 时才单独评估 fork 或局部移植。 |
 
 ---
 
@@ -103,7 +105,7 @@ Music Workstation 是完整桌面部署单元，包括：
 
 - Electron Main；
 - Renderer / React UI；
-- openDAW 工作区和播放 Runtime；
+- 自研 React 产品工作区和 openDAW 播放 Runtime；
 - Music Core Utility Process；
 - Project Store、Candidate/Git、Scope Mapping；
 - Local MCP Server。
@@ -126,7 +128,7 @@ Built-in Agent Service 是可选独立进程，包括：
 ```mermaid
 flowchart LR
     MAIN[Electron Main]
-    RENDERER[Renderer + openDAW]
+    RENDERER[React Renderer<br/>Product UI + OpenDawRuntimeAdapter]
     CORE[Music Core Utility Process\nProject + ABC + MCP + Git]
     AGENT[Optional Built-in Agent Service\nMastra + Chat Completions]
     DB[(App-level SQLite)]
@@ -148,23 +150,27 @@ flowchart LR
 - 应用和窗口生命周期；
 - 启动、监督 Utility Process；
 - 项目路径、文件选择和导出路径；
-- 创建运行时描述文件；
+- 不创建或维护 MCP Endpoint、Instance Token 和运行时描述文件；
 - 不承载 ABC、Scope、Candidate 或 MCP 业务逻辑。
 
 #### Renderer
 
-- 六轨时间轴、Clip、Transport 和 Scope 选区；
+- 自研 React 六轨时间轴、Clip 展示、Transport、Playhead、Loop 和连续 Scope 选区；
 - Agent 对话、确认、Current/Candidate 状态；
-- 一个活动 openDAW Runtime；
+- 通过 `OpenDawRuntimeAdapter` 管理一个活动 openDAW Runtime；
+- 从 Music Core 接收 `TimelineViewModel` 和 `RuntimeSnapshot`，不依赖 openDAW Studio UI；
+- 不直接读取或修改 openDAW BoxGraph；
 - 不直接读写项目文件或 Git。
 
 #### Music Core Utility Process
 
-- 项目打开、校验、迁移和恢复；
+- 项目目录、项目元数据与 Current Git 的创建、打开、校验、迁移、显式恢复和另存为；
+- 进程内项目写入串行化与不同应用实例打开同一项目的写锁；
 - Canonical ABC Parser/Normalizer/Serializer；
 - Scope Mapping；
-- MIDI 编译和 openDAW Adapter；
+- MIDI、Scope Mapping 与 RuntimeSnapshot 编译；
 - MCP Tool Host；
+- MCP Endpoint、Instance Token 和运行时描述文件生命周期；
 - TaskContext、Candidate 和 Git/worktree；
 - 导出前重新编译与验证。
 
@@ -188,6 +194,10 @@ agent-music-workstation/
 │   │   └── src/
 │   │       ├── main/
 │   │       ├── renderer/
+│   │       │   ├── timeline/
+│   │       │   ├── transport/
+│   │       │   ├── agent-panel/
+│   │       │   └── opendaw-runtime-adapter/
 │   │       └── core/
 │   │           ├── project/
 │   │           ├── composition/
@@ -202,17 +212,15 @@ agent-music-workstation/
 │           ├── mastra/
 │           ├── provider/
 │           └── mcp-client/
-├── packages/
-│   └── contracts/
-│       └── src/
-│           ├── ipc/
-│           ├── mcp/
-│           └── schemas/
-└── vendor/
-    └── opendaw/
+└── packages/
+    └── contracts/
+        └── src/
+            ├── ipc/
+            ├── mcp/
+            └── schemas/
 ```
 
-只有跨 Workstation 与 Agent 共享的 Schema 和类型进入 `packages/contracts`。
+只有跨 Workstation 与 Agent 共享的 Schema 和类型进入 `packages/contracts`。openDAW 通过锁定版本的 npm SDK/Core 包接入，仓库不维护 Studio App fork。
 
 ---
 
@@ -505,7 +513,7 @@ Agent
 → TaskContext / Scope Mapping / Candidate / Git
 ```
 
-Electron Main 只管理生命周期、端口和运行时描述文件，不转发具体工具调用。
+Music Core 管理 MCP Server 生命周期、随机端口、Instance Token 和运行时描述文件；Electron Main 只负责启动、监督和关闭 Core 进程，不管理 MCP 连接信息，也不转发具体工具调用。
 
 ### 10.2 Transport
 
@@ -522,7 +530,7 @@ http://127.0.0.1:<ephemeral-port>/mcp
 
 ### 10.3 Runtime Descriptor
 
-Workstation 启动后写入用户运行时目录：
+Music Core 在项目打开且 MCP Server ready 后写入用户运行时目录：
 
 ```json
 {
@@ -537,8 +545,9 @@ Workstation 启动后写入用户运行时目录：
 
 - 文件只允许当前用户读取；
 - 不进入项目或 Git；
-- 关闭项目后删除；
-- 启动时清理 PID 已失效的描述文件；
+- 由 Music Core 创建、更新和删除；
+- 关闭项目或停止 MCP Server 后删除；
+- Music Core 启动时清理 PID 已失效的描述文件；
 - 支持多个项目实例使用不同端口。
 
 ### 10.4 权限模型
@@ -758,7 +767,7 @@ Accept 失败时 Current 不改变，Candidate 保留。
 
 ---
 
-## 14. 编译和 openDAW Adapter
+## 14. 编译和 openDAW Runtime Adapter
 
 ### 14.1 编译链路
 
@@ -811,6 +820,64 @@ switch preview
 ```
 
 不运行两套 AudioContext 或两套音频图。
+
+### 14.4 React UI 与 Runtime 数据边界
+
+Music Core 向 Renderer 提供与 openDAW 内部对象解耦的展示模型：
+
+```ts
+interface TimelineViewModel {
+  totalTicks: Tick;
+  meterMap: MeterEvent[];
+  tempoMap: TempoEvent[];
+  tracks: Array<{
+    trackId: TrackId;
+    clips: Array<{
+      startTick: Tick;
+      endTick: Tick;
+      density?: number;
+    }>;
+  }>;
+}
+```
+
+Renderer 自行完成 Tick 与屏幕坐标转换、小节线、Clip 绘制、Playhead、Loop 和 Product Time Selection。UI 不通过 openDAW `VertexSelection` 表示产品 Scope，也不读取 Runtime UUID 作为产品状态。
+
+`OpenDawRuntimeAdapter` 只暴露播放运行时能力：
+
+```ts
+interface OpenDawRuntimeAdapter {
+  loadSnapshot(snapshot: RuntimeSnapshot): Promise<void>;
+  play(): Promise<void>;
+  pause(): void;
+  stop(): void;
+  seek(tick: Tick): void;
+  setLoop(range: TickRange | null): void;
+  setMute(trackId: TrackId, muted: boolean): void;
+  setSolo(trackId: TrackId, solo: boolean): void;
+  observePosition(listener: (tick: Tick) => void): Unsubscribe;
+  renderWav(options: RenderOptions): Promise<WavResult>;
+}
+```
+
+Adapter 不向 React 组件暴露 `Project`、BoxGraph、Box、Adapter UUID 或 `editing.modify()`。
+
+### 14.5 后续手动编辑链路
+
+P2 若加入 Piano Roll 或 Clip Editor，默认链路为：
+
+```text
+React Editor
+→ Domain Edit Command
+→ Music Core 范围与不变量校验
+→ 更新 Canonical ABC
+→ 重新编译 MIDI、Scope Mapping 与 RuntimeSnapshot
+→ OpenDawRuntimeAdapter 加载新 Snapshot
+```
+
+用户编辑和 Agent 编辑必须共享 Music Core 的写入、验证、Candidate 和 Git 状态机。不得采用“openDAW Studio UI 先修改 BoxGraph，再反向同步 ABC”的双向事实来源。
+
+只有产品范围明确转为完整 DAW，并且独立评估证明 fork 或局部移植的长期成本低于自研编辑器时，才能新增接入 openDAW Studio UI 的架构决策。
 
 ---
 
@@ -974,7 +1041,7 @@ source Current HEAD tree
 
 ### 18.4 WAV
 
-通过 openDAW Adapter 触发整曲离线渲染。技术 Gate 必须验证：
+通过 `OpenDawRuntimeAdapter` 触发 openDAW 整曲离线渲染。技术 Gate 必须验证：
 
 - 渲染 API；
 - 进度；
@@ -1026,7 +1093,9 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 
 - 同一项目一个 Agent 写 Task；
 - 同一项目一个 Candidate；
-- Music Core 使用项目级串行写队列；
+- Music Core 使用项目级串行写队列，Project Store、Candidate Accept/回滚和导出准备复用同一写入协调机制；
+- Project Store 在 `.agent-music/locks/` 维护跨实例项目写锁，同一项目同时最多一个可写应用实例；
+- 创建或打开项目时获取写锁，正常关闭时释放；stale lock 可安全识别，失锁实例后续写入必须 fail-closed；
 - 读取可以并发；
 - Git、ABC 编译和 WAV 渲染不运行于 Renderer 音频线程；
 - 取消令牌传播到模型、MCP、编译和渲染；
@@ -1047,15 +1116,19 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 - 跨边界事件只读；
 - 写工具原子性；
 - TaskContext、scopeRevision 和迟到结果；
-- `finishTask` 失败后的继续修复。
+- `finishTask` 失败后的继续修复；
+- Tick 与屏幕坐标双向转换；
+- 多轨共享单一连续 Product Time Selection；
+- Timeline Clip 展示不依赖 openDAW Runtime UUID。
 
 ### 21.2 Contract 测试
 
 - MCP Tool Schema 和错误码；
 - HTTP Endpoint、Token 和运行时描述文件；
 - IPC Command/Event；
-- openDAW Adapter 输入输出；
-- Chat Completions 的流式、Tool Call、取消和超时。
+- `TimelineViewModel`、RuntimeSnapshot compiler 与 `OpenDawRuntimeAdapter` 输入输出；
+- Chat Completions 的流式、Tool Call、取消和超时；
+- React 组件只能接收 `TimelineViewModel` 和 Runtime Adapter 接口，不能导入 BoxGraph/Box 类型。
 
 ### 21.3 集成与故障注入
 
@@ -1067,7 +1140,9 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 - Renderer、Core 和 Agent Service 分别崩溃；
 - Windows 中文路径、长路径、Defender 和 stale lock；
 - 打开最后 Current；
-- 另存为不复制历史。
+- 另存为不复制历史；
+- Current / Candidate Snapshot 切换后的播放位置、Loop、Solo 和 Mute；
+- Runtime 重载或崩溃后由 Snapshot 重建，不从 UI 状态恢复 openDAW 对象。
 
 ### 21.4 技术 Gate
 
@@ -1094,7 +1169,9 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 | abcjs 内部对象不稳定 | 持久化格式被第三方版本绑定 | 只使用解析结果，持久化由自有 Normalizer/Serializer 管理。 |
 | Scope Mapping 错误 | Agent 越界修改 | Hash 绑定、写前重建、边界夹具和属性测试。 |
 | 固定 PPQ 无法表示某些时值 | 编曲无法无损编译 | 明确拒绝，不静默量化；Gate 验证支持语法范围。 |
-| openDAW API 不稳定 | 试听或 WAV 受阻 | 强制 Adapter，早期技术 Gate。 |
+| openDAW API 不稳定 | 试听或 WAV 受阻 | 强制 Runtime Adapter、锁定 SDK/Core 版本并保留技术 Gate。 |
+| 自研时间轴交互复杂 | 缩放、滚动、选区和 Playhead 行为不一致 | P0 只做只读六轨与连续 Scope；统一 Tick 坐标模型和交互测试。 |
+| UI 直接依赖 openDAW 对象 | Canonical ABC 失去唯一事实来源 | Adapter 不暴露 BoxGraph/UUID；UI 只消费 TimelineViewModel 和领域命令。 |
 | Windows worktree 残留 | 无法打开项目或磁盘污染 | 独立内部目录、stale lock、启动清理和故障注入。 |
 | Current 被外部修改 | Current 不再等于 Git HEAD | 强制 clean 检查，P0 不合并外部修改。 |
 | Candidate Task 中间状态损坏 | 无法继续修复 | 单次写入原子替换，Task 起点 checkpoint。 |
@@ -1129,3 +1206,9 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 23. 应用级 SQLite、RuntimeSnapshot、MIDI 缓存和 Agent 对话不能成为工程事实。
 24. API Key 不进入项目、Git、SQLite 或日志。
 25. 另存为不保留原项目 Git 历史。
+26. P0 产品工作区使用自研 React UI，不 fork、内嵌或直接复用 openDAW Studio UI。
+27. openDAW 只作为可替换的 SDK/Core Runtime，经 `OpenDawRuntimeAdapter` 使用。
+28. React UI 不直接读取或修改 openDAW BoxGraph，也不持久化 Runtime UUID。
+29. P2 手动编辑默认通过领域编辑命令更新 Canonical ABC，再重建 RuntimeSnapshot。
+30. MCP Endpoint、Instance Token 和 Runtime Descriptor 的生命周期由 Music Core 管理，Electron Main 不管理 MCP 连接信息。
+31. 同一项目同时最多一个可写应用实例；所有项目文件和 Current Git 写入必须经过同一项目级串行写入机制。

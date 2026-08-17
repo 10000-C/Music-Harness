@@ -1,6 +1,6 @@
 # Agent Music Workstation P0 十天双人模块化开发计划
 
-**版本：** 1.0
+**版本：** 1.1
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -21,8 +21,8 @@
 
 开发必须遵循：
 
-- `docs/product/Agent Music Workstation PRD.md` V1.5；
-- `docs/architecture/Agent Music Workstation System Architecture.md` V1.2；
+- `docs/product/Agent Music Workstation PRD.md` V1.6；
+- `docs/architecture/Agent Music Workstation System Architecture.md` V1.4；
 - `docs/architecture/spike.md` 中 Spike-001～009 的技术结论。
 
 TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模块和回归测试，不重新设计同一问题。
@@ -101,7 +101,7 @@ Electron Main
 ├── BrowserWindow / Preload
 ├── Process Supervisor
 ├── File / Directory Dialog
-├── Runtime Resource Paths
+├── openDAW Resource Paths
 └── Windows Build
 
 Renderer
@@ -138,7 +138,8 @@ UI、时间轴、Clip、播放头、Transport 和 openDAW SDK 共享同一 Rende
 
 A 负责：
 
-- 项目创建、打开、恢复、锁和另存为；
+- 项目目录、项目元数据与 Current Git 的创建、打开、显式恢复和另存为；
+- 进程内项目写入串行化与不同应用实例打开同一项目的写锁；
 - `project.json`、`composition.abc` 和 clean `main` HEAD；
 - Git、Candidate branch/worktree、Task checkpoint；
 - Canonical ABC 解析、Repeat 展开、规范化和序列化；
@@ -193,7 +194,7 @@ B 负责：
 - 启动、监督和关闭 Core Utility Process 与 Agent Process；
 - 进程 health、fatal error 和 restart 行为；
 - 项目目录和导出路径选择；
-- 用户运行时路径和 openDAW 资源路径；
+- openDAW 资源路径；
 - Windows 开发运行和发布构建。
 
 B 只负责进程的启动与监督，不修改 A 所负责进程的内部业务。
@@ -346,17 +347,50 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 
 | 编号 | 模块 | 主要范围 | 直接依赖 | 稳定输出 |
 |---|---|---|---|---|
-| **A1** | Core Foundation | Project Store、Current 恢复、项目锁、Git 基础、Core IPC Handler | Contracts | 可创建、打开、恢复的 clean Current；稳定 Core Command/Event |
+| **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、显式恢复、另存为；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；同项目单写实例；稳定 Project Command/Event |
 | **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、MIDI、RuntimeSnapshot 构建 | Contracts、Spike fixtures | Canonical ABC、Standard MIDI Document、RuntimeSnapshot |
-| **A3** | Candidate Transaction | Candidate worktree、Task 状态机、checkpoint、Accept/Reject、取消回滚 | A1、A2 | 不修改 Current 的 Candidate 事务；稳定 Candidate Command/Event |
-| **A4** | Agent Toolchain | MCP Server、MCP Client、Provider Adapter、Mastra Agent Loop、有限修复 | A3、MCP Contracts | Agent 经真实 MCP 完成计划、写入、修复和 `finishTask` |
-| **A5** | Persistence & Export Preparation | SQLite、Settings、安全脱敏、Current-only 检查、ABC/MIDI 导出数据、WAV 输入准备 | A1、A2 | 可恢复 Agent 状态；经过 Current 校验的导出输入 |
+| **A3** | Candidate Transaction | Candidate worktree、Task 状态机、checkpoint、Accept/Reject、取消回滚；所有 Current 写入经 A1 串行写入机制 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 Candidate Command/Event |
+| **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Mastra Agent Loop、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask` |
+| **A5** | Persistence & Export Preparation | SQLite、Settings、安全脱敏、复用 A1 clean Current 读取校验、ABC/MIDI 导出数据、WAV 输入准备 | A1、A2 | 可恢复 Agent 状态；经过 Current 校验的导出输入 |
+
+#### 7.1.1 A1 最小接口与实现边界
+
+A1 对 Renderer/Core IPC 只暴露与项目生命周期需求直接对应的接口：
+
+```ts
+interface ProjectFoundation {
+  createProject(projectPath: string): Promise<OpenedProject>;
+  openProject(projectPath: string): Promise<OpenedProject>;
+  recoverCurrent(): Promise<OpenedProject>;
+  saveProjectAs(targetPath: string): Promise<OpenedProject>;
+  closeProject(): Promise<void>;
+}
+```
+
+A1 内部必须保留：
+
+```ts
+createInitialComposition(): string;
+```
+
+该方法由 `createProject()` 调用，不进入 Renderer IPC。A1 阶段允许使用明确的 TODO 或固定 fixture 占位；A2 负责补齐 Canonical ABC 的正式生成语义。
+
+A1 还向 Core 内部提供项目级串行写入和 clean Current 读取能力，供 A3 的 Accept/回滚及 A5 的导出准备复用；不得向 Renderer、Agent 暴露 Git、文件写入、加锁或解锁等低层接口。
+
+A1 验收至少覆盖：
+
+- 创建项目目录、`project.json`、`composition.abc`、Git `main` 和 Initial Current commit；
+- 打开、关闭、显式恢复和另存为；
+- 同一进程内项目写操作严格串行；
+- 第二个应用实例不能同时获得同一项目的写锁；正常关闭释放锁，崩溃残留锁可安全识别；
+- dirty Current fail-closed，恢复只读取 `main` HEAD；
+- A3/A5 使用 A1 的锁和 Current guard，不重复实现 Git clean 规则。
 
 ### 7.2 开发者 B：Electron + UI + openDAW
 
 | 编号 | 模块 | 主要范围 | 直接依赖 | 稳定输出 |
 |---|---|---|---|---|
-| **B1** | Desktop Shell | Electron Main、Preload、进程监督、路径选择、运行时资源路径 | IPC Contracts | 安全启动并监督 Core/Agent 的桌面壳 |
+| **B1** | Desktop Shell | Electron Main、Preload、进程监督、路径选择、openDAW 资源路径 | IPC Contracts | 安全启动并监督 Core/Agent 的桌面壳 |
 | **B2** | Workstation UI | 六轨工作区、时间轴、Scope、Agent 面板、错误呈现 | B1、Fake Core Client | 可消费固定 Project/Task/Candidate 状态的产品界面 |
 | **B3** | openDAW Runtime | SDK Adapter、六轨 Runtime、资源加载、Transport、RuntimeSnapshot load | RuntimeSnapshot Contracts、Spike fixtures | 可加载正式 Snapshot 并稳定播放的 openDAW Runtime |
 | **B4** | Preview & Confirmation | Current/Candidate 试听、确认流程、Accept/Reject UI、Core Event 消费 | B2、B3、A3 的稳定输出 | 完整 Candidate 预览和确认交互 |
@@ -379,7 +413,7 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 ```mermaid
 flowchart LR
     subgraph DEV_A[开发者 A：Music Core + Agent]
-        A1[A1 Core Foundation]
+        A1[A1 Project Foundation]
         A2[A2 Composition Pipeline]
         A3[A3 Candidate Transaction]
         A4[A4 Agent Toolchain]
@@ -388,6 +422,7 @@ flowchart LR
         A1 --> A3
         A2 --> A3
         A3 --> A4
+        A1 --> A4
         A1 --> A5
         A2 --> A5
     end
@@ -418,10 +453,10 @@ flowchart LR
 
 | 依赖 | 上游必须稳定的输出 | 下游可开始的工作 |
 |---|---|---|
-| A1 → A3 | Current、Git、Core Command/Event | Candidate branch/worktree 和事务状态机 |
+| A1 → A3 | Current Git、跨实例写锁、项目级串行写入和 Project Command/Event | Candidate branch/worktree、事务状态机及安全 Accept |
 | A2 → A3 | Canonical ABC、Scope Mapping、MIDI、RuntimeSnapshot | `replaceScopedMusic` 和 `finishTask` 完整验证 |
-| A3 → A4 | TaskContext、Candidate、六个 Tool 的业务状态 | Agent 真实 MCP Tool Loop |
-| A1/A2 → A5 | clean Current、重新编译能力 | 正式 ABC/MIDI/WAV 导出准备 |
+| A1/A3 → A4 | A1 的 projectId/项目生命周期，A3 的 TaskContext、Candidate 和六个 Tool 业务状态 | runtime descriptor 与 Agent 真实 MCP Tool Loop |
+| A1/A2 → A5 | A1 的 clean Current 读取校验、A2 的重新编译能力 | 正式 ABC/MIDI/WAV 导出准备 |
 | B1 → B2 | 安全 Preload 和 typed IPC Client | 真实桌面 UI |
 | B2/B3 → B4 | 产品交互状态和可播放 Runtime | Current/Candidate 预览及确认流程 |
 | B1/B3 → B5 | 文件路径、资源环境和 Offline Renderer | WAV 与 Windows 交付 |
@@ -439,7 +474,7 @@ flowchart LR
 | **Day 1～2：基础建立** | A1、A2 启动并提供可测试骨架 | B1、B2、B3 启动并提供 Fake/Fixture Harness | I1 |
 | **Day 3～5：核心能力稳定** | A1、A2 完成；A3 推进 | B1、B2、B3 完成 | I2、I3 |
 | **Day 5～7：Candidate 产品闭环** | A3、A4 完成 | B4 完成 | I4、I5 |
-| **Day 7～9：导出与 Windows 交付** | A5 完成；补齐恢复和安全回归 | B5 完成；补齐资源打包和实机音频回归 | I6 |
+| **Day 7～9：导出与 Windows 交付** | A5 完成；执行跨模块恢复与安全系统回归 | B5 完成；补齐资源打包和实机音频回归 | I6 |
 | **Day 10：验收** | 只修 Core/Agent 阻塞 | 只修 Electron/UI/openDAW 阻塞 | 全部联调点回归通过 |
 
 模块允许提前完成。若某个上游模块延期，优先保护依赖图中的关键路径，不为满足逐日表而切碎模块或跨负责人临时接管实现。
@@ -450,12 +485,12 @@ flowchart LR
 
 ### I1：Desktop Shell ↔ Core/Agent 进程
 
-**连接模块：** B1 ↔ A1，并启动 A4 所在 Agent Service 进程骨架。
+**连接范围：** B1 ↔ A 侧 Core/Agent 进程入口。I1 是进程级联调，不扩大 A1 的 Project Foundation 业务范围。
 
 **进入条件：**
 
 - B1 可以启动 Utility/Child Process；
-- A1 和 Agent Service 提供进程入口、ready、health、fatal、shutdown 消息；
+- A 侧 Core 和 Agent Service 提供进程入口、ready、health、fatal、shutdown 消息；
 - IPC 和错误 Contracts 可编译。
 
 **通过标准：**
@@ -495,20 +530,23 @@ Canonical ABC
 
 **解除阻塞：** B4 可使用真实音乐数据实现 Preview；A3 可将 RuntimeSnapshot 构建纳入 `finishTask` 验证。
 
-### I3：Core Foundation → Workstation UI
+### I3：Project Foundation → Workstation UI
 
 **连接模块：** A1 → B2。
 
 **进入条件：**
 
-- A1 可创建、打开、关闭并恢复 Current；
+- A1 可创建、打开、关闭、显式恢复和另存为 Current 项目；
+- A1 已实现进程内项目写入串行化和跨实例项目写锁；
 - B2 已能使用 Fake Core Client 展示 Project、Current 和错误状态。
 
 **通过标准：**
 
-- UI 可创建和打开真实项目；
+- UI 可创建、打开和另存为真实项目；
 - 关闭重开后恢复同一个 clean Current；
 - dirty Current 和恢复错误以结构化状态显示；
+- 同一项目已被实例 A 打开时，实例 B 无法获得写锁；A 正常关闭后 B 可打开；
+- stale lock 可以安全识别，旧实例失锁后不能继续写入；
 - Command/Event sequence 不产生重复或倒序 UI 状态。
 
 **解除阻塞：** B2 不再依赖 Fake Project 状态；I4 可以接入真实 Candidate。
@@ -628,7 +666,7 @@ git status --short
 
 ## 13. Day 10 Definition of Done
 
-- [ ] PRD V1.5 P0 验收逐项记录。
+- [ ] PRD V1.6 P0 验收逐项记录。
 - [ ] TG-001～TG-010 正式回归可重复运行。
 - [ ] Windows 应用可启动、创建项目、关闭和重开。
 - [ ] 首次生成与局部修改两条 E2E 通过。

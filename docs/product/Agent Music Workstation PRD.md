@@ -1,18 +1,18 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.5 Consolidated Decisions  
-**状态：** P0 产品范围已确认；技术 Gate 通过后冻结实现  
-**日期：** 2026-07-29  
-**开发周期：** 10–15 天  
-**团队规模：** 2 人  
-**首发平台：** Windows 10/11  
+**版本：** V1.6 Consolidated Decisions\
+**状态：** P0 产品范围已确认；技术 Gate 通过后冻结实现\
+**日期：** 2026-07-31\
+**开发周期：** 10–15 天\
+**团队规模：** 2 人\
+**首发平台：** Windows 10/11\
 **项目形态：** 开源、本地优先，AGPL 兼容发行
 
 ---
 
 ## 1. 文档目的
 
-本文档定义 Agent Music Workstation P0 的用户可见能力、状态语义、权限边界和验收标准。具体进程、模块、Git/worktree、MCP Transport、ABC Parser、openDAW Adapter 等实现由架构文档定义，但不得改变本 PRD 的产品行为。
+本文档定义 Agent Music Workstation P0 的用户可见能力、状态语义、权限边界和验收标准。具体进程、模块、Git/worktree、MCP Transport、ABC Parser、openDAW Runtime Adapter 等实现由架构文档定义，但不得改变本 PRD 的产品行为。
 
 ### 1.1 优先级
 
@@ -20,17 +20,14 @@
 - **P1：** P0 稳定后实现，不阻塞首发。
 - **P2：** 后续能力，不为其提前引入 P0 状态复杂度。
 
-### 1.2 本版相对 V1.4 的主要调整
+### 1.2 本版相对 V1.5 的主要调整
 
-- 删除 P0 Section 产品概念、Section Scope、Section ID 和 Agent Section 编辑。
-- 将无选区范围命名为 `wholeProject`，不再使用 `unrestricted`。
-- P0 Scope 内部统一为整工程或“固定轨道集合 + 连续 Tick 范围”。
-- P0 实现 Scope Mapping，Canonical ABC 禁止 Repeat 简写并保存为完全展开形式。
-- 删除 P0 持久化 Note/Product Event ID 和 `composition.map.json`。
-- P0 Agent 不修改音色、效果器和混音；相关工具调整到 P1。
-- P0 Git 权威文件精简为 `project.json` 与 `composition.abc`。
-- 一个 Candidate 可连续承载多个 Task；每个 Task 在 `finishTask` 成功后形成一个内部 checkpoint。
-- P0 模型协议固定为 OpenAI-compatible Chat Completions。
+- P0 产品工作区改为自研 React UI，不 fork、内嵌或直接复用 openDAW Studio UI。
+- openDAW 仅作为 SDK/Core Runtime，负责播放、音频图、运行时工程对象、Solo/Mute 和离线渲染。
+- 六轨时间轴、Clip 展示、Transport 控件、Loop、Playhead 与连续 Scope 由产品 Renderer 实现。
+- P0 UI 不直接修改 openDAW BoxGraph；`composition.abc` 仍是唯一编曲事实来源。
+- P2 手动编辑默认采用自研 React 编辑器，经 Music Core 领域编辑命令更新 Canonical ABC，再重建 openDAW Runtime。
+- 是否接入 openDAW Studio UI 不作为 P2 默认路线；只有产品范围转为完整 DAW 时才重新立项评估。
 
 ---
 
@@ -214,25 +211,34 @@ P0 固定六条角色轨道：
 
 “不支持 Agent 修改”不等于读取、播放、保存或导出时删除这些事件。
 
-### 4.7 openDAW 使用边界
+### 4.7 产品 UI 与 openDAW Runtime 边界
 
-P0 复用 openDAW 的：
+P0 产品工作区由 React + TypeScript 自研，包括：
 
-- 固定六轨与 Clip；
-- 时间轴和小节线；
-- Transport；
-- 播放、暂停、Seek、Loop；
-- Solo / Mute；
-- Current / Candidate 试听；
-- 必要的音源和整曲渲染能力。
+- 固定六轨及其 Track Header；
+- Clip 和音乐密度的只读展示；
+- 时间轴、小节线、缩放、滚动和 Playhead；
+- Transport 控件；
+- 播放、暂停、Stop、Seek 和 Loop 交互；
+- Solo / Mute 交互；
+- Current / Candidate 试听切换；
+- 固定轨道集合上的连续时间 Scope。
+
+P0 通过 Adapter 使用 openDAW SDK/Core Runtime，包括：
+
+- openDAW Project、RuntimeSnapshot 和音频图；
+- 乐器、播放、Seek、Loop、Solo / Mute 的运行时能力；
+- Current / Candidate RuntimeSnapshot 加载；
+- 必要的音源和整曲离线渲染。
+
+P0 不 fork、内嵌或直接复用 openDAW Studio UI，也不抽取其 Timeline、Piano Roll 或 Mixer UI。产品 UI 不读取或直接修改 openDAW BoxGraph；所有编曲事实和正式编辑仍由 Music Core 基于 Canonical ABC 处理。
 
 P0：
 
 - 不显示 Piano Roll；
-- Mixer 可以隐藏，但不删除底层实现；
-- 不自研 Piano Roll；
-- 不删除 openDAW 已有代码；
-- 不开放音频导入、录音、声卡输入、MIDI 导入和第三方插件。
+- 不提供用户音符、Region 或 Clip 手动编辑；
+- 不开放完整 Mixer、音频导入、录音、声卡输入、MIDI 导入和第三方插件；
+- openDAW Runtime 状态是可重建派生状态，不成为工程事实。
 
 ### 4.8 音色与混音
 
@@ -497,7 +503,7 @@ Agent 不获得以下工具：
 
 ## 10. 工作区与试听
 
-P0 主要视图：
+P0 主要视图由自研 React Renderer 实现，不加载 openDAW Studio UI：
 
 - 六条固定轨道；
 - Clip 与时间轴；
@@ -706,7 +712,8 @@ Candidate 不允许正式导出。
 
 - 多 Candidate 与 A/B/C 对比；
 - 完整工具调用和调试面板；
-- Piano Roll 显示及用户音符编辑；
+- 自研 React Piano Roll / Clip Editor；用户编辑转换为 Music Core 领域编辑命令，更新 Canonical ABC 后重建 RuntimeSnapshot；
+- 只有产品范围转为完整 DAW 且独立评估通过时，才考虑接入 openDAW Studio UI；
 - 持久范围书签或 Section 类 UI 组织能力；
 - 全局和跨项目 Agent Memory；
 - 动态轨道管理；
@@ -798,7 +805,7 @@ P0 发布必须满足：
 25. 全局拍号可以修改和导出；
 26. P0 不支持局部变拍；
 27. 支持工具链验证通过的调式和局部 Key Event；
-28. Piano Roll 在 P0 不显示；
+28. P0 使用自研 React 时间轴与 Transport，不加载 openDAW Studio UI，Piano Roll 不显示；
 29. P0 Agent 不具有音色与混音写权限；
 30. 自动修复次数可配置且必须有限；
 31. API Key 不进入项目、Git、SQLite 或日志；
@@ -843,7 +850,10 @@ P0 发布必须满足：
 30. Git `main` HEAD 是唯一 Current 指针。
 31. P0 使用固定 PPQ Tick，项目标准 PPQ 为 960，不静默量化。
 32. Current 与 Candidate 各缓存一份 RuntimeSnapshot，但只运行一个 openDAW Runtime。
-33. P0 使用 OpenAI-compatible Chat Completions。
-34. 模型配置与 API Key 保存在用户级 `settings.json`。
-35. 对话和 Task 记录保存在应用级 SQLite，不是工程事实。
-36. “另存为”不保留原 Git 历史。
+33. P0 产品时间轴、Clip 展示、Transport 和连续 Scope 使用自研 React UI，不 fork 或内嵌 openDAW Studio UI。
+34. 产品 UI 只能通过 OpenDawRuntimeAdapter 控制派生 Runtime，不直接修改 openDAW BoxGraph。
+35. P2 手动编辑默认使用自研 React 编辑器，经 Music Core 更新 Canonical ABC 后重建 Runtime；接入 openDAW Studio UI 需要新的架构决策。
+36. P0 使用 OpenAI-compatible Chat Completions。
+37. 模型配置与 API Key 保存在用户级 `settings.json`。
+38. 对话和 Task 记录保存在应用级 SQLite，不是工程事实。
+39. “另存为”不保留原 Git 历史。
