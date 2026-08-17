@@ -11,7 +11,10 @@ import {
 } from '@agent-music/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
-import { CompositionPipeline } from '../composition/index.js';
+import {
+  CompositionPipeline,
+  CompositionValidationError,
+} from '../composition/index.js';
 import type { ProjectAuthorityAccess } from '../project/project-authority-access.js';
 import { ProjectError } from '../project/project-error.js';
 import type { CandidateCleanupManagerPort } from './candidate-cleanup.js';
@@ -26,7 +29,7 @@ const candidateId = '00000000-0000-4000-8000-000000000051' as CandidateId;
 const taskId = '00000000-0000-4000-8000-000000000052' as TaskId;
 const scopeRequestId =
   '00000000-0000-4000-8000-000000000053' as ScopeExtensionRequestId;
-const initialSource = 'X:1\nT:Fixture\nM:4/4\nL:1/4\nQ:1/4=120\nK:C\n';
+const initialSource = new CompositionPipeline().createInitialComposition();
 const wholeProjectScope: TaskScope = {
   type: 'wholeProject',
   trackIds: TRACK_IDS,
@@ -93,9 +96,10 @@ const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
     })),
   } satisfies CandidateCleanupManagerPort;
   const ids = [candidateId, taskId, scopeRequestId];
+  const composition = new CompositionPipeline();
   const transaction = new CandidateTransaction({
     project,
-    composition: new CompositionPipeline(),
+    composition,
     repository,
     cleanup,
     createId: () => ids.shift() ?? '00000000-0000-4000-8000-000000000099',
@@ -109,6 +113,7 @@ const createHarness = (options?: { readonly cleanupFails?: boolean }) => {
     cleanup,
     workspace,
     currentState,
+    composition,
   };
 };
 
@@ -123,6 +128,16 @@ const envelopeFor = (
   expectedScopeRevision: task.scopeRevision,
   ...overrides,
 });
+
+const deferred = <T>() => {
+  let resolve: (value: T) => void = () => undefined;
+  let reject: (reason?: unknown) => void = () => undefined;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+};
 
 describe('CandidateTransaction lifecycle', () => {
   it('creates the first formal Task on a Candidate frozen to clean Current', async () => {
@@ -457,5 +472,362 @@ describe('CandidateTransaction authorization', () => {
     });
     expect(rejected.scopeRevision).toBe(0);
     expect(rejected.scope).toEqual(rejectingTask.scope);
+  });
+});
+
+describe('CandidateTransaction A2-backed operations', () => {
+  it('returns A2 scoped composition unchanged after reading Candidate authority', async () => {
+    const { transaction, repository, composition } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const expectedCompilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const expectedScoped = new CompositionPipeline().getScopedComposition(
+      expectedCompilation,
+      wholeProjectScope,
+    );
+    const compile = vi
+      .spyOn(composition, 'compileCanonical')
+      .mockReturnValue(expectedCompilation);
+    const getScoped = vi
+      .spyOn(composition, 'getScopedComposition')
+      .mockReturnValue(expectedScoped);
+
+    await expect(
+      transaction.getScopedComposition(envelopeFor(task)),
+    ).resolves.toBe(expectedScoped);
+    expect(repository.readAuthority).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId }),
+    );
+    expect(compile).toHaveBeenCalledWith(initialSource);
+    expect(getScoped).toHaveBeenCalledWith(
+      expectedCompilation,
+      wholeProjectScope,
+    );
+  });
+
+  it('keeps scoped reads available while a Scope Extension is pending', async () => {
+    const { transaction, composition } = createHarness();
+    const scope: TaskScope = {
+      type: 'wholeProject',
+      trackIds: ['track.drums'],
+    };
+    const task = await transaction.startTask({ projectId, scope });
+    const envelope = envelopeFor(task);
+    await transaction.requestScopeExtension({
+      envelope,
+      requestedScope: {
+        type: 'wholeProject',
+        trackIds: ['track.drums', 'track.bass'],
+      },
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const expected = new CompositionPipeline().getScopedComposition(
+      compilation,
+      scope,
+    );
+    vi.spyOn(composition, 'compileCanonical').mockReturnValue(compilation);
+    vi.spyOn(composition, 'getScopedComposition').mockReturnValue(expected);
+
+    await expect(transaction.getScopedComposition(envelope)).resolves.toBe(
+      expected,
+    );
+  });
+
+  it('writes exactly the canonical ABC returned by A2 scoped replacement', async () => {
+    const { transaction, repository, composition } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const nextCompilation = {
+      ...compilation,
+      canonicalAbc: `${compilation.canonicalAbc}\n% A2 result\n`,
+    };
+    const compile = vi
+      .spyOn(composition, 'compileCanonical')
+      .mockReturnValue(compilation);
+    const replace = vi
+      .spyOn(composition, 'replaceScopedMusic')
+      .mockReturnValue({
+        changedTrackIds: ['track.drums'],
+        compilation: nextCompilation,
+      });
+
+    await expect(
+      transaction.applyScopedMusicChange({
+        envelope: envelopeFor(task),
+        replacements: [{ trackId: 'track.drums', abc: 'z4' }],
+      }),
+    ).resolves.toBe(nextCompilation);
+    expect(compile).toHaveBeenCalledWith(initialSource);
+    expect(replace).toHaveBeenCalledWith(compilation, wholeProjectScope, [
+      { trackId: 'track.drums', abc: 'z4' },
+    ]);
+    expect(repository.writeComposition).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId }),
+      nextCompilation.canonicalAbc,
+    );
+  });
+
+  it('requires derived updateGlobalMeter permission before calling A2', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const update = vi.spyOn(composition, 'updateGlobalMeter');
+
+    await expect(
+      transaction.updateGlobalMeter({
+        envelope: envelopeFor(task),
+        numerator: 3,
+        denominator: 4,
+      }),
+    ).rejects.toMatchObject({ code: 'OPERATION_NOT_ALLOWED' });
+    expect(update).not.toHaveBeenCalled();
+    expect(repository.writeComposition).not.toHaveBeenCalled();
+  });
+
+  it('writes the canonical A2 meter result for wholeProject over all tracks', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const nextCompilation = {
+      ...compilation,
+      canonicalAbc: `${compilation.canonicalAbc}\n% meter result\n`,
+    };
+    vi.spyOn(composition, 'compileCanonical').mockReturnValue(compilation);
+    const update = vi.spyOn(composition, 'updateGlobalMeter').mockReturnValue({
+      compilation: nextCompilation,
+    });
+
+    await expect(
+      transaction.updateGlobalMeter({
+        envelope: envelopeFor(task),
+        numerator: 3,
+        denominator: 4,
+      }),
+    ).resolves.toBe(nextCompilation);
+    expect(update).toHaveBeenCalledWith(compilation, wholeProjectScope, {
+      numerator: 3,
+      denominator: 4,
+    });
+    expect(repository.writeComposition).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId }),
+      nextCompilation.canonicalAbc,
+    );
+  });
+
+  it('blocks Candidate writes while a Scope Extension is pending', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const envelope = envelopeFor(task);
+    await transaction.requestScopeExtension({
+      envelope,
+      requestedScope: {
+        type: 'wholeProject',
+        trackIds: ['track.drums', 'track.bass'],
+      },
+    });
+    const replace = vi.spyOn(composition, 'replaceScopedMusic');
+
+    await expect(
+      transaction.applyScopedMusicChange({
+        envelope,
+        replacements: [{ trackId: 'track.drums', abc: 'z4' }],
+      }),
+    ).rejects.toMatchObject({ code: 'TASK_SCOPE_EXTENSION_PENDING' });
+    expect(replace).not.toHaveBeenCalled();
+    expect(repository.writeComposition).not.toHaveBeenCalled();
+  });
+
+  it('returns TASK_BUSY immediately instead of queuing a second ordinary mutation', async () => {
+    const { transaction, composition } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const result = {
+      changedTrackIds: ['track.drums'] as const,
+      compilation,
+    };
+    const gate = deferred<typeof result>();
+    const replace = vi
+      .spyOn(composition, 'replaceScopedMusic')
+      .mockReturnValue(gate.promise as never);
+    const input = {
+      envelope: envelopeFor(task),
+      replacements: [{ trackId: 'track.drums' as const, abc: 'z4' }],
+    };
+
+    const first = transaction.applyScopedMusicChange(input);
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    await expect(
+      transaction.applyScopedMusicChange(input),
+    ).rejects.toMatchObject({ code: 'TASK_BUSY' });
+    expect(replace).toHaveBeenCalledOnce();
+
+    gate.resolve(result);
+    await expect(first).resolves.toBe(compilation);
+  });
+
+  it('lets Cancel invalidate an A2 computation before it can write', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const result = {
+      changedTrackIds: ['track.drums'] as const,
+      compilation,
+    };
+    const gate = deferred<typeof result>();
+    const replace = vi
+      .spyOn(composition, 'replaceScopedMusic')
+      .mockReturnValue(gate.promise as never);
+    const mutation = transaction.applyScopedMusicChange({
+      envelope: envelopeFor(task),
+      replacements: [{ trackId: 'track.drums', abc: 'z4' }],
+    });
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+
+    await expect(
+      transaction.cancelTask({ projectId, candidateId, taskId }),
+    ).resolves.toBeUndefined();
+    expect(repository.resetTo).toHaveBeenCalled();
+    gate.resolve(result);
+    await expect(mutation).rejects.toMatchObject({ code: 'TASK_NOT_ACTIVE' });
+    expect(repository.writeComposition).not.toHaveBeenCalled();
+  });
+
+  it('waits for an entered repository write before Cancel resets final state', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    vi.spyOn(composition, 'replaceScopedMusic').mockReturnValue({
+      changedTrackIds: ['track.drums'],
+      compilation,
+    });
+    const writeGate = deferred<void>();
+    repository.writeComposition.mockImplementationOnce(() => writeGate.promise);
+    const mutation = transaction.applyScopedMusicChange({
+      envelope: envelopeFor(task),
+      replacements: [{ trackId: 'track.drums', abc: 'z4' }],
+    });
+    await vi.waitFor(() =>
+      expect(repository.writeComposition).toHaveBeenCalledOnce(),
+    );
+
+    const cancellation = transaction.cancelTask({
+      projectId,
+      candidateId,
+      taskId,
+    });
+    await Promise.resolve();
+    expect(repository.resetTo).not.toHaveBeenCalled();
+
+    writeGate.resolve(undefined);
+    await expect(mutation).rejects.toMatchObject({ code: 'TASK_NOT_ACTIVE' });
+    await expect(cancellation).resolves.toBeUndefined();
+    expect(repository.resetTo).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId }),
+      'C0',
+    );
+  });
+
+  it('waits for an entered repository write before strong Reject cleans resources', async () => {
+    const { transaction, composition, repository, cleanup } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    vi.spyOn(composition, 'replaceScopedMusic').mockReturnValue({
+      changedTrackIds: ['track.drums'],
+      compilation,
+    });
+    const writeGate = deferred<void>();
+    repository.writeComposition.mockImplementationOnce(() => writeGate.promise);
+    const mutation = transaction.applyScopedMusicChange({
+      envelope: envelopeFor(task),
+      replacements: [{ trackId: 'track.drums', abc: 'z4' }],
+    });
+    await vi.waitFor(() =>
+      expect(repository.writeComposition).toHaveBeenCalledOnce(),
+    );
+
+    const rejection = transaction.rejectCandidate({ projectId, candidateId });
+    await Promise.resolve();
+    expect(cleanup.authorizeAndAttempt).not.toHaveBeenCalled();
+
+    writeGate.resolve(undefined);
+    await expect(mutation).rejects.toMatchObject({ code: 'TASK_NOT_ACTIVE' });
+    await expect(rejection).resolves.toBeUndefined();
+    expect(cleanup.authorizeAndAttempt).toHaveBeenCalledOnce();
+  });
+
+  it('maps A2 validation failures to stable Candidate validation details', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    vi.spyOn(composition, 'replaceScopedMusic').mockImplementation(() => {
+      throw new CompositionValidationError({
+        code: 'SCOPE_REPLACEMENT_INVALID',
+        message: 'Invalid replacement fixture',
+      });
+    });
+
+    await expect(
+      transaction.applyScopedMusicChange({
+        envelope: envelopeFor(task),
+        replacements: [{ trackId: 'track.drums', abc: 'invalid' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: {
+        validation: {
+          valid: false,
+          issues: [
+            {
+              code: 'SCOPE_REPLACEMENT_INVALID',
+              message: 'Invalid replacement fixture',
+            },
+          ],
+        },
+      },
+    });
+    expect(repository.writeComposition).not.toHaveBeenCalled();
   });
 });

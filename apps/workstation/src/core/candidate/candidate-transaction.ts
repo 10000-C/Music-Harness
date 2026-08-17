@@ -125,6 +125,13 @@ interface CandidateRecord {
   activeTask?: ActiveTask;
 }
 
+interface MutationLease {
+  readonly taskId: TaskId;
+  writeEntered: boolean;
+  readonly settlement: Promise<void>;
+  readonly settle: () => void;
+}
+
 const hasAllTracks = (scope: TaskScope): boolean =>
   scope.type === 'wholeProject' &&
   scope.trackIds.length === TRACK_IDS.length &&
@@ -132,6 +139,7 @@ const hasAllTracks = (scope: TaskScope): boolean =>
 
 export class CandidateTransaction {
   private candidate: CandidateRecord | undefined;
+  private mutationLease: MutationLease | undefined;
 
   public constructor(
     private readonly dependencies: CandidateTransactionDependencies,
@@ -219,6 +227,31 @@ export class CandidateTransaction {
     return this.toTaskContextView(candidate, task);
   }
 
+  public async getScopedComposition(
+    envelope: TaskExecutionEnvelope,
+  ): Promise<ScopedComposition> {
+    try {
+      const { candidate, task } = await this.guardTaskEnvelope(envelope);
+      const authority = await this.dependencies.repository.readAuthority(
+        candidate.workspace,
+      );
+      const compilation = await this.dependencies.composition.compileCanonical(
+        authority.compositionSource,
+      );
+      const scoped = await this.dependencies.composition.getScopedComposition(
+        compilation,
+        task.scope,
+      );
+      this.assertTaskStillAuthorized(candidate, task, envelope);
+      return scoped;
+    } catch (error) {
+      throw normalizeCandidateError(
+        error,
+        'Unable to read Candidate composition',
+      );
+    }
+  }
+
   public async requestScopeExtension(input: {
     readonly envelope: TaskExecutionEnvelope;
     readonly requestedScope: TaskScope;
@@ -297,6 +330,76 @@ export class CandidateTransaction {
     return this.toTaskContextView(candidate, task);
   }
 
+  public async applyScopedMusicChange(input: {
+    readonly envelope: TaskExecutionEnvelope;
+    readonly replacements: readonly TrackReplacement[];
+  }): Promise<CompositionCompilation> {
+    return this.runOrdinaryMutation(input.envelope.taskId, async (lease) => {
+      const { candidate, task } = await this.guardTaskEnvelope(input.envelope);
+      this.assertMutationAllowed(task, 'replaceScopedMusic');
+      const authority = await this.dependencies.repository.readAuthority(
+        candidate.workspace,
+      );
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      const compilation = await this.dependencies.composition.compileCanonical(
+        authority.compositionSource,
+      );
+      const result = await this.dependencies.composition.replaceScopedMusic(
+        compilation,
+        task.scope,
+        input.replacements,
+      );
+
+      await this.guardTaskEnvelope(input.envelope);
+      this.assertMutationAllowed(task, 'replaceScopedMusic');
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      lease.writeEntered = true;
+      await this.dependencies.repository.writeComposition(
+        candidate.workspace,
+        result.compilation.canonicalAbc,
+      );
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      return result.compilation;
+    });
+  }
+
+  public async updateGlobalMeter(input: {
+    readonly envelope: TaskExecutionEnvelope;
+    readonly numerator: number;
+    readonly denominator: number;
+  }): Promise<CompositionCompilation> {
+    return this.runOrdinaryMutation(input.envelope.taskId, async (lease) => {
+      const { candidate, task } = await this.guardTaskEnvelope(input.envelope);
+      this.assertMutationAllowed(task, 'updateGlobalMeter');
+      const authority = await this.dependencies.repository.readAuthority(
+        candidate.workspace,
+      );
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      const compilation = await this.dependencies.composition.compileCanonical(
+        authority.compositionSource,
+      );
+      const result = await this.dependencies.composition.updateGlobalMeter(
+        compilation,
+        task.scope,
+        {
+          numerator: input.numerator,
+          denominator: input.denominator,
+        },
+      );
+
+      await this.guardTaskEnvelope(input.envelope);
+      this.assertMutationAllowed(task, 'updateGlobalMeter');
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      lease.writeEntered = true;
+      await this.dependencies.repository.writeComposition(
+        candidate.workspace,
+        result.compilation.canonicalAbc,
+      );
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      return result.compilation;
+    });
+  }
+
   public async cancelTask(input: {
     readonly projectId: ProjectId;
     readonly candidateId: CandidateId;
@@ -308,8 +411,12 @@ export class CandidateTransaction {
       throw new CandidateError('TASK_NOT_ACTIVE', 'Task is not active');
     }
 
+    const lease = this.mutationLeaseFor(task.taskId);
     candidate.activeTask = undefined;
     try {
+      if (lease?.writeEntered === true) {
+        await lease.settlement;
+      }
       await this.dependencies.repository.resetTo(
         candidate.workspace,
         task.taskBaseCheckpoint,
@@ -332,7 +439,13 @@ export class CandidateTransaction {
     readonly candidateId: CandidateId;
   }): Promise<void> {
     const candidate = this.requireCandidate(input.projectId, input.candidateId);
+    const lease = candidate.activeTask
+      ? this.mutationLeaseFor(candidate.activeTask.taskId)
+      : undefined;
     this.candidate = undefined;
+    if (lease?.writeEntered === true) {
+      await lease.settlement;
+    }
     await this.attemptCleanup(candidate);
   }
 
@@ -451,6 +564,7 @@ export class CandidateTransaction {
     if (candidate.state !== 'active' || task.state !== 'editing') {
       throw new CandidateError('TASK_NOT_ACTIVE', 'Task is not editable');
     }
+    this.assertTaskStillAuthorized(candidate, task, envelope);
     return { candidate, task };
   }
 
@@ -504,6 +618,89 @@ export class CandidateTransaction {
       operations.push('updateGlobalMeter');
     }
     return operations;
+  }
+
+  private assertMutationAllowed(
+    task: ActiveTask,
+    operation: CandidateOperation,
+  ): void {
+    if (task.pendingScopeExtension !== undefined) {
+      throw new CandidateError(
+        'TASK_SCOPE_EXTENSION_PENDING',
+        'Candidate writes are blocked while a Scope Extension is pending',
+      );
+    }
+    if (!this.deriveAllowedOperations(task.scope).includes(operation)) {
+      throw new CandidateError(
+        'OPERATION_NOT_ALLOWED',
+        'Operation is not allowed by the current Task Scope',
+      );
+    }
+  }
+
+  private assertTaskStillAuthorized(
+    candidate: CandidateRecord,
+    task: ActiveTask,
+    envelope: TaskExecutionEnvelope,
+  ): void {
+    if (
+      this.candidate !== candidate ||
+      candidate.activeTask !== task ||
+      candidate.state !== 'active' ||
+      task.state !== 'editing'
+    ) {
+      throw new CandidateError('TASK_NOT_ACTIVE', 'Task authorization ended');
+    }
+    if (task.scopeRevision !== envelope.expectedScopeRevision) {
+      throw new CandidateError(
+        'STALE_SCOPE_REVISION',
+        'Execution envelope Scope revision is stale',
+      );
+    }
+  }
+
+  private beginMutation(taskId: TaskId): MutationLease {
+    if (this.mutationLease !== undefined) {
+      throw new CandidateError(
+        'TASK_BUSY',
+        'Another Candidate mutation is already active',
+      );
+    }
+    let settle = (): void => undefined;
+    const settlement = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    const lease: MutationLease = {
+      taskId,
+      writeEntered: false,
+      settlement,
+      settle,
+    };
+    this.mutationLease = lease;
+    return lease;
+  }
+
+  private mutationLeaseFor(taskId: TaskId): MutationLease | undefined {
+    return this.mutationLease?.taskId === taskId
+      ? this.mutationLease
+      : undefined;
+  }
+
+  private async runOrdinaryMutation<T>(
+    taskId: TaskId,
+    operation: (lease: MutationLease) => Promise<T>,
+  ): Promise<T> {
+    const lease = this.beginMutation(taskId);
+    try {
+      return await operation(lease);
+    } catch (error) {
+      throw normalizeCandidateError(error, 'Candidate mutation failed');
+    } finally {
+      if (this.mutationLease === lease) {
+        this.mutationLease = undefined;
+      }
+      lease.settle();
+    }
   }
 
   private isScopeSuperset(current: TaskScope, requested: TaskScope): boolean {
