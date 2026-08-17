@@ -4,6 +4,7 @@ import type { AudioTrackNoteItem, TuneObject } from 'abcjs';
 import {
   PROJECT_PPQ,
   TRACK_IDS,
+  createMidiNoteNumber,
   type KeyEvent,
   type MeterEvent,
   type TempoEvent,
@@ -19,7 +20,10 @@ import type {
   DomainTrack,
 } from './composition-types.js';
 import { failCompositionValidation } from './composition-validation-error.js';
-import { isSupportedGlobalMeter } from './meter-policy.js';
+import {
+  isSupportedGlobalMeter,
+  type GlobalMeterValue,
+} from './meter-policy.js';
 
 const TICKS_PER_WHOLE_NOTE = PROJECT_PPQ * 4;
 const DEFAULT_VELOCITY = 100;
@@ -35,10 +39,12 @@ const CHORD_TOKEN = new RegExp(
 const REST_TOKEN = new RegExp(`^z(?:${NOTE_DURATION})?$`);
 const REPEAT_MARKER = /\|:|:\||\|[1-9]|\[[1-9]/;
 const INLINE_INSTRUCTION = /\[I:[^\]\n]*\]/g;
-const VELOCITY_INSTRUCTION = /^\[I:MIDI vol (0|[1-9]\d?|1[01]\d|12[0-7])\]$/;
+const VELOCITY_INSTRUCTION = /^\[I:MIDI vol ([1-9]|[1-9]\d|1[01]\d|12[0-7])\]$/;
 
 interface ParsedPitch {
+  readonly accidental?: string;
   readonly endTie?: boolean;
+  readonly pitch: number;
   readonly startTie?: object;
 }
 
@@ -77,6 +83,7 @@ interface ParsedContainer {
   readonly source: string;
   readonly title: string;
   readonly meter: string;
+  readonly meterValue: GlobalMeterValue;
   readonly defaultLength: string;
   readonly initialTempo: number;
   readonly initialKey: string;
@@ -98,6 +105,17 @@ interface TrackBuildResult {
 }
 
 const tick = (value: number): Tick => value as Tick;
+
+const playablePitch = (value: number) => {
+  try {
+    return createMidiNoteNumber(value);
+  } catch {
+    return failCompositionValidation(
+      'MIDI_NOTE_NUMBER_INVALID',
+      `Playable pitch must be an integer from 0 through 127: ${String(value)}`,
+    );
+  }
+};
 
 const normalizeLineEndings = (source: string): string =>
   source.replace(/\r\n?/g, '\n');
@@ -157,6 +175,7 @@ const validateHeaders = (
 ): {
   readonly title: string;
   readonly meter: string;
+  readonly meterValue: GlobalMeterValue;
   readonly defaultLength: string;
   readonly initialTempo: number;
   readonly initialKey: string;
@@ -172,14 +191,15 @@ const validateHeaders = (
   const lengthMatch = /^(\d+)\/(\d+)$/.exec(defaultLength);
   const tempoMatch = /^1\/4=(\d+)$/.exec(tempo);
   const initialTempo = tempoMatch === null ? 0 : Number(tempoMatch[1]);
+  const meterValue: GlobalMeterValue = {
+    numerator: Number(meterMatch?.[1]),
+    denominator: Number(meterMatch?.[2]),
+  };
   if (
     meterMatch === null ||
     lengthMatch === null ||
     tempoMatch === null ||
-    !isSupportedGlobalMeter({
-      numerator: Number(meterMatch[1]),
-      denominator: Number(meterMatch[2]),
-    }) ||
+    !isSupportedGlobalMeter(meterValue) ||
     Number(lengthMatch[1]) <= 0 ||
     Number(lengthMatch[2]) <= 0 ||
     initialTempo <= 0 ||
@@ -194,6 +214,7 @@ const validateHeaders = (
   return {
     title,
     meter,
+    meterValue,
     defaultLength,
     initialTempo,
     initialKey,
@@ -232,6 +253,26 @@ const isTieContinuation = (item: ParsedVoiceItem): boolean =>
   item.pitches !== undefined &&
   item.pitches.length > 0 &&
   item.pitches.every((pitch) => pitch.endTie === true);
+
+// TODO(A2): Resolve explicit continuation accidentals against the full
+// bar accidental context instead of only the preceding tied onset.
+const tieContinuationMatches = (
+  previous: readonly ParsedPitch[] | undefined,
+  continuation: readonly ParsedPitch[] | undefined,
+): boolean => {
+  if (continuation === undefined || previous?.length !== continuation.length) {
+    return false;
+  }
+
+  return continuation.every((pitch, index) => {
+    const preceding = previous[index];
+    return (
+      preceding?.pitch === pitch.pitch &&
+      (pitch.accidental === undefined ||
+        pitch.accidental === preceding.accidental)
+    );
+  });
+};
 
 const collectVelocityDirectives = (
   source: string,
@@ -440,12 +481,12 @@ const velocityDirectiveToken = (item: ParsedVoiceItem): string => {
     item.cmd !== 'vol' ||
     typeof velocity !== 'number' ||
     !Number.isInteger(velocity) ||
-    velocity < 0 ||
+    velocity < 1 ||
     velocity > 127
   ) {
     return failCompositionValidation(
       'ABC_UNSUPPORTED_SYNTAX',
-      'Only integer [I:MIDI vol N] instructions from 0 through 127 are supported',
+      'Only integer [I:MIDI vol N] instructions from 1 through 127 are supported',
     );
   }
   return `[I:MIDI vol ${String(velocity)}]`;
@@ -695,6 +736,53 @@ const eventDurationTick = (token: string, defaultLength: string): Tick => {
   );
 };
 
+export interface CanonicalBarlineTrack {
+  readonly trackId: TrackId;
+  readonly totalTicks: Tick;
+  readonly barlineTicks: readonly Tick[];
+}
+
+export interface CanonicalMeterStructure {
+  readonly meter: GlobalMeterValue;
+  readonly tracks: readonly CanonicalBarlineTrack[];
+}
+
+export const readCanonicalMeterStructure = (
+  source: string,
+): CanonicalMeterStructure => {
+  const parsed = parseContainer(source);
+  const tracks = TRACK_IDS.map((trackId, voiceIndex) => {
+    const voice = parsed.voices[voiceIndex];
+    if (voice === undefined) {
+      return failCompositionValidation(
+        'ABC_STRUCTURE_INVALID',
+        `Missing parsed voice for ${trackId}`,
+      );
+    }
+
+    let cursor = tick(0);
+    const barlineTicks: Tick[] = [];
+    for (const item of voice) {
+      if (item.el_type === 'note') {
+        if (typeof item.duration !== 'number') {
+          return failCompositionValidation(
+            'ABC_STRUCTURE_INVALID',
+            `Missing duration in ${trackId}`,
+          );
+        }
+        const token = validateNoteItem(parsed.source, item);
+        cursor = tick(cursor + eventDurationTick(token, parsed.defaultLength));
+      } else if (item.el_type === 'bar') {
+        barlineTicks.push(cursor);
+      }
+    }
+
+    return { trackId, totalTicks: cursor, barlineTicks };
+  });
+
+  return { meter: parsed.meterValue, tracks };
+};
+
 const sameMap = (
   left: readonly unknown[],
   right: readonly unknown[],
@@ -731,6 +819,7 @@ const buildTrack = (
   const keyMap: KeyEvent[] = [initialKey];
   let cursor = tick(0);
   let pendingDirectiveSpans: AbcSpan[] = [];
+  let previousNotePitches: readonly ParsedPitch[] | undefined;
 
   for (const item of voice) {
     if (item.el_type === 'tempo') {
@@ -784,16 +873,22 @@ const buildTrack = (
         durationTick: tokenDuration,
         abcSpans: spans,
       });
+      previousNotePitches = undefined;
       cursor = tick(cursor + tokenDuration);
       continue;
     }
 
     if (isTieContinuation(item)) {
       const previous = events.at(-1);
-      if (previous?.type !== 'note') {
+      const continuationOnsets = notesByStartChar.get(itemSpan.startChar);
+      if (
+        previous?.type !== 'note' ||
+        !tieContinuationMatches(previousNotePitches, item.pitches) ||
+        (continuationOnsets !== undefined && continuationOnsets.length > 0)
+      ) {
         return failCompositionValidation(
           'ABC_STRUCTURE_INVALID',
-          `Tie continuation in ${trackId} has no preceding note`,
+          `Tie continuation in ${trackId} must preserve the preceding pitch set`,
         );
       }
       const replacement: DomainNoteEvent = {
@@ -814,12 +909,13 @@ const buildTrack = (
       );
     }
     const velocityDirective = parsed.velocityDirectives.get(itemSpan.startChar);
+    previousNotePitches = item.pitches;
     events.push({
       type: 'note',
       trackId,
       startTick: cursor,
       durationTick: tokenDuration,
-      pitches: audioNotes.map((audioNote) => audioNote.pitch),
+      pitches: audioNotes.map((audioNote) => playablePitch(audioNote.pitch)),
       velocity: velocityDirective?.velocity ?? DEFAULT_VELOCITY,
       abcSpans: [
         ...spans.slice(0, -1),

@@ -9,7 +9,7 @@
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Mastra、MCP、Git/worktree、SQLite |
 
-> 本版冻结 D2 的两个 P0 缺口：Canonical ABC 以受控 `[I:MIDI vol N]` 保存每事件 `0..127` Velocity；A2 提供专用 `updateGlobalMeter` 操作，并要求覆盖全部六轨的 `wholeProject` Scope。两项操作都会重新生成 Scope Mapping、PlaybackCompilation 与 TimelineViewModel。
+> 本版冻结 D2 的两个 P0 缺口：Canonical ABC 以受控 `[I:MIDI vol N]` 保存每事件 `1..127` Velocity；`0` 保留为 Standard MIDI Note Off，不作为 Note onset Velocity。A2 提供专用 `updateGlobalMeter` 操作，并要求覆盖全部六轨的 `wholeProject` Scope。两项操作都会重新生成 Scope Mapping、PlaybackCompilation 与 TimelineViewModel。
 
 ---
 
@@ -66,8 +66,10 @@
 | ADR-031 | UI 写入边界 | React UI 只能产生 Product Scope、Transport 命令和领域编辑命令；不得直接修改 openDAW BoxGraph。 |
 | ADR-032 | openDAW UI 策略 | openDAW Studio UI 不进入 P0/P2 默认架构；只有产品范围转为完整 DAW 时才单独评估 fork 或局部移植。 |
 | ADR-033 | RuntimeSnapshot 归属 | A2 不生成、不持有 RuntimeSnapshot；B3 在 Renderer 内根据 A2 的 openDAW 无关 `PlaybackCompilation` 构建并缓存 Snapshot。`ScopeMappingCache` 始终留在 Core，是 A2 的独立输出，不进入 RuntimeSnapshot 或 Renderer IPC。 |
-| ADR-034 | P0 Velocity | Canonical ABC 使用 `[I:MIDI vol N]`，`N` 为整数 `0..127`。指令绑定恰好一个后续 Note/Chord onset，并与事件进入同一个 Scope span；Chord 内共享 Velocity，Tie continuation 禁止重新设置。缺省 Velocity 为 `100`。 |
-| ADR-035 | Global Meter 修改 | A2 暴露专用 `updateGlobalMeter` 操作，只接受覆盖全部六轨的 `wholeProject` Scope。操作只修改唯一 `M:` 头，并验证曲长、Note/Rest、Velocity、Tempo 和 Key 不变后重建全部派生输出。 |
+| ADR-034 | P0 Velocity | Canonical ABC 使用 `[I:MIDI vol N]`，`N` 为整数 `1..127`；`0` 保留为 Standard MIDI Note Off，不属于 Note onset Velocity。指令绑定恰好一个后续 Note/Chord onset，并与事件进入同一个 Scope span；Chord 内共享 Velocity，Tie continuation 禁止重新设置。缺省 Velocity 为 `100`。 |
+| ADR-035 | Global Meter 修改 | A2 暴露专用 `updateGlobalMeter` 操作，只接受覆盖全部六轨的 `wholeProject` Scope。该操作只修改唯一 `M:` 头这一底层工程事实，并验证曲长、Note/Rest、Velocity、Tempo 和 Key 不变后重建全部派生输出；不自动重排小节或改编音乐。Agent 根据用户意图继续通过音乐修改工具重排 wholeProject，最终由 `finishTask` 验证 Candidate 与新 Global Meter 一致。 |
+
+> **职责边界：Global Meter 修改与音乐重排分离。** `updateGlobalMeter` 允许 Task 编辑过程中暂时保留旧 ABC barline；A2 不自动拆分 Note/Rest、不自动添加 Tie，也不根据新拍号改编音乐。Agent 负责后续 wholeProject 重排；最终 Candidate 的 Meter/小节一致性属于 `finishTask` 验证边界。
 
 ---
 
@@ -346,6 +348,8 @@ const PROJECT_PPQ = 960;
 
 Meter、Tempo 与 Key 都是项目全局时间线语义，不因事件在某条 Voice 中编码而成为单轨属性。当前 TaskScope 未覆盖全部六轨时，相关写工具必须要求用户确认 Scope 扩展；不得忽略 `trackIds` 直接修改全局事件。
 
+Tempo 写入 Standard MIDI 前统一经过 `createMidiTempoFromBpm`：将 BPM 转换为微秒/四分音符，并验证结果位于 24-bit 无符号字段 `1..0xFFFFFF`。`midi-file` 只负责序列化，不承担领域验证；不可表示的 Tempo 返回结构化 `MIDI_TEMPO_INVALID`，禁止截断或回绕。
+
 ### 7.4 跨 Scope 事件
 
 与局部 Scope 边界相交的既有持续事件是受保护对象。P0 不自动拆分跨边界 Note 或 Tie。
@@ -431,6 +435,7 @@ Music Core 自身负责：
 - Repeat 展开策略；
 - 持久化 Serializer；
 - P0 支持语法白名单与 fail-closed 校验；
+- 通过共享 `createMidiNoteNumber` 入口将解析结果收敛为整数 `0..127`；abcjs 可解析但无法进入 Standard MIDI 的音高必须在领域事件构建时拒绝；
 - 解析器版本兼容和缓存失效。
 
 第三方库内部 Tune Object 不作为持久化领域模型。
@@ -447,7 +452,7 @@ P0 Canonical ABC 支持：
 
 Velocity 规则：
 
-- `N` 只允许整数 `0..127`；没有指令时使用 `100`；
+- `N` 只允许整数 `1..127`；`0` 表示 Standard MIDI Note Off，不得进入 Note onset；没有指令时使用 `100`；
 - 指令绑定恰好一个后续 Note/Chord onset，并与该事件 token 一起进入 `abcSpans`；
 - 禁止悬空、连续覆盖、跨 Rest、跨全局指令或绑定 Tie continuation；
 - Chord 内所有 pitch 共享 Velocity；Tie chain 使用 onset Velocity；
@@ -713,18 +718,21 @@ updateGlobalMeter({
 ```text
 validate MCP session and TaskContext
 → require wholeProject and all six trackIds
-→ validate ABC/MIDI Meter boundary
+→ validate the requested Global Meter value
 → update the only M: header on a temporary copy
 → compile and verify all non-Meter musical facts are unchanged
 → rebuild Mapping, MIDI and TimelineViewModel
 → atomic replace Candidate files
+→ leave musical rearrangement to subsequent Agent music edits in the same Task
 ```
 
-该工具不接受局部时间范围，不通过 `replaceScopedMusic` 的轨道 fragment 间接修改全局拍号。
+该工具不接受局部时间范围，不通过 `replaceScopedMusic` 的轨道 fragment 间接修改全局拍号。它只提供 Global Meter 的底层写能力；若用户要求“把 4/4 的作品改成 3/4”等音乐性变化，Agent 必须在同一 `wholeProject` Task 中继续使用音乐修改工具重排内容。
 
 ### 12.4 完成
 
 #### `finishTask`
+
+A2 向 A3 提供只读最终态校验 `CompositionPipeline.validateFinalMeterConsistency(source): ValidationReport`。该方法复用 Canonical ABC parser 与精确 PPQ 时值计算，只检查 barline 是否符合唯一 Global Meter；它不修改 ABC，也不进入普通 `compileCanonical`/`updateGlobalMeter` 的编辑中间态校验。P0 要求从 Tick 0 开始的每个非末尾小节恰好等于当前 Meter 的小节长度，允许最后一个小节不足整小节；不支持弱起导致的全局小节网格偏移。
 
 执行完整验证：
 
@@ -733,6 +741,7 @@ validate MCP session and TaskContext
 - 时间值可精确映射到 PPQ；
 - Velocity 指令合法并与 Note/Chord Scope span 绑定；
 - Global Meter 唯一且可生成标准 MIDI Time Signature；
+- 最终 Canonical ABC 的小节组织与 Global Meter 一致，不允许仅修改 `M:` 后以旧 barline 状态完成 Task；
 - Scope Mapping 可重建；
 - MIDI 可生成；
 - TimelineViewModel 可生成；
@@ -1178,7 +1187,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 
 - Canonical ABC Repeat 展开与规范化；
 - ABC 时值到 PPQ=960 的精确映射；
-- Velocity `0..127` 的 tokenizer、Chord/Tie 约束、Scope span 与 MIDI 往返；
+- Velocity `1..127` 的 tokenizer、Chord/Tie 约束、Scope span 与 MIDI 往返，并验证 `0` 在进入领域事件前被拒绝；
 - Global Meter 的 wholeProject/all-track 授权、ABC/MIDI 边界和非 Meter 语义不变式；
 - 固定六 Voice 不变量；
 - Canonical Scope 包含关系；

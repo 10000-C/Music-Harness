@@ -19,6 +19,7 @@ export type {
 } from './domain.js';
 
 export { isPlaybackCompilation, isTimelineViewModel } from './composition.js';
+export { createMidiNoteNumber, isMidiNoteNumber } from './music-values.js';
 
 export type {
   KeyEvent,
@@ -32,6 +33,8 @@ export type {
   TimelineTrack,
   TimelineViewModel,
 } from './composition.js';
+
+export type { MidiNoteNumber } from './music-values.js';
 
 export {
   PROJECT_FORMAT_VERSION,

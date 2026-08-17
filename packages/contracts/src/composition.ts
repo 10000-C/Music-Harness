@@ -5,6 +5,7 @@ import {
   type Tick,
   type TrackId,
 } from './domain.js';
+import { isMidiNoteNumber, type MidiNoteNumber } from './music-values.js';
 import { PROJECT_PPQ } from './project.js';
 
 export interface MeterEvent {
@@ -28,7 +29,7 @@ export interface KeyEvent {
 export interface MidiNoteEvent {
   readonly startTick: Tick;
   readonly durationTick: Tick;
-  readonly pitch: number;
+  readonly pitch: MidiNoteNumber;
   readonly velocity: number;
 }
 
@@ -113,11 +114,10 @@ const isMidiNoteEvent = (
   isTick(value.startTick) &&
   isPositiveInteger(value.durationTick) &&
   value.startTick + value.durationTick <= totalTicks &&
-  isPositiveInteger(value.pitch) &&
-  value.pitch <= 127 &&
+  isMidiNoteNumber(value.pitch) &&
   typeof value.velocity === 'number' &&
   Number.isInteger(value.velocity) &&
-  value.velocity >= 0 &&
+  value.velocity >= 1 &&
   value.velocity <= 127;
 
 const isStandardMidiDocument = (

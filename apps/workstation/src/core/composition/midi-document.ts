@@ -11,6 +11,7 @@ import {
 } from '@agent-music/contracts';
 
 import type { CanonicalAbcCompilation } from './composition-types.js';
+import { createMidiTempoFromBpm } from './midi-tempo.js';
 
 const TRACK_CHANNELS = [9, 0, 1, 2, 3, 4] as const;
 
@@ -125,7 +126,8 @@ const createMetaTrack = (compilation: CanonicalAbcCompilation): MidiEvent[] => {
       event: {
         meta: true,
         type: 'setTempo',
-        microsecondsPerBeat: Math.round(60_000_000 / tempo.bpm),
+        microsecondsPerBeat: createMidiTempoFromBpm(tempo.bpm)
+          .microsecondsPerQuarter,
       },
     });
   }

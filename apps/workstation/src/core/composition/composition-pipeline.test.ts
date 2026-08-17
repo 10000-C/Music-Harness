@@ -7,7 +7,11 @@ import {
   isTimelineViewModel,
 } from '@agent-music/contracts';
 
-import { canonicalizeExternalAbc, compileComposition } from './index.js';
+import {
+  CompositionValidationError,
+  canonicalizeExternalAbc,
+  compileComposition,
+} from './index.js';
 
 const composition = (body: string): string => `X:1
 T:Playback fixture
@@ -67,6 +71,26 @@ describe('Composition Pipeline derived outputs', () => {
       startTick: 6720,
       durationTick: 960,
     });
+  });
+
+  it('rejects tempos that cannot fit the Standard MIDI 24-bit field', () => {
+    const supported = canonicalizeExternalAbc(
+      composition('C4 |').replace('Q:1/4=120', 'Q:1/4=4'),
+    );
+    const midi = parseMidi(
+      compileComposition(supported).playback.midiDocument.fileBytes,
+    );
+
+    expect(
+      midi.tracks[0]?.find((event) => event.type === 'setTempo'),
+    ).toMatchObject({ type: 'setTempo', microsecondsPerBeat: 15_000_000 });
+
+    const unsupported = canonicalizeExternalAbc(
+      composition('C4 |').replace('Q:1/4=120', 'Q:1/4=3'),
+    );
+    expect(() => compileComposition(unsupported)).toThrow(
+      CompositionValidationError,
+    );
   });
 
   it('writes canonical event velocity into semantic and binary MIDI', () => {

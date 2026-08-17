@@ -22,7 +22,7 @@
 
 ### 1.2 本版相对 V1.7 的主要调整
 
-- 冻结 P0 Velocity：支持每事件 `0..127`，一个 Chord 内所有 pitch 共享 Velocity，Tie chain 只在起音处设置。
+- 冻结 P0 Velocity：支持每事件 `1..127`；`0` 在 Standard MIDI 中表示 Note Off，因此不得作为 Note onset Velocity。一个 Chord 内所有 pitch 共享 Velocity，Tie chain 只在起音处设置。
 - 补齐 Agent 修改全局拍号的正式能力：仅允许覆盖全部六轨的 `wholeProject` Task，并使用专用 `updateGlobalMeter` 工具。
 - P0 MCP Tool 由 6 个增为 7 个；轨道片段替换与全局拍号修改保持不同的授权和写入接口。
 
@@ -176,6 +176,8 @@ P0 固定六条角色轨道：
 - P0 支持一个全局拍号；
 - 支持 ABC 工具链稳定支持的全局拍号；
 - Agent 可以在 `wholeProject` Task 中修改全局拍号；
+- `updateGlobalMeter` 只修改工程唯一的 Global Meter，不承担把原音乐自动改编为新拍号；
+- Agent 在修改 Global Meter 后，根据用户意图通过音乐修改工具重排 `wholeProject` 内的 Note/Rest 等内容，使最终 Candidate 符合新拍号；
 - P0 不支持曲中局部变拍。
 
 #### Tempo
@@ -184,7 +186,7 @@ P0 固定六条角色轨道：
 - 支持曲中局部变速；
 - Agent 可以新增、删除或修改 Scope 内的 Tempo Event；
 - 不设置人为 BPM 上限；
-- 只拒绝零、负数、非有限数或底层工具链明确无法处理的值；
+- 只拒绝零、负数、非有限数或底层工具链明确无法处理的值；其中 Standard MIDI Set Tempo 使用 24-bit 微秒/四分音符字段，无法表示的 BPM 必须在生成 Candidate 时明确拒绝，不得静默回绕；
 - Tempo 变化不改变 Tick、小节和拍位置，只改变实际播放时间。
 
 #### 调性与调式
@@ -219,7 +221,7 @@ P0 固定六条角色轨道：
 
 Velocity 的 P0 行为：
 
-- 支持整数 `0..127`；
+- 支持整数 `1..127`；`0` 表示 MIDI Note Off，不作为 Note onset Velocity；
 - 没有显式值时使用 Canonical 默认值 `100`；
 - 一个 Note 或 Chord 对应一个 Velocity；Chord 内所有 pitch 共享该值；
 - Tie chain 的 Velocity 属于起音，延续 token 不重新设置；
@@ -505,7 +507,7 @@ P0 向 Agent 暴露 7 个高层工具：
 3. `submitGenerationPlan`：首次生成前提交工程计划；
 4. `requestScopeExtension`：申请扩大当前 Task Scope；
 5. `replaceScopedMusic`：提交 Scope 内 ABC 片段，由 Music Core 定位并原子替换；
-6. `updateGlobalMeter`：在覆盖全部六轨的 `wholeProject` Task 中修改唯一全局拍号；
+6. `updateGlobalMeter`：在覆盖全部六轨的 `wholeProject` Task 中修改唯一 Global Meter；该工具是底层工程事实修改能力，不自动重排音乐内容；
 7. `finishTask`：执行完整验证，成功后创建一个 Task checkpoint。
 
 Agent 不获得以下工具：
@@ -821,8 +823,8 @@ P0 发布必须满足：
 22. Canonical ABC 不含 Repeat 简写；
 23. 合法跨边界持续音不会被误改；
 24. Tempo Map 可以播放和导出；
-25. 每事件 Velocity `0..127` 可以生成、局部修改、播放和导出；
-26. 全局拍号可以修改和导出；
+25. 每事件 Velocity `1..127` 可以生成、局部修改、播放和导出；Velocity `0` 必须在进入 Candidate 前被拒绝；
+26. Agent 可以通过专用工具修改 Global Meter，并在同一 `wholeProject` Task 中重排音乐，使最终 Candidate 符合新拍号并可导出；
 27. P0 不支持局部变拍；
 28. 支持工具链验证通过的调式和局部 Key Event；
 29. P0 使用自研 React 时间轴与 Transport，不加载 openDAW Studio UI，Piano Roll 不显示；
@@ -877,5 +879,5 @@ P0 发布必须满足：
 37. 模型配置与 API Key 保存在用户级 `settings.json`。
 38. 对话和 Task 记录保存在应用级 SQLite，不是工程事实。
 39. “另存为”不保留原 Git 历史。
-40. P0 Velocity 使用每 Note/Chord 的 `0..127` 整数；Chord 内共享，Tie chain 只在起音处设置。
-41. Global Meter 使用专用写工具修改，必须由覆盖全部六轨的 `wholeProject` Task 授权。
+40. P0 Velocity 使用每 Note/Chord 的 `1..127` 整数；`0` 保留为 MIDI Note Off 语义；Chord 内共享，Tie chain 只在起音处设置。
+41. Global Meter 使用专用写工具修改，必须由覆盖全部六轨的 `wholeProject` Task 授权；该工具只改变底层全局拍号事实，不自动进行音乐性重排，重排由 Agent 使用音乐修改工具完成。

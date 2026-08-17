@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { TRACK_IDS, type Tick } from './domain.js';
+import { createMidiNoteNumber } from './music-values.js';
 import {
   isPlaybackCompilation,
   isTimelineViewModel,
@@ -29,7 +30,7 @@ const playbackFixture = (): PlaybackCompilation => ({
               {
                 startTick: tick(0),
                 durationTick: tick(960),
-                pitch: 60,
+                pitch: createMidiNoteNumber(60),
                 velocity: 100,
               },
             ]
@@ -66,7 +67,7 @@ describe('playback compilation contract', () => {
         {
           startTick: tick(3500),
           durationTick: tick(960),
-          pitch: 60,
+          pitch: createMidiNoteNumber(60),
           velocity: 100,
         },
       ],
@@ -76,6 +77,52 @@ describe('playback compilation contract', () => {
       isPlaybackCompilation({
         ...outOfBounds,
         midiDocument: { ...outOfBounds.midiDocument, tracks },
+      }),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['accepts the lowest MIDI note number', 0, true],
+    ['rejects a negative MIDI note number', -1, false],
+    ['rejects a MIDI note number above 127', 128, false],
+  ])('%s', (_name, pitch, expected) => {
+    const playback = playbackFixture();
+    const firstTrack = playback.midiDocument.tracks[0];
+    if (firstTrack?.notes[0] === undefined) {
+      throw new Error('fixture must contain a note');
+    }
+
+    const tracks: unknown[] = [...playback.midiDocument.tracks];
+    tracks[0] = {
+      ...firstTrack,
+      notes: [{ ...firstTrack.notes[0], pitch }],
+    };
+
+    expect(
+      isPlaybackCompilation({
+        ...playback,
+        midiDocument: { ...playback.midiDocument, tracks },
+      }),
+    ).toBe(expected);
+  });
+
+  it('rejects velocity zero because MIDI treats it as note-off', () => {
+    const playback = playbackFixture();
+    const firstTrack = playback.midiDocument.tracks[0];
+    if (firstTrack?.notes[0] === undefined) {
+      throw new Error('fixture must contain a note');
+    }
+
+    const tracks = [...playback.midiDocument.tracks];
+    tracks[0] = {
+      ...firstTrack,
+      notes: [{ ...firstTrack.notes[0], velocity: 0 }],
+    };
+
+    expect(
+      isPlaybackCompilation({
+        ...playback,
+        midiDocument: { ...playback.midiDocument, tracks },
       }),
     ).toBe(false);
   });

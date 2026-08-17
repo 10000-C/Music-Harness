@@ -1405,14 +1405,14 @@ Spike-002 的 TG-001/TG-002 只用单音、单声部事件证明了 Canonicaliza
 - 指令只作用于后续一个发声事件；
 - 作用于 Chord 时，同一 Velocity 应用于 Chord 内全部 pitch；
 - `-1` 和 `128` 会被 abcjs 静默截断为 `0` 和 `127`，因此 Music Core 必须在交给 abcjs 前拒绝越界值；
-- `pp/mf/ff` 等动态记号会根据拍位产生不同数值，只适合作为有限音乐动态语义，不适合作为任意 `0–127` Canonical Velocity；
+- `pp/mf/ff` 等动态记号会根据拍位产生不同数值，只适合作为有限音乐动态语义，不适合作为任意数值的 Canonical Velocity；
 - abcjs 为内联 MIDI 指令返回的 `startChar/endChar` 是 `-1/-1`，无法仅依赖 Tune Object 构建安全 Scope span。
 
 因此，`[I:MIDI vol N]` 是“可实现任意 Velocity”的稳定候选表示。ADR-034 已采用该表示，A2 必须有受控 tokenizer/serializer：
 
 1. 将每条 Velocity 指令绑定到恰好一个后续 Note 或 Chord；
 2. 把指令文本与 Note/Chord token 一并纳入该领域事件的 ABC span；
-3. 在 abcjs 解析前验证 `N` 是 `0..127` 的整数；
+3. 在 abcjs 解析前验证 `N` 是产品允许范围内的整数；Spike 证明 abcjs 可传递 `0`，但最终播放领域范围由 ADR-034 决定；
 4. 禁止指令悬空、连续覆盖或跨 Rest 隐式作用；
 5. 明确 P0 Chord 只支持共享 Velocity，除非后续 Spike 证明可稳定表达 chord 内独立 pitch velocity。
 
@@ -1437,9 +1437,9 @@ Spike-002 的 TG-001/TG-002 只用单音、单声部事件证明了 Canonicaliza
 
 ### 6. D2 采用结果与实现回归
 
-2026-08-02 的 D2 决策采用：
+2026-08-02 的 D2 决策采用，并于 2026-08-05 根据 Standard MIDI Note On/Off 语义修正范围：
 
-- `[I:MIDI vol N]`，`N` 为整数 `0..127`；
+- `[I:MIDI vol N]`，`N` 为整数 `1..127`；`0` 保留为 Note Off，不作为 Note onset Velocity；
 - 指令只绑定一个后续 Note/Chord onset，并与事件进入同一个 Scope span；
 - Chord 内共享 Velocity，Tie continuation 不重新设置；
 - 没有指令时使用默认值 `100`；

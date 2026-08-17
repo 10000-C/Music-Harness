@@ -104,8 +104,8 @@ describe('Canonical ABC', () => {
     ).toEqual([48, 60, 72, 84]);
   });
 
-  it('preserves event velocity from 0 through 127 for notes and chords', () => {
-    const body = '[I:MIDI vol 0]C [I:MIDI vol 64]D [I:MIDI vol 127][CEG] z |';
+  it('preserves event velocity from 1 through 127 for notes and chords', () => {
+    const body = '[I:MIDI vol 1]C [I:MIDI vol 64]D [I:MIDI vol 127][CEG] z |';
     const source = canonicalizeExternalAbc(
       sourceWithBodies(
         Object.fromEntries(TRACK_IDS.map((trackId) => [trackId, body])),
@@ -113,13 +113,13 @@ describe('Canonical ABC', () => {
     );
 
     expect(source).toContain(
-      '[V:track.drums] [I:MIDI vol 0] C [I:MIDI vol 64] D [I:MIDI vol 127] [CEG] z |',
+      '[V:track.drums] [I:MIDI vol 1] C [I:MIDI vol 64] D [I:MIDI vol 127] [CEG] z |',
     );
     expect(
       compileCanonicalAbc(source).tracks[0]?.events.map((event) =>
         event.type === 'note' ? event.velocity : null,
       ),
-    ).toEqual([0, 64, 127, null]);
+    ).toEqual([1, 64, 127, null]);
   });
 
   it('expands repeats without losing event velocity', () => {
@@ -159,6 +159,64 @@ describe('Canonical ABC', () => {
     expect(event?.abcSpans).toHaveLength(3);
   });
 
+  it.each([
+    ['a different note pitch', 'C2-D2 |'],
+    ['a different chord pitch set', '[CE]2-[CF]2 |'],
+    ['an enharmonic respelling', '^C2-_D2 |'],
+    ['an explicit accidental change', '^C2-=C2 |'],
+  ])('rejects a tie continuation with %s', (_name, body) => {
+    const source = canonicalizeExternalAbc(
+      sourceWithBodies(
+        Object.fromEntries(TRACK_IDS.map((trackId) => [trackId, body])),
+      ),
+    );
+
+    expect(() => compileCanonicalAbc(source)).toThrow(
+      CompositionValidationError,
+    );
+  });
+
+  it.each([
+    ['inherits the accidental', '^C2-C2 |'],
+    ['repeats the same accidental', '^C2-^C2 |'],
+  ])('accepts a tie that %s', (_name, body) => {
+    const source = canonicalizeExternalAbc(
+      sourceWithBodies(
+        Object.fromEntries(TRACK_IDS.map((trackId) => [trackId, body])),
+      ),
+    );
+
+    expect(compileCanonicalAbc(source).tracks[0]?.events[0]).toMatchObject({
+      type: 'note',
+      durationTick: 3840,
+      pitches: [61],
+    });
+  });
+
+  it('accepts MIDI note zero and rejects pitches outside 0 through 127', () => {
+    const lowest = canonicalizeExternalAbc(
+      sourceWithBodies(
+        Object.fromEntries(TRACK_IDS.map((trackId) => [trackId, 'C,,,,,4 |'])),
+      ),
+    );
+
+    expect(compileCanonicalAbc(lowest).tracks[0]?.events[0]).toMatchObject({
+      type: 'note',
+      pitches: [0],
+    });
+
+    for (const body of ['C,,,,,,4 |', "c''''''4 |"]) {
+      const source = canonicalizeExternalAbc(
+        sourceWithBodies(
+          Object.fromEntries(TRACK_IDS.map((trackId) => [trackId, body])),
+        ),
+      );
+      expect(() => compileCanonicalAbc(source)).toThrow(
+        CompositionValidationError,
+      );
+    }
+  });
+
   it('retains identical global tempo and key maps across all voices', () => {
     const body = 'C2 [Q:1/4=90] [K:G] D2 |';
     const source = canonicalizeExternalAbc(
@@ -195,6 +253,7 @@ describe('Canonical ABC', () => {
   });
 
   it.each([
+    ['zero', '[I:MIDI vol 0]C4 |'],
     ['negative', '[I:MIDI vol -1]C4 |'],
     ['above 127', '[I:MIDI vol 128]C4 |'],
     ['fractional', '[I:MIDI vol 63.5]C4 |'],

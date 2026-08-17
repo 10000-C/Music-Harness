@@ -14,6 +14,7 @@ import {
   updateGlobalMeter,
   type GlobalMeterUpdateResult,
 } from './global-meter.js';
+import { validateFinalMeterConsistency } from './meter-consistency.js';
 import type { GlobalMeterValue } from './meter-policy.js';
 import {
   getScopedComposition,
@@ -53,6 +54,10 @@ export class CompositionPipeline {
       }
       throw error;
     }
+  }
+
+  public validateFinalMeterConsistency(source: string): ValidationReport {
+    return validateFinalMeterConsistency(source);
   }
 
   public getScopedComposition(

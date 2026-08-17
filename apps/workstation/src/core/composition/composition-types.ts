@@ -1,6 +1,7 @@
 import type {
   KeyEvent,
   MeterEvent,
+  MidiNoteNumber,
   TempoEvent,
   Tick,
   TrackId,
@@ -20,7 +21,7 @@ interface DomainEventBase {
 
 export interface DomainNoteEvent extends DomainEventBase {
   readonly type: 'note';
-  readonly pitches: readonly number[];
+  readonly pitches: readonly MidiNoteNumber[];
   readonly velocity: number;
 }
 
@@ -46,7 +47,10 @@ export type CompositionValidationIssueCode =
   | 'ABC_DURATION_NOT_EXACT'
   | 'TRACK_LENGTH_MISMATCH'
   | 'GLOBAL_MAP_MISMATCH'
+  | 'MIDI_NOTE_NUMBER_INVALID'
+  | 'MIDI_TEMPO_INVALID'
   | 'GLOBAL_METER_INVALID'
+  | 'METER_BARLINE_MISMATCH'
   | 'SCOPE_INVALID'
   | 'SCOPE_MAPPING_STALE'
   | 'SCOPE_CROSSES_EVENT'
