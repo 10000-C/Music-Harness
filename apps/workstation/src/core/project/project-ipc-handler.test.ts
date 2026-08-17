@@ -34,11 +34,11 @@ let handler: ProjectIpcHandler;
 
 beforeEach(() => {
   fake = {
-    createProject: vi.fn(async () => opened),
-    openProject: vi.fn(async () => opened),
-    recoverCurrent: vi.fn(async () => opened),
-    saveProjectAs: vi.fn(async () => opened),
-    closeProject: vi.fn(async () => undefined),
+    createProject: vi.fn(() => Promise.resolve(opened)),
+    openProject: vi.fn(() => Promise.resolve(opened)),
+    recoverCurrent: vi.fn(() => Promise.resolve(opened)),
+    saveProjectAs: vi.fn(() => Promise.resolve(opened)),
+    closeProject: vi.fn(() => Promise.resolve()),
   };
   handler = new ProjectIpcHandler(fake as ProjectFoundationPort);
 });

@@ -103,7 +103,7 @@ export class ProjectWriteLock {
     if (existing && processProbe(existing.pid) === 'alive') {
       throw new ProjectError(
         'PROJECT_WRITE_LOCKED',
-        `Project is already open by process ${existing.pid}`,
+        `Project is already open by process ${String(existing.pid)}`,
       );
     }
 
@@ -136,12 +136,12 @@ export class ProjectWriteLock {
       current = undefined;
     }
 
-    if (
-      !current ||
-      current.projectId !== this.record.projectId ||
-      current.instanceId !== this.record.instanceId ||
-      current.pid !== this.record.pid
-    ) {
+    const ownsLock =
+      current?.projectId === this.record.projectId &&
+      current.instanceId === this.record.instanceId &&
+      current.pid === this.record.pid;
+
+    if (!ownsLock) {
       throw new ProjectError(
         'PROJECT_WRITE_LOCK_LOST',
         'Project write lock ownership was lost',

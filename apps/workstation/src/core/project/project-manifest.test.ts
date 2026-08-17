@@ -21,8 +21,8 @@ describe('project authority fixtures', () => {
   });
 
   it('rejects invalid project manifests', () => {
-    expect(() => parseProjectManifest('{')).toThrowError();
-    expect(() => parseProjectManifest('{}')).toThrowError();
+    expect(() => parseProjectManifest('{')).toThrow();
+    expect(() => parseProjectManifest('{}')).toThrow();
   });
 
   it('creates a deterministic non-empty six-voice ABC fixture', () => {

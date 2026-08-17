@@ -4,7 +4,7 @@ import { ProjectWriteCoordinator } from './project-write-coordinator.js';
 
 describe('ProjectWriteCoordinator', () => {
   it('runs project writes strictly in FIFO order', async () => {
-    const assertOwned = vi.fn(async () => undefined);
+    const assertOwned = vi.fn(() => Promise.resolve());
     const order: string[] = [];
     let releaseGate: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
@@ -17,8 +17,9 @@ describe('ProjectWriteCoordinator', () => {
       await gate;
       order.push('first:end');
     });
-    const second = coordinator.run(async () => {
+    const second = coordinator.run(() => {
       order.push('second');
+      return Promise.resolve();
     });
 
     releaseGate();
@@ -29,15 +30,15 @@ describe('ProjectWriteCoordinator', () => {
 
   it('continues the queue after a failed write', async () => {
     const coordinator = new ProjectWriteCoordinator({
-      assertOwned: async () => undefined,
+      assertOwned: () => Promise.resolve(),
     });
 
     await expect(
-      coordinator.run(async () => {
-        throw new Error('injected');
-      }),
+      coordinator.run(() => Promise.reject(new Error('injected'))),
     ).rejects.toThrow('injected');
 
-    await expect(coordinator.run(async () => 'next')).resolves.toBe('next');
+    await expect(coordinator.run(() => Promise.resolve('next'))).resolves.toBe(
+      'next',
+    );
   });
 });
