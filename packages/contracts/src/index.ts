@@ -17,3 +17,18 @@ export type {
   TrackId,
   WholeProjectScope,
 } from './domain.js';
+
+export {
+  PROJECT_FORMAT_VERSION,
+  PROJECT_PPQ,
+  isProjectManifest,
+} from './project.js';
+
+export type {
+  OpenedProject,
+  ProjectCommand,
+  ProjectErrorCode,
+  ProjectEvent,
+  ProjectManifest,
+  ProjectOpenState,
+} from './project.js';
