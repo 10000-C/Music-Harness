@@ -400,6 +400,91 @@ export class CandidateTransaction {
     });
   }
 
+  public async finishTask(
+    envelope: TaskExecutionEnvelope,
+  ): Promise<FinishTaskResult> {
+    return this.runOrdinaryMutation(envelope.taskId, async (lease) => {
+      let candidate: CandidateRecord | undefined;
+      let task: ActiveTask | undefined;
+      try {
+        ({ candidate, task } = await this.guardTaskEnvelope(envelope));
+        if (task.pendingScopeExtension !== undefined) {
+          throw new CandidateError(
+            'TASK_SCOPE_EXTENSION_PENDING',
+            'Task cannot finish while a Scope Extension is pending',
+          );
+        }
+        task.state = 'validating';
+
+        const changes = await this.dependencies.repository.inspectChanges(
+          candidate.workspace,
+        );
+        this.assertTaskStillAuthorized(candidate, task, envelope, 'validating');
+        if (
+          changes.projectJsonChangedFromBase ||
+          changes.unexpectedPaths.length > 0
+        ) {
+          throw new CandidateError(
+            'UNEXPECTED_CANDIDATE_CHANGE',
+            'Candidate contains unauthorized authority or filesystem changes',
+            {
+              projectJsonChangedFromBase: changes.projectJsonChangedFromBase,
+              unexpectedPaths: changes.unexpectedPaths,
+            },
+          );
+        }
+
+        const authority = await this.dependencies.repository.readAuthority(
+          candidate.workspace,
+        );
+        this.assertTaskStillAuthorized(candidate, task, envelope, 'validating');
+        await this.dependencies.composition.compileCanonical(
+          authority.compositionSource,
+        );
+        const validation =
+          await this.dependencies.composition.validateFinalMeterConsistency(
+            authority.compositionSource,
+          );
+
+        await this.assertCandidateBaseline(candidate);
+        this.assertTaskStillAuthorized(candidate, task, envelope, 'validating');
+        if (!validation.valid) {
+          task.state = 'editing';
+          return {
+            candidate: this.toCandidateView(candidate),
+            validation,
+          };
+        }
+
+        lease.writeEntered = true;
+        const checkpoint = await this.dependencies.repository.createCheckpoint(
+          candidate.workspace,
+          `Finish Task ${task.taskId}`,
+        );
+        this.assertTaskStillAuthorized(candidate, task, envelope, 'validating');
+        candidate.latestCheckpoint = checkpoint;
+        candidate.activeTask = undefined;
+        candidate.state = 'ready';
+        return {
+          candidate: this.toCandidateView(candidate),
+          validation,
+        };
+      } catch (error) {
+        if (
+          candidate !== undefined &&
+          task !== undefined &&
+          this.candidate === candidate &&
+          candidate.activeTask === task &&
+          candidate.state === 'active' &&
+          task.state === 'validating'
+        ) {
+          task.state = 'editing';
+        }
+        throw error;
+      }
+    });
+  }
+
   public async cancelTask(input: {
     readonly projectId: ProjectId;
     readonly candidateId: CandidateId;
@@ -642,12 +727,13 @@ export class CandidateTransaction {
     candidate: CandidateRecord,
     task: ActiveTask,
     envelope: TaskExecutionEnvelope,
+    expectedState: TaskState = 'editing',
   ): void {
     if (
       this.candidate !== candidate ||
       candidate.activeTask !== task ||
       candidate.state !== 'active' ||
-      task.state !== 'editing'
+      task.state !== expectedState
     ) {
       throw new CandidateError('TASK_NOT_ACTIVE', 'Task authorization ended');
     }

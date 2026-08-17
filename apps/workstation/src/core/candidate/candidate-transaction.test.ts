@@ -831,3 +831,175 @@ describe('CandidateTransaction A2-backed operations', () => {
     expect(repository.writeComposition).not.toHaveBeenCalled();
   });
 });
+
+describe('CandidateTransaction finishTask', () => {
+  it('validates, creates one checkpoint, destroys Task authorization, and reuses Ready Candidate', async () => {
+    const { transaction, composition, repository, workspace } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const finalValidation = vi.spyOn(
+      composition,
+      'validateFinalMeterConsistency',
+    );
+
+    const result = await transaction.finishTask(envelopeFor(task));
+
+    expect(finalValidation).toHaveBeenCalledWith(initialSource);
+    expect(repository.inspectChanges).toHaveBeenCalledWith(workspace);
+    expect(repository.createCheckpoint).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      candidate: {
+        candidateId,
+        projectId,
+        baseRevision: 'C0',
+        state: 'ready',
+      },
+      validation: { valid: true, issues: [] },
+    });
+    expect(result).not.toHaveProperty('checkpoint');
+    expect(result).not.toHaveProperty('latestCheckpoint');
+    await expect(transaction.getTaskContext(task.taskId)).rejects.toMatchObject(
+      {
+        code: 'TASK_NOT_ACTIVE',
+      },
+    );
+
+    const secondTask = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    expect(repository.create).toHaveBeenCalledOnce();
+    await transaction.cancelTask({
+      projectId,
+      candidateId,
+      taskId: secondTask.taskId,
+    });
+    expect(repository.resetTo).toHaveBeenLastCalledWith(workspace, 'P1');
+  });
+
+  it('keeps Candidate edits and returns Task to editing when final validation fails', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    vi.spyOn(composition, 'validateFinalMeterConsistency').mockReturnValue({
+      valid: false,
+      issues: [
+        {
+          code: 'METER_BARLINE_MISMATCH',
+          message: 'Final bars do not match meter',
+        },
+      ],
+    });
+
+    await expect(
+      transaction.finishTask(envelopeFor(task)),
+    ).resolves.toMatchObject({
+      candidate: { state: 'active' },
+      validation: {
+        valid: false,
+        issues: [{ code: 'METER_BARLINE_MISMATCH' }],
+      },
+    });
+    expect(repository.createCheckpoint).not.toHaveBeenCalled();
+    await expect(
+      transaction.getTaskContext(task.taskId),
+    ).resolves.toMatchObject({
+      state: 'editing',
+      candidateState: 'active',
+    });
+  });
+
+  it.each([
+    [
+      'project.json changed from base',
+      {
+        compositionChanged: false,
+        projectJsonChangedFromBase: true,
+        unexpectedPaths: [] as string[],
+      },
+    ],
+    [
+      'unexpected Candidate path exists',
+      {
+        compositionChanged: false,
+        projectJsonChangedFromBase: false,
+        unexpectedPaths: ['rogue.txt'],
+      },
+    ],
+  ])(
+    'rejects finish when %s and leaves Task editable',
+    async (_label, changes) => {
+      const { transaction, repository } = createHarness();
+      repository.inspectChanges.mockResolvedValueOnce(changes);
+      const task = await transaction.startTask({
+        projectId,
+        scope: wholeProjectScope,
+      });
+
+      await expect(
+        transaction.finishTask(envelopeFor(task)),
+      ).rejects.toMatchObject({
+        code: 'UNEXPECTED_CANDIDATE_CHANGE',
+      });
+      expect(repository.createCheckpoint).not.toHaveBeenCalled();
+      await expect(
+        transaction.getTaskContext(task.taskId),
+      ).resolves.toMatchObject({
+        state: 'editing',
+        candidateState: 'active',
+      });
+    },
+  );
+
+  it('stales Candidate and destroys Active Task when base revision drifts', async () => {
+    const { transaction, currentState, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    currentState.revision = 'C1';
+
+    await expect(
+      transaction.finishTask(envelopeFor(task)),
+    ).rejects.toMatchObject({
+      code: 'CANDIDATE_BASELINE_CHANGED',
+    });
+    expect(repository.createCheckpoint).not.toHaveBeenCalled();
+    await expect(
+      transaction.finishTask(envelopeFor(task)),
+    ).rejects.toMatchObject({
+      code: 'CANDIDATE_STALE',
+    });
+    await expect(
+      transaction.startTask({ projectId, scope: wholeProjectScope }),
+    ).rejects.toMatchObject({ code: 'CANDIDATE_STALE' });
+    await expect(
+      transaction.rejectCandidate({ projectId, candidateId }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('blocks finish while a Scope Extension is pending', async () => {
+    const { transaction, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const envelope = envelopeFor(task);
+    await transaction.requestScopeExtension({
+      envelope,
+      requestedScope: {
+        type: 'wholeProject',
+        trackIds: ['track.drums', 'track.bass'],
+      },
+    });
+
+    await expect(transaction.finishTask(envelope)).rejects.toMatchObject({
+      code: 'TASK_SCOPE_EXTENSION_PENDING',
+    });
+    expect(repository.createCheckpoint).not.toHaveBeenCalled();
+  });
+});
