@@ -6,7 +6,7 @@ import {
   type ProjectId,
   type TaskId,
   type Tick,
-} from '../index.js';
+} from './index.js';
 import { isCoreEvent, isRendererCommand } from './protocol.js';
 import {
   isCoreBootstrapState,

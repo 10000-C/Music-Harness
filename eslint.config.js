@@ -13,7 +13,6 @@ export default tseslint.config(
       '**/.turbo/**',
       '**/.agent-music/**',
       '**/.worktrees/**',
-      'apps/workstation/src/renderer/b-contracts/renderer-contracts.test.ts',
     ],
   },
   eslint.configs.recommended,
