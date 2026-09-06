@@ -343,7 +343,7 @@ export const createServiceSupervisor = (
     if (service === 'core' && isCoreProjectResponse(message)) {
       const requestId = message.event.requestId;
       const pending = pendingProjects.get(requestId);
-      if (pending !== undefined && pending.generation === generation) {
+      if (pending?.generation === generation) {
         cancel(pending.timeout);
         pendingProjects.delete(requestId);
         pending.resolve(message.event);

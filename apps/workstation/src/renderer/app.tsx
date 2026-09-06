@@ -1097,7 +1097,9 @@ const LiveProjectWorkspace = () => {
           <h2>MUSE Agent</h2>
         </div>
         <p className="agent-empty-state">
-          Open a project before starting an agent task.
+          {project === null
+            ? 'Open a project before starting an agent task.'
+            : 'Agent tasks will be available when this project is ready.'}
         </p>
       </aside>
     </div>
