@@ -16,7 +16,9 @@ export const writeSmokeLog = (message: string, output: Writable = process.stdout
 
   output.once('error', onError);
   try {
-    output.write(`${message}\n`, () => output.removeListener('error', onError));
+    output.write(`${message}\n`, () => {
+      setImmediate(() => output.removeListener('error', onError));
+    });
   } catch (error) {
     output.removeListener('error', onError);
     if (!isBrokenPipe(error)) throw error;
