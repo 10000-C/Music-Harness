@@ -10,6 +10,7 @@ import {
 } from './service-supervisor/process-adapters.js';
 import { resolveServiceEntry } from './service-entry-resolver.js';
 import { fork } from 'node:child_process';
+import { writeSmokeLog } from './smoke-log.js';
 
 const isSpessaSynthSmoke =
   process.env.AGENT_MUSIC_SMOKE === '1' &&
@@ -66,7 +67,7 @@ if (process.env.AGENT_MUSIC_SMOKE === '1') {
   const complete = (): void => {
     if (!completed && rendererReady && servicesReady) {
       completed = true;
-      console.log('SMOKE:complete');
+      writeSmokeLog('SMOKE:complete');
       app.quit();
     }
   };
@@ -78,7 +79,7 @@ if (process.env.AGENT_MUSIC_SMOKE === '1') {
       snapshot.agent === 'ready'
     ) {
       servicesReady = true;
-      console.log('SMOKE:services-ready');
+      writeSmokeLog('SMOKE:services-ready');
       complete();
     }
   });
@@ -88,12 +89,12 @@ if (process.env.AGENT_MUSIC_SMOKE === '1') {
       createMainWindow({
         onRendererReady: (state) => {
           rendererReady = true;
-          console.log(`SMOKE:renderer-security:${JSON.stringify(state)}`);
+          writeSmokeLog(`SMOKE:renderer-security:${JSON.stringify(state)}`);
           complete();
         },
         onSpessaSynthReady: (state) => {
           rendererReady = true;
-          console.log(`SMOKE:spessasynth:${JSON.stringify(state)}`);
+          writeSmokeLog(`SMOKE:spessasynth:${JSON.stringify(state)}`);
           complete();
         },
       }),
