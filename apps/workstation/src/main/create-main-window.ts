@@ -1,5 +1,6 @@
 import { BrowserWindow, session } from 'electron';
 import { join } from 'node:path';
+import { writeSmokeLog } from './smoke-log.js';
 
 interface RendererSmokeState {
   readonly require: string;
@@ -83,7 +84,7 @@ export const createMainWindow = (
   });
   if (process.env.AGENT_MUSIC_SMOKE === '1') {
     window.webContents.once('did-finish-load', () => {
-      console.log('SMOKE:renderer-loaded');
+      writeSmokeLog('SMOKE:renderer-loaded');
       if (process.env.AGENT_MUSIC_SPESSA_SPIKE === '1') {
         void window.webContents
           .executeJavaScript(
@@ -132,13 +133,13 @@ export const createMainWindow = (
             ) {
               options.onSpessaSynthReady?.(value as SpessaSynthSmokeState);
             } else {
-              console.log(
+              writeSmokeLog(
                 `SMOKE:spessasynth-state-invalid:${JSON.stringify(value)}`,
               );
             }
           })
           .catch((error: unknown) => {
-            console.log(`SMOKE:spessasynth-state-error:${String(error)}`);
+            writeSmokeLog(`SMOKE:spessasynth-state-error:${String(error)}`);
           });
         return;
       }
@@ -187,13 +188,13 @@ export const createMainWindow = (
           ) {
             options.onRendererReady?.(value as RendererSmokeState);
           } else {
-            console.log(
+            writeSmokeLog(
               `SMOKE:renderer-state-invalid:${JSON.stringify(value)}`,
             );
           }
         })
         .catch((error: unknown) => {
-          console.log(`SMOKE:renderer-state-error:${String(error)}`);
+          writeSmokeLog(`SMOKE:renderer-state-error:${String(error)}`);
         });
     });
   }
