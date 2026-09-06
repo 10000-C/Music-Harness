@@ -13,6 +13,7 @@ export default tseslint.config(
       '**/.turbo/**',
       '**/.agent-music/**',
       '**/.worktrees/**',
+      'apps/workstation/src/renderer/b-contracts/renderer-contracts.test.ts',
     ],
   },
   eslint.configs.recommended,
@@ -35,6 +36,15 @@ export default tseslint.config(
         projectService: false,
         tsconfigRootDir: import.meta.dirname,
       },
+    },
+  },
+  {
+    files: ['apps/workstation/tests/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
   {
