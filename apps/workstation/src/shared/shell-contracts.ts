@@ -1,7 +1,7 @@
 import {
   isServiceKind,
   type ServiceKind,
-} from '../main/b-contracts/service-lifecycle.js';
+} from '../shared/service-lifecycle.js';
 
 export const shellIpcChannels = {
   snapshot: 'shell:snapshot',

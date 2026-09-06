@@ -1,5 +1,5 @@
 import { ipcMain, type BrowserWindow } from 'electron';
-import { isServiceKind } from './b-contracts/service-lifecycle.js';
+import { isServiceKind } from '../shared/service-lifecycle.js';
 import {
   isExportPathRequest,
   isProjectDirectoryPurpose,

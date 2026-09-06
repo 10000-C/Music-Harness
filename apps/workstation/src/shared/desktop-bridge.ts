@@ -1,4 +1,4 @@
-import type { ServiceKind } from '../main/b-contracts/service-lifecycle.js';
+import type { ServiceKind } from '../shared/service-lifecycle.js';
 import type { ServiceFleetSnapshot } from './service-status.js';
 import type {
   CommandResult,
