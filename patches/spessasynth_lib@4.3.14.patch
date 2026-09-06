@@ -1,0 +1,13 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 2880b3d..179f4bb 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -94,7 +94,7 @@ declare class MIDIData extends BasicMIDI {
+   /**
+    * THIS DATA WILL BE EMPTY! USE sequencer.getMIDI() TO GET THE ACTUAL DATA!
+    */
+-  embeddedSoundBank: undefined;
++  embeddedSoundBank?: ArrayBuffer;
+   /**
+    * The byte length of the sound bank if it exists.
+    */
