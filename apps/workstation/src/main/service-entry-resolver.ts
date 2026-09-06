@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { ServiceKind } from './b-contracts/service-lifecycle.js';
+import type { ServiceKind } from '../shared/service-lifecycle.js';
 
 export const resolveServiceEntry = (
   service: ServiceKind,

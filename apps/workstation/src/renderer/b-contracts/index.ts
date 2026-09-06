@@ -54,7 +54,7 @@ export type {
   TimelineViewModel as RendererTimelineViewModel,
 } from './timeline.js';
 
-export type { ServiceKind } from '../../main/b-contracts/service-lifecycle.js';
+export type { ServiceKind } from '../../shared/service-lifecycle.js';
 
 export { isCoreEvent, isRendererCommand } from './protocol.js';
 

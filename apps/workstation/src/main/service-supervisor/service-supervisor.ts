@@ -3,7 +3,7 @@ import {
   type MainToServiceMessage,
   type ServiceKind,
   type ServiceToMainMessage,
-} from '../b-contracts/service-lifecycle.js';
+} from '../../shared/service-lifecycle.js';
 import type {
   ManagedProcess,
   ManagedProcessAdapter,

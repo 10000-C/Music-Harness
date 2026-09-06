@@ -1,7 +1,7 @@
 import {
   isMainToServiceMessage,
   type ServiceKind,
-} from '../main/b-contracts/service-lifecycle.js';
+} from '../shared/service-lifecycle.js';
 
 const service = process.argv[2] as ServiceKind;
 const send = (message: unknown): void => {

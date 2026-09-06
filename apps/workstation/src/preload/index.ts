@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { isServiceKind } from '../main/b-contracts/service-lifecycle.js';
+import { isServiceKind } from '../shared/service-lifecycle.js';
 import {
   isCommandResult,
   isDirectoryDialogResult,

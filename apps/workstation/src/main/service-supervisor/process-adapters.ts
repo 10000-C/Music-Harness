@@ -1,7 +1,7 @@
 import type {
   MainToServiceMessage,
   ServiceKind,
-} from '../b-contracts/service-lifecycle.js';
+} from '../../shared/service-lifecycle.js';
 
 export interface ManagedProcess {
   readonly send: (message: MainToServiceMessage) => void;
