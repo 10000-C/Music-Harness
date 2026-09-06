@@ -2,7 +2,7 @@ import {
   isServiceKind,
   type ServiceKind,
 } from '../shared/service-lifecycle.js';
-import type { ProjectCommand, ProjectEvent } from '@agent-music/contracts';
+import type { ProjectEvent } from '@agent-music/contracts';
 import { isProjectCommand, isProjectEvent } from './project-bridge.js';
 
 export const shellIpcChannels = {
@@ -109,7 +109,7 @@ export const isProjectCommandResult = (
   value: unknown,
 ): value is ProjectCommandResult => {
   if (!isRecord(value) || typeof value.ok !== 'boolean') return false;
-  if (value.ok === true) return isProjectEvent(value.event);
+  if (value.ok) return isProjectEvent(value.event);
   return (
     typeof value.code === 'string' && typeof value.userMessage === 'string'
   );
