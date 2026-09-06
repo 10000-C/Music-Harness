@@ -13,7 +13,7 @@
 - 开发者 A：Music Core Utility Process + Built-in Agent Service。
 - 开发者 B：Electron Main + Renderer/React UI + openDAW Runtime。
 
-**技术基线：** Node.js 24.18.1、pnpm 9.15.9、TypeScript、Electron、React、openDAW、Mastra、MCP、abcjs、Git/worktree、SQLite/LibSQL。
+**技术基线：** Node.js 24.18.1、pnpm 9.15.9、TypeScript、Electron、React、openDAW、Strands、MCP、abcjs、Git/worktree、SQLite/LibSQL。
 
 ---
 
@@ -81,7 +81,7 @@ Music Core Utility Process
 └── Core IPC Handler
 
 Built-in Agent Service
-├── Mastra Agent Loop
+├── Strands Agent Loop
 ├── Chat Completions Provider Adapter
 ├── MCP Client
 ├── Settings
@@ -160,7 +160,7 @@ A 负责：
 A 负责：
 
 - Agent Service 进程入口和生命周期；
-- Mastra 单 Agent Loop；
+- Strands 单 Agent Loop；
 - OpenAI-compatible Chat Completions；
 - SSE Tool Call 增量拼接；
 - Provider 取消、超时、429 和协议错误；
@@ -350,7 +350,7 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 | **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、显式恢复、另存为；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；同项目单写实例；稳定 Project Command/Event |
 | **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Meter 修改与最终 Meter/barline 一致性校验、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateGlobalMeter`、`validateFinalMeterConsistency`、PlaybackCompilation、TimelineViewModel、ValidationReport |
 | **A3** | Candidate Transaction | Candidate `baseRevision`、`.agent-music` worktree、Candidate/Task 双状态机、execution envelope、Scope Extension 授权、checkpoint、Accept/Reject、取消回滚、cleanup marker、稳定领域错误；Current 正式写入经 A1 串行写入机制 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 Agent-facing / Renderer-control interface 与 Candidate Command/Event |
-| **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Mastra Agent Loop、planning/confirmation 前置流程、AgentExecutionContext、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask`，不复制 A3 Candidate/Task 授权状态 |
+| **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Strands Agent Loop、planning/confirmation 前置流程、AgentExecutionContext、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask`，不复制 A3 Candidate/Task 授权状态 |
 | **A5** | Persistence & Export Preparation | SQLite、Settings、安全脱敏、复用 A1 clean Current 读取校验、ABC/MIDI 导出数据、WAV 输入准备 | A1、A2 | 可恢复 Agent 状态；经过 Current 校验的导出输入 |
 
 #### 7.1.1 A1 最小接口与实现边界

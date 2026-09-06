@@ -68,7 +68,7 @@
 
 - Do **not** add Candidate lifecycle methods to `apps/workstation/src/core/project/git-adapter.ts`; A1 remains Current/Project Foundation.
 - Do **not** move `replaceScopedMusic`, `updateGlobalMeter`, parser, Scope Mapping, meter consistency, or MIDI logic out of `apps/workstation/src/core/composition/`.
-- Do **not** implement MCP transport, Provider/Mastra loop, planning, confirmation orchestration, or repair limits in A3; those are A4.
+- Do **not** implement MCP transport, Provider/Strands loop, planning, confirmation orchestration, or repair limits in A3; those are A4.
 - Do **not** introduce RuntimeSnapshot/openDAW dependencies into A3.
 
 ---

@@ -7,7 +7,7 @@
 | 状态 | P0 架构基线；A3 Candidate Transaction 决策已冻结 |
 | 日期 | 2026-08-13 |
 | 首发平台 | Windows 10/11 |
-| 核心技术 | Electron、React、TypeScript、openDAW、Mastra、MCP、Git/worktree、SQLite |
+| 核心技术 | Electron、React、TypeScript、openDAW、Strands、MCP、Git/worktree、SQLite |
 
 > 本版在 V1.6 Composition Pipeline 基线上冻结 A3 Candidate Transaction：Candidate/Task 双状态机、Candidate `baseRevision`、Task execution envelope、严格 Scope Extension、Candidate mutation 并发、checkpoint、Accept/Reject 线性化点、cleanup marker 与稳定领域错误。
 
@@ -37,7 +37,7 @@
 | ADR-002 | 桌面 UI | React + TypeScript，运行于 Electron Renderer。 |
 | ADR-003 | 音乐工作区 | P0 自研 React 时间轴、Clip 展示、Transport 和连续 Scope；通过 Adapter 使用 openDAW SDK/Core Runtime，不 fork 或内嵌 openDAW Studio UI。 |
 | ADR-004 | Piano Roll | P0 不显示；P2 默认自研 React 编辑器，经 Music Core 更新 Canonical ABC 后重建 Runtime，不直接启用 openDAW Studio UI。 |
-| ADR-005 | Agent Runtime | Mastra 承载单 Agent Loop、会话、计划和有限修复。 |
+| ADR-005 | Agent Runtime | Strands 承载单 Agent Loop、会话、计划和有限修复。 |
 | ADR-006 | Agent 写入边界 | 所有 Agent 工程写入统一经过 Local MCP。 |
 | ADR-007 | 编曲事实来源 | 单一 `composition.abc` 是编曲唯一事实来源。 |
 | ADR-008 | Canonical ABC | 保存为完全展开形式，禁止 Repeat 简写。 |
@@ -129,7 +129,7 @@ Music Workstation 可以独立启动、打开、播放和导出项目，不要�
 
 Built-in Agent Service 是可选独立进程，包括：
 
-- Mastra；
+- Strands；
 - Chat Completions Provider Adapter；
 - 对话与 Workflow；
 - MCP Client。
@@ -143,7 +143,7 @@ flowchart LR
     MAIN[Electron Main]
     RENDERER[React Renderer<br/>Product UI + OpenDawRuntimeAdapter]
     CORE[Music Core Utility Process\nProject + ABC + MCP + Git]
-    AGENT[Optional Built-in Agent Service\nMastra + Chat Completions]
+    AGENT[Optional Built-in Agent Service\nStrands + Chat Completions]
     DB[(App-level SQLite)]
     FS[(Local Project Git Repository)]
 
@@ -223,7 +223,7 @@ agent-music-workstation/
 │   │           └── opendaw/
 │   └── agent/
 │       └── src/
-│           ├── mastra/
+│           ├── strands/
 │           ├── provider/
 │           └── mcp-client/
 └── packages/
