@@ -545,21 +545,23 @@ export const runSpessaSynthSpike = async (
       `Loop wrapped inside Tick range 480–960 and reported ${String(adapterLoopPositionTick)}.`,
     );
 
-    await adapterRuntime.send({ type: 'stop' });
     await adapterRuntime.send({ type: 'setLoop', range: null });
-    await adapterRuntime.send({
-      type: 'setMute',
-      trackId: 'track.drums',
-      muted: true,
-    });
-    await adapterRuntime.send({
-      type: 'setMute',
-      trackId: 'track.bass',
-      muted: true,
-    });
+    await adapterRuntime.send({ type: 'seek', tick: tick(0) });
     await adapterRuntime.send({ type: 'play' });
-    const adapterMutedPeak = await measureAnalyserPeak(adapterAnalyser, 250);
-    await adapterRuntime.send({ type: 'stop' });
+    const adapterUnmutedPeak = await measureAnalyserPeak(adapterAnalyser, 180);
+    await adapterRuntime.send({
+      type: 'setMute',
+      trackId: 'track.drums',
+      muted: true,
+    });
+    await adapterRuntime.send({
+      type: 'setMute',
+      trackId: 'track.bass',
+      muted: true,
+    });
+    await delay(600);
+    const adapterMutedPeak = await measureAnalyserPeak(adapterAnalyser, 180);
+    const adapterMutedState = adapterRuntime.getSnapshot();
     await adapterRuntime.send({
       type: 'setMute',
       trackId: 'track.drums',
@@ -570,19 +572,34 @@ export const runSpessaSynthSpike = async (
       trackId: 'track.bass',
       muted: false,
     });
+    await adapterRuntime.send({ type: 'pause' });
+    await adapterRuntime.send({ type: 'seek', tick: tick(0) });
+    await adapterRuntime.send({ type: 'play' });
+    const adapterRestoredPeak = await measureAnalyserPeak(adapterAnalyser, 180);
+    await adapterRuntime.send({ type: 'pause' });
     await adapterRuntime.send({
       type: 'setSolo',
       trackId: 'track.drums',
       solo: true,
     });
+    const adapterSoloState = adapterRuntime.getSnapshot();
+    await adapterRuntime.send({ type: 'seek', tick: tick(0) });
     await adapterRuntime.send({ type: 'play' });
     const adapterSoloPeak = await measureAnalyserPeak(adapterAnalyser, 300);
     await adapterRuntime.send({ type: 'pause' });
     requireCheck(
       checks,
-      adapterMutedPeak < adapterSoloPeak * 0.5 && adapterSoloPeak > 0.0001,
+      adapterUnmutedPeak > 0.0001 &&
+        adapterMutedPeak < adapterUnmutedPeak * 0.5 &&
+        adapterMutedState.mutedTrackIds.includes('track.drums') &&
+        adapterMutedState.mutedTrackIds.includes('track.bass') &&
+        adapterRestoredPeak > 0.0001 &&
+        adapterSoloPeak > 0.0001 &&
+        adapterSoloState.mutedTrackIds.length === 0 &&
+        adapterSoloState.soloTrackIds.length === 1 &&
+        adapterSoloState.soloTrackIds[0] === 'track.drums',
       'adapter-mute-solo-audio',
-      `Muted tracks attenuated to peak ${adapterMutedPeak.toFixed(5)}; solo playback produced ${adapterSoloPeak.toFixed(5)}.`,
+      `Mute changed live audio ${adapterUnmutedPeak.toFixed(5)} → ${adapterMutedPeak.toFixed(5)}; unmuted playback recovered to ${adapterRestoredPeak.toFixed(5)}; drums-only solo produced ${adapterSoloPeak.toFixed(5)}.`,
     );
 
     unsubscribeAdapterPosition();
