@@ -5,6 +5,8 @@ import {
   isDirectoryDialogResult,
   isExportPathRequest,
   isProjectDirectoryPurpose,
+  isProjectCommand,
+  isProjectCommandResult,
   shellIpcChannels,
   type CommandResult,
   type DirectoryDialogResult,
@@ -77,6 +79,22 @@ const bridge = {
       };
     const value = await invoke(shellIpcChannels.exportPath, request);
     return isDirectoryDialogResult(value) ? value : unavailable();
+  },
+  async dispatchProject(command: unknown) {
+    if (!isProjectCommand(command))
+      return {
+        ok: false,
+        code: 'INVALID_PROJECT_COMMAND',
+        userMessage: 'Invalid project command.',
+      };
+    const value = await invoke(shellIpcChannels.project, command);
+    return isProjectCommandResult(value)
+      ? value
+      : {
+          ok: false,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
   },
 } satisfies DesktopBridge;
 contextBridge.exposeInMainWorld('agentMusic', bridge);

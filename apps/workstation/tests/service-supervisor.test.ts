@@ -90,6 +90,93 @@ describe('ServiceSupervisor', () => {
       agent: 'restarting',
     });
   });
+  it('routes a project result only to the matching Core generation', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    const command = { type: 'project.close' as const, requestId: 'close-1' };
+    const pending = supervisor.dispatchProject(command);
+    expect(processes.sent).toContainEqual({
+      type: 'projectCommand',
+      protocolVersion: 1,
+      command,
+    });
+    processes.emit('core', {
+      type: 'projectEvent',
+      protocolVersion: 1,
+      event: { type: 'project.closed', requestId: 'close-1', sequence: 1 },
+    });
+    await expect(pending).resolves.toEqual({
+      type: 'project.closed',
+      requestId: 'close-1',
+      sequence: 1,
+    });
+  });
+  it('keeps an in-flight Core command when the Agent restarts', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    processes.emit('agent', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'agent',
+    });
+    const command = {
+      type: 'project.close' as const,
+      requestId: 'close-agent-restart',
+    };
+    const pending = supervisor.dispatchProject(command);
+    await supervisor.restart('agent');
+    processes.emit('core', {
+      type: 'projectEvent',
+      protocolVersion: 1,
+      event: {
+        type: 'project.closed',
+        requestId: command.requestId,
+        sequence: 1,
+      },
+    });
+    await expect(pending).resolves.toMatchObject({ type: 'project.closed' });
+  });
+
+  it('rejects a duplicate project request id without replacing the original', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    const command = {
+      type: 'project.close' as const,
+      requestId: 'duplicate-project-command',
+    };
+    const first = supervisor.dispatchProject(command);
+    await expect(supervisor.dispatchProject(command)).rejects.toThrow(
+      'already pending',
+    );
+    processes.emit('core', {
+      type: 'projectEvent',
+      protocolVersion: 1,
+      event: {
+        type: 'project.closed',
+        requestId: command.requestId,
+        sequence: 1,
+      },
+    });
+    await expect(first).resolves.toMatchObject({ type: 'project.closed' });
+  });
   it('publishes immutable snapshots and supports independent unsubscribe', async () => {
     const supervisor = (active = createServiceSupervisor(adapter()));
     const received: unknown[] = [];

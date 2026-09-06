@@ -33,6 +33,11 @@ let snapshotListener: ((snapshot: unknown) => void) | undefined;
 const supervisor = {
   getSnapshot: vi.fn(() => ({ core: 'ready', agent: 'ready' })),
   restart: vi.fn(async () => undefined),
+  dispatchProject: vi.fn(async () => ({
+    type: 'project.closed',
+    requestId: 'project-test',
+    sequence: 1,
+  })),
   shutdown: vi.fn(async () => undefined),
   subscribe: vi.fn((listener: (snapshot: unknown) => void) => {
     snapshotListener = listener;
@@ -59,6 +64,7 @@ describe('shell Main IPC and dialogs', () => {
       [
         channels.directory,
         channels.exportPath,
+        channels.project,
         channels.restart,
         channels.snapshot,
       ].sort(),
@@ -73,6 +79,26 @@ describe('shell Main IPC and dialogs', () => {
       ok: true,
     });
     expect(supervisor.restart).toHaveBeenCalledWith('agent');
+  });
+
+  it('forwards only valid Project Commands to the Utility Process', async () => {
+    await expect(
+      invoke(channels.project, { type: 'project.create' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'INVALID_PROJECT_COMMAND',
+    });
+    expect(supervisor.dispatchProject).not.toHaveBeenCalled();
+
+    const command = {
+      type: 'project.close' as const,
+      requestId: 'project-test',
+    };
+    await expect(invoke(channels.project, command)).resolves.toEqual({
+      ok: true,
+      event: { type: 'project.closed', requestId: 'project-test', sequence: 1 },
+    });
+    expect(supervisor.dispatchProject).toHaveBeenCalledWith(command);
   });
 
   it('rejects invalid dialog arguments without opening a native dialog', async () => {

@@ -46,11 +46,19 @@ const productionAdapter: ManagedProcessAdapter = {
       ? coreAdapter.spawn(service)
       : agentAdapter.spawn(service),
 };
+const fakeAgentProductionCoreAdapter: ManagedProcessAdapter = {
+  spawn: (service) =>
+    service === 'core'
+      ? coreAdapter.spawn(service)
+      : fakeAdapter.spawn(service),
+};
 
 const supervisor = createServiceSupervisor(
   process.env.AGENT_MUSIC_FAKE_SERVICES === '1'
     ? fakeAdapter
-    : productionAdapter,
+    : process.env.AGENT_MUSIC_FAKE_AGENT === '1'
+      ? fakeAgentProductionCoreAdapter
+      : productionAdapter,
 );
 
 const wireShellIpc = (window: BrowserWindow): BrowserWindow => {

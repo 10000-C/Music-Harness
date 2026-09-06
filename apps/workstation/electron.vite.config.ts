@@ -10,8 +10,14 @@ export default defineConfig({
             ? {
                 index: 'src/main/index.ts',
                 'fake-service-entry': 'src/test-support/fake-service-entry.ts',
+                'project-service-entry':
+                  'src/core/project/project-service-entry.ts',
               }
-            : 'src/main/index.ts',
+            : {
+                index: 'src/main/index.ts',
+                'project-service-entry':
+                  'src/core/project/project-service-entry.ts',
+              },
       },
     },
   },

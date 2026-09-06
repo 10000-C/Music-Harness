@@ -28,7 +28,7 @@ export const ProjectHeader = ({
   <header className="project-header">
     <div className="project-header__brand">
       <strong>AMW</strong>
-      <span title={projectName}>midnight-demo.mid</span>
+      <span title={projectName}>{projectName}</span>
       <button
         type="button"
         disabled

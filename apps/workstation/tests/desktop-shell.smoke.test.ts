@@ -1,4 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
@@ -14,12 +16,15 @@ const electronPath = join(
 const mainPath = join(workstationPath, 'out', 'main', 'index.js');
 
 test('launches the isolated desktop shell with fake services', async () => {
+  const projectPath = await mkdtemp(join(tmpdir(), 'amw-electron-b2-'));
   const child = spawn(electronPath, [mainPath], {
     cwd: workstationPath,
     env: {
       ...process.env,
-      AGENT_MUSIC_FAKE_SERVICES: '1',
+      AGENT_MUSIC_FAKE_AGENT: '1',
       AGENT_MUSIC_SMOKE: '1',
+      AGENT_MUSIC_WINDOW_WIDTH: '1280',
+      AGENT_MUSIC_B2_SMOKE_PROJECT: projectPath,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -66,6 +71,7 @@ test('launches the isolated desktop shell with fake services', async () => {
       bridge?: string[];
       snapshot?: { core?: string; agent?: string };
       ui?: { shell?: boolean; trackCount?: number; agentTitle?: string };
+      projectFlow?: string;
     };
     expect(state).toMatchObject({
       require: 'undefined',
@@ -74,6 +80,7 @@ test('launches the isolated desktop shell with fake services', async () => {
       bridge: [
         'chooseExportPath',
         'chooseProjectDirectory',
+        'dispatchProject',
         'getServiceSnapshot',
         'onServiceSnapshot',
         'restartService',
@@ -81,12 +88,13 @@ test('launches the isolated desktop shell with fake services', async () => {
     });
     expect(['starting', 'ready']).toContain(state.snapshot?.core);
     expect(['starting', 'ready']).toContain(state.snapshot?.agent);
+    expect(state.projectFlow).toBe('passed');
     expect(
       state.ui,
       `Electron UI state was incomplete. stdout:\n${output}\nstderr:\n${errorOutput}`,
     ).toEqual({
       shell: true,
-      trackCount: 6,
+      trackCount: 0,
       agentTitle: 'MUSE Agent',
     });
   } finally {
@@ -103,5 +111,6 @@ test('launches the isolated desktop shell with fake services', async () => {
     }
     child.stdout.destroy();
     child.stderr.destroy();
+    await rm(projectPath, { recursive: true, force: true });
   }
 }, 45_000);

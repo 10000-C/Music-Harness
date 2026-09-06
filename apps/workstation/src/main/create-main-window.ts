@@ -16,6 +16,7 @@ interface RendererSmokeState {
     readonly trackCount: number;
     readonly agentTitle: string | null;
   };
+  readonly projectFlow?: string;
 }
 
 interface SpessaSynthSmokeState {
@@ -65,9 +66,13 @@ export const loadRenderer = (window: BrowserWindow): Promise<void> => {
 export const createMainWindow = (
   options: MainWindowOptions = {},
 ): BrowserWindow => {
+  const smokeWidth = Number.parseInt(
+    process.env.AGENT_MUSIC_WINDOW_WIDTH ?? '1512',
+    10,
+  );
   const window = new BrowserWindow({
     show: false,
-    width: 1512,
+    width: Number.isFinite(smokeWidth) ? smokeWidth : 1512,
     height: 982,
     minWidth: 1080,
     minHeight: 720,
@@ -150,7 +155,7 @@ export const createMainWindow = (
             await new Promise((resolve) => {
               const deadline = Date.now() + 5000;
               const poll = () => {
-                if (document.querySelector('.workstation-shell') !== null || Date.now() >= deadline) {
+                if (document.querySelector('.live-project-workspace, .workstation-shell') !== null || Date.now() >= deadline) {
                   resolve(undefined);
                   return;
                 }
@@ -158,14 +163,30 @@ export const createMainWindow = (
               };
               poll();
             });
+            const projectPath = ${JSON.stringify(process.env.AGENT_MUSIC_B2_SMOKE_PROJECT ?? '')};
+            let projectFlow;
+            if (projectPath.length > 0) {
+              const created = await bridge?.dispatchProject?.({
+                type: 'project.create',
+                requestId: 'electron-project-create',
+                projectPath
+              });
+              const closed = created?.ok === true
+                ? await bridge?.dispatchProject?.({ type: 'project.close', requestId: 'electron-project-close' })
+                : undefined;
+              projectFlow = created?.ok === true && created.event?.type === 'project.opened' && closed?.ok === true && closed.event?.type === 'project.closed'
+                ? 'passed'
+                : 'failed';
+            }
             return {
               require: typeof globalThis.require,
               process: typeof globalThis.process,
               ipc: typeof globalThis.ipcRenderer,
               bridge: Object.keys(bridge ?? {}).sort(),
               snapshot: await bridge?.getServiceSnapshot?.(),
+              projectFlow,
               ui: {
-                shell: document.querySelector('.workstation-shell') !== null,
+                shell: document.querySelector('.live-project-workspace, .workstation-shell') !== null,
                 trackCount: document.querySelectorAll('.track-row[data-track-id]').length,
                 agentTitle: document.querySelector('.agent-panel__header h2')?.textContent ?? null
               }

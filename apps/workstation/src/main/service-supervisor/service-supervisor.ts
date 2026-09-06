@@ -12,6 +12,11 @@ import type {
   ServiceFleetSnapshot,
   ServiceState,
 } from '../../shared/service-status.js';
+import {
+  isCoreProjectResponse,
+  type CoreProjectRequest,
+} from '../../shared/project-bridge.js';
+import type { ProjectEvent } from '@agent-music/contracts';
 
 export type {
   ServiceFleetSnapshot,
@@ -24,6 +29,9 @@ export interface ServiceSupervisor {
   shutdown(reason: 'appQuit' | 'windowClosed'): Promise<void>;
   getSnapshot(): ServiceFleetSnapshot;
   subscribe(listener: (snapshot: ServiceFleetSnapshot) => void): () => void;
+  dispatchProject(
+    command: CoreProjectRequest['command'],
+  ): Promise<ProjectEvent>;
 }
 
 export interface SupervisorOptions {
@@ -71,6 +79,15 @@ export const createServiceSupervisor = (
   const subscriptions = new Map<ServiceKind, readonly (() => void)[]>();
   const timers = new Map<ServiceKind, ReturnType<typeof setTimeout>[]>();
   const stableTimers = new Map<ServiceKind, ReturnType<typeof setTimeout>>();
+  const pendingProjects = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly resolve: (event: ProjectEvent) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
   const listeners = new Set<(value: ServiceFleetSnapshot) => void>();
   let stopping = false;
   let requestSequence = 0;
@@ -142,6 +159,14 @@ export const createServiceSupervisor = (
     service: ServiceKind,
     terminateProcess: boolean,
   ): void => {
+    if (service === 'core') {
+      for (const [requestId, pending] of pendingProjects) {
+        if (pending.generation !== generations.core) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Music Core process restarted.'));
+        pendingProjects.delete(requestId);
+      }
+    }
     generations[service] += 1;
     clearTimers(service);
     clearStableTimer(service);
@@ -315,6 +340,16 @@ export const createServiceSupervisor = (
     message: unknown,
   ): void => {
     if (generations[service] !== generation) return;
+    if (service === 'core' && isCoreProjectResponse(message)) {
+      const requestId = message.event.requestId;
+      const pending = pendingProjects.get(requestId);
+      if (pending !== undefined && pending.generation === generation) {
+        cancel(pending.timeout);
+        pendingProjects.delete(requestId);
+        pending.resolve(message.event);
+      }
+      return;
+    }
     if (!isServiceToMainMessage(message)) {
       fail(service, generation);
       return;
@@ -408,6 +443,49 @@ export const createServiceSupervisor = (
       listeners.add(listener);
       listener(createSnapshot(states));
       return () => listeners.delete(listener);
+    },
+
+    dispatchProject(command) {
+      if (states.core !== 'ready') {
+        return Promise.reject(new Error('Music Core is not ready.'));
+      }
+      const process = processes.get('core');
+      if (process === undefined) {
+        return Promise.reject(new Error('Music Core is unavailable.'));
+      }
+      const generation = generations.core;
+      if (pendingProjects.has(command.requestId)) {
+        return Promise.reject(
+          new Error('A matching project command is already pending.'),
+        );
+      }
+      return new Promise<ProjectEvent>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingProjects.delete(command.requestId);
+          reject(
+            new Error('Music Core did not respond to the project command.'),
+          );
+        }, 15_000);
+        pendingProjects.set(command.requestId, {
+          generation,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send({
+            type: 'projectCommand',
+            protocolVersion: 1,
+            command,
+          } satisfies CoreProjectRequest);
+        } catch {
+          cancel(timeout);
+          pendingProjects.delete(command.requestId);
+          reject(
+            new Error('Music Core could not receive the project command.'),
+          );
+        }
+      });
     },
   };
 };

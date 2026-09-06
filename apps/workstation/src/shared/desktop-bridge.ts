@@ -6,7 +6,9 @@ import type {
   ExportPathRequest,
   FileDialogResult,
   ProjectDirectoryPurpose,
+  ProjectCommandResult,
 } from './shell-contracts.js';
+import type { ProjectCommand } from '@agent-music/contracts';
 export interface DesktopBridge {
   getServiceSnapshot(): Promise<ServiceFleetSnapshot>;
   restartService(service: ServiceKind): Promise<CommandResult>;
@@ -17,6 +19,7 @@ export interface DesktopBridge {
     purpose: ProjectDirectoryPurpose,
   ): Promise<DirectoryDialogResult>;
   chooseExportPath(request: ExportPathRequest): Promise<FileDialogResult>;
+  dispatchProject(command: ProjectCommand): Promise<ProjectCommandResult>;
 }
 declare global {
   interface Window {
