@@ -4,5 +4,15 @@
     "lib": ["ES2022", "DOM"],
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "vitest.config.ts"]
+  "include": [
+    "electron.vite.config.ts",
+    "renderer.vite.config.ts",
+    "vitest*.config.ts",
+    "src/core/**/*.ts",
+    "src/main/**/*.ts",
+    "src/preload/**/*.ts",
+    "src/shared/**/*.ts",
+    "src/test-support/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

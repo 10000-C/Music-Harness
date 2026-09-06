@@ -24,5 +24,10 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "spessasynth_lib@4.3.14": "patches/spessasynth_lib@4.3.14.patch"
+    }
   }
 }

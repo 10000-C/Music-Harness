@@ -3,18 +3,38 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "./out/main/index.js",
   "scripts": {
-    "typecheck": "tsc --project tsconfig.json",
-    "test": "vitest run --config vitest.config.ts"
+    "dev": "cross-env AGENT_MUSIC_FAKE_SERVICES=1 AGENT_MUSIC_INCLUDE_FAKE_SERVICES=1 electron-vite dev",
+    "dev:renderer": "vite src/renderer --config renderer.vite.config.ts",
+    "build": "electron-vite build",
+    "typecheck": "tsc --project tsconfig.json && tsc --project tsconfig.renderer.json",
+    "test": "vitest run --config vitest.config.ts",
+    "build:smoke": "cross-env AGENT_MUSIC_INCLUDE_FAKE_SERVICES=1 electron-vite build",
+    "smoke:shell": "pnpm build:smoke && vitest run tests/desktop-shell.smoke.test.ts --config vitest.smoke.config.ts",
+    "smoke:spessasynth": "pnpm build:smoke && vitest run tests/spessasynth.smoke.test.ts --config vitest.smoke.config.ts"
   },
   "dependencies": {
     "@agent-music/contracts": "workspace:*",
+    "@fontsource/inter": "5.3.0",
+    "@phosphor-icons/react": "2.1.10",
     "abcjs": "6.6.4",
-    "midi-file": "1.2.4"
+    "midi-file": "1.2.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "spessasynth_core": "4.3.22",
+    "spessasynth_lib": "4.3.14"
   },
   "devDependencies": {
+    "@swc/core": "1.15.47",
     "@types/node": "24.10.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "cross-env": "10.1.0",
+    "electron": "40.10.6",
+    "electron-vite": "5.0.0",
     "typescript": "5.9.3",
+    "vite": "7.2.7",
     "vitest": "4.1.10"
   }
 }
