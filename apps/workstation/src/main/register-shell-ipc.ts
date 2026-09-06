@@ -3,6 +3,7 @@ import { isServiceKind } from '../shared/service-lifecycle.js';
 import {
   isExportPathRequest,
   isProjectDirectoryPurpose,
+  isProjectCommand,
   shellIpcChannels,
 } from '../shared/shell-contracts.js';
 import { chooseExportPath, chooseProjectDirectory } from './desktop-dialogs.js';
@@ -52,6 +53,24 @@ export const registerShellIpc = (
       }
     },
   );
+  ipcMain.handle(shellIpcChannels.project, async (_event, command: unknown) => {
+    if (!isProjectCommand(command)) {
+      return {
+        ok: false,
+        code: 'INVALID_PROJECT_COMMAND',
+        userMessage: 'Invalid project command.',
+      };
+    }
+    try {
+      return { ok: true, event: await supervisor.dispatchProject(command) };
+    } catch {
+      return {
+        ok: false,
+        code: 'CORE_UNAVAILABLE',
+        userMessage: 'Music Core is unavailable. Try again.',
+      };
+    }
+  });
   ipcMain.handle(
     shellIpcChannels.exportPath,
     async (_event, request: unknown) => {

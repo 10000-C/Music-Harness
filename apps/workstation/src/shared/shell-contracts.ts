@@ -2,6 +2,8 @@ import {
   isServiceKind,
   type ServiceKind,
 } from '../shared/service-lifecycle.js';
+import type { ProjectCommand, ProjectEvent } from '@agent-music/contracts';
+import { isProjectCommand, isProjectEvent } from './project-bridge.js';
 
 export const shellIpcChannels = {
   snapshot: 'shell:snapshot',
@@ -9,6 +11,7 @@ export const shellIpcChannels = {
   subscribe: 'shell:subscribe',
   directory: 'shell:directory',
   exportPath: 'shell:export',
+  project: 'shell:project',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';
@@ -27,6 +30,9 @@ export interface ExportPathRequest {
   readonly suggestedName: string;
 }
 export type FileDialogResult = DirectoryDialogResult;
+export type ProjectCommandResult =
+  | Readonly<{ ok: true; event: ProjectEvent }>
+  | Readonly<{ ok: false; code: string; userMessage: string }>;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 const hasAsciiControlCharacter = (value: string): boolean => {
@@ -94,6 +100,18 @@ export const isExportPathRequest = (
     !hasControlCharacter &&
     !/[. ]$/u.test(suggestedName) &&
     !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/iu.test(windowsStem)
+  );
+};
+
+export { isProjectCommand, isProjectEvent };
+
+export const isProjectCommandResult = (
+  value: unknown,
+): value is ProjectCommandResult => {
+  if (!isRecord(value) || typeof value.ok !== 'boolean') return false;
+  if (value.ok === true) return isProjectEvent(value.event);
+  return (
+    typeof value.code === 'string' && typeof value.userMessage === 'string'
   );
 };
 export { isServiceKind };

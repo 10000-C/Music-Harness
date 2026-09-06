@@ -97,6 +97,7 @@ test('runs the isolated SpessaSynth AudioWorklet capability probe', async () => 
       bridge: [
         'chooseExportPath',
         'chooseProjectDirectory',
+        'dispatchProject',
         'getServiceSnapshot',
         'onServiceSnapshot',
         'restartService',

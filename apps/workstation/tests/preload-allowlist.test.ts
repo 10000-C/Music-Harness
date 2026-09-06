@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 
-it('exposes only the five DesktopBridge methods and no raw Electron objects', async () => {
+it('exposes only the DesktopBridge allowlist and no raw Electron objects', async () => {
   const exposed: Record<string, unknown> = {};
   const on = vi.fn();
   const removeListener = vi.fn();
@@ -16,6 +16,7 @@ it('exposes only the five DesktopBridge methods and no raw Electron objects', as
   expect(Object.keys(exposed.agentMusic as object).sort()).toEqual([
     'chooseExportPath',
     'chooseProjectDirectory',
+    'dispatchProject',
     'getServiceSnapshot',
     'onServiceSnapshot',
     'restartService',

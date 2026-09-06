@@ -11,6 +11,11 @@ import {
 } from './b-contracts/index.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CommandResult } from '../shared/shell-contracts.js';
+import type {
+  OpenedProject,
+  ProjectCommand,
+  ProjectEvent,
+} from '@agent-music/contracts';
 import {
   unavailableServiceSnapshot,
   type ServiceFleetSnapshot,
@@ -25,7 +30,10 @@ import {
   ProjectHeader,
   type ProjectStatusTone,
 } from './workspace/project-header.js';
-import type { WorkspaceView } from './workspace/project-sidebar.js';
+import {
+  ProjectSidebar,
+  type WorkspaceView,
+} from './workspace/project-sidebar.js';
 import { TrackInspector } from './workspace/track-inspector.js';
 import { TrackSidebar } from './workspace/track-sidebar.js';
 import { Timeline } from './workspace/timeline/timeline.js';
@@ -226,7 +234,7 @@ const UtilityView = ({
   );
 };
 
-export const App = () => {
+const DemoApp = () => {
   const [fixture, setFixture] =
     useState<FakeCoreFixtureName>(fixtureFromLocation);
   const [taskStartedFromBlank, setTaskStartedFromBlank] = useState(
@@ -880,3 +888,221 @@ export const App = () => {
     </div>
   );
 };
+
+const liveRequestId = (action: string): string =>
+  `project-${action}-${crypto.randomUUID()}`;
+
+const displayName = (projectPath: string): string =>
+  projectPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? projectPath;
+
+/**
+ * Normal desktop mode deliberately does not synthesize a B1 fixture. Project
+ * identity and Current state below come only from the A1 Utility Process.
+ */
+const LiveProjectWorkspace = () => {
+  const [project, setProject] = useState<OpenedProject | null>(null);
+  const [message, setMessage] = useState(
+    'Create a project or open an existing clean Current.',
+  );
+  const [busy, setBusy] = useState(false);
+  const latestRequest = useRef(0);
+
+  const dispatch = useCallback(async (command: ProjectCommand) => {
+    const bridge = window.agentMusic;
+    if (bridge === undefined) {
+      setMessage('The secure desktop bridge is unavailable.');
+      return;
+    }
+    const operation = ++latestRequest.current;
+    setBusy(true);
+    const result = await bridge.dispatchProject(command);
+    if (operation !== latestRequest.current) return;
+    setBusy(false);
+    if (!result.ok) {
+      setMessage(result.userMessage);
+      return;
+    }
+    const event: ProjectEvent = result.event;
+    if (event.type === 'project.opened') {
+      setProject(event.project);
+      setMessage(
+        event.project.state === 'recoveryRequired'
+          ? 'Current needs recovery before it can be edited.'
+          : 'Current is clean and ready.',
+      );
+    } else if (event.type === 'project.closed') {
+      setProject(null);
+      setMessage('Project closed.');
+    } else {
+      setMessage(event.message);
+    }
+  }, []);
+
+  const selectAndDispatch = useCallback(
+    async (purpose: 'create' | 'open' | 'saveAs') => {
+      const bridge = window.agentMusic;
+      if (bridge === undefined) {
+        setMessage('The secure desktop bridge is unavailable.');
+        return;
+      }
+      const chosen = await bridge.chooseProjectDirectory(purpose);
+      if (!chosen.ok) {
+        setMessage(
+          chosen.userMessage ?? 'The project folder could not be selected.',
+        );
+        return;
+      }
+      if (chosen.cancelled || chosen.path === undefined) return;
+      const requestId = liveRequestId(purpose);
+      await dispatch(
+        purpose === 'create'
+          ? { type: 'project.create', requestId, projectPath: chosen.path }
+          : purpose === 'open'
+            ? { type: 'project.open', requestId, projectPath: chosen.path }
+            : { type: 'project.saveAs', requestId, targetPath: chosen.path },
+      );
+    },
+    [dispatch],
+  );
+
+  const projectName =
+    project === null ? 'No project open' : displayName(project.projectPath);
+  const currentLabel =
+    project === null
+      ? 'Choose a project folder to begin'
+      : `Current · ${project.currentRevision.slice(0, 8)}`;
+  const emptyTimeline =
+    project === null
+      ? 'Open or create a project to view its tracks.'
+      : 'Track details will appear here when this project has playable music.';
+
+  return (
+    <div
+      className="workstation-shell live-project-workspace"
+      aria-live="polite"
+    >
+      <ProjectSidebar
+        activeView="studio"
+        projectName={projectName}
+        currentLabel={currentLabel}
+        onViewChange={() => undefined}
+      />
+      <TrackSidebar
+        timeline={null}
+        inspectedTrackId="track.keys"
+        mutedTrackIds={new Set()}
+        soloTrackIds={new Set()}
+        onInspectTrack={() => undefined}
+        onToggleMute={() => undefined}
+        onToggleSolo={() => undefined}
+      />
+      <main className="workspace-main">
+        <ProjectHeader
+          projectName={projectName}
+          tempo={0}
+          keyName="Unavailable"
+          meter="—"
+          statusLabel={
+            project === null
+              ? 'Project needed'
+              : project.state === 'ready'
+                ? 'Current · Clean'
+                : 'Recovery required'
+          }
+          statusTone={
+            project?.state === 'recoveryRequired'
+              ? 'warning'
+              : project === null
+                ? 'blank'
+                : 'stable'
+          }
+          playing={false}
+          playDisabled
+          onTogglePlayback={() => undefined}
+          onExport={() => undefined}
+        />
+        <div className="workspace-content">
+          <TransportBar
+            playing={false}
+            elapsedLabel="--:--"
+            durationLabel="--:--"
+            scopeLabel="Timeline unavailable"
+            loopEnabled={false}
+            canLoop={false}
+            disabled
+            onTogglePlayback={() => undefined}
+            onStop={() => undefined}
+            onPrevious={() => undefined}
+            onNext={() => undefined}
+            onToggleLoop={() => undefined}
+          />
+          <section className="utility-view" aria-label="Project controls">
+            <h2>{projectName}</h2>
+            <p>{message}</p>
+            <div className="project-header__actions">
+              <button
+                type="button"
+                disabled={busy || project !== null}
+                onClick={() => void selectAndDispatch('create')}
+              >
+                Create project
+              </button>
+              <button
+                type="button"
+                disabled={busy || project !== null}
+                onClick={() => void selectAndDispatch('open')}
+              >
+                Open project
+              </button>
+              <button
+                type="button"
+                disabled={busy || project === null}
+                onClick={() => void selectAndDispatch('saveAs')}
+              >
+                Save As
+              </button>
+              <button
+                type="button"
+                disabled={busy || project === null}
+                onClick={() =>
+                  void dispatch({
+                    type: 'project.recoverCurrent',
+                    requestId: liveRequestId('recover'),
+                  })
+                }
+              >
+                Recover Current
+              </button>
+              <button
+                type="button"
+                disabled={busy || project === null}
+                onClick={() =>
+                  void dispatch({
+                    type: 'project.close',
+                    requestId: liveRequestId('close'),
+                  })
+                }
+              >
+                Close project
+              </button>
+            </div>
+          </section>
+          <section className="utility-view" aria-label="Timeline empty state">
+            <p>{emptyTimeline}</p>
+          </section>
+        </div>
+      </main>
+      <aside className="agent-panel" aria-label="Agent panel">
+        <div className="agent-panel__header">
+          <h2>MUSE Agent</h2>
+        </div>
+        <p className="agent-empty-state">
+          Open a project before starting an agent task.
+        </p>
+      </aside>
+    </div>
+  );
+};
+
+export const App = () =>
+  explicitFixtureMode ? <DemoApp /> : <LiveProjectWorkspace />;
