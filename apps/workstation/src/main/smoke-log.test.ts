@@ -19,7 +19,9 @@ describe('writeSmokeLog', () => {
         callback(Object.assign(new Error('broken pipe'), { code: 'EPIPE' }));
       },
     });
-    expect(() => writeSmokeLog('SMOKE:complete', output)).not.toThrow();
+    expect(() => {
+      writeSmokeLog('SMOKE:complete', output);
+    }).not.toThrow();
     await new Promise<void>((resolve) => setImmediate(resolve));
   });
 });
