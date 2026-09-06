@@ -1,4 +1,9 @@
-import type { CandidateId, ProjectId, TaskId, TaskScope } from '@agent-music/contracts';
+import type {
+  CandidateId,
+  ProjectId,
+  TaskId,
+  TaskScope,
+} from '@agent-music/contracts';
 import {
   hasExactKeys,
   isNonEmptyString,
