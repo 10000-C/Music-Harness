@@ -6,7 +6,7 @@ import type {
 } from '@agent-music/contracts';
 
 import { createStrandsMcpClient } from '../mcp/index.js';
-import { createOpenAiChatModel } from '../model/index.js';
+import { DynamicOpenAiChatModel } from '../model/index.js';
 import { createStrandsSession } from '../session/index.js';
 import type { AgentModelConfig } from '../settings/index.js';
 
@@ -27,7 +27,6 @@ interface StrandsAgentRuntimeFactoryDependencies {
 export interface StrandsAgentRuntime {
   readonly agent: Agent;
   readonly mcpClient: McpClient;
-  readonly modelConfigurationId: string;
   dispose(): Promise<void>;
 }
 
@@ -50,7 +49,10 @@ export class StrandsAgentRuntimeFactory {
     );
     const mcpClient = createStrandsMcpClient(descriptor);
     const agent = new Agent({
-      model: createOpenAiChatModel(modelConfig),
+      model: new DynamicOpenAiChatModel(
+        modelConfig,
+        this.dependencies.settings,
+      ),
       tools: [mcpClient],
       sessionManager: session.sessionManager,
       storage: session.storage,
@@ -62,7 +64,6 @@ export class StrandsAgentRuntimeFactory {
     return {
       agent,
       mcpClient,
-      modelConfigurationId: modelConfig.id,
       dispose: async () => {
         await mcpClient.disconnect();
       },

@@ -70,7 +70,5 @@ describe('StrandsAgentRuntimeFactory', () => {
     expect(second.agent.model.getConfig().modelId).toBe('model-b');
     expect(getActiveModelConfig).toHaveBeenCalledTimes(2);
     expect(readDescriptor).toHaveBeenCalledTimes(2);
-    expect(first.modelConfigurationId).toBe('model-a');
-    expect(second.modelConfigurationId).toBe('model-b');
   });
 });
