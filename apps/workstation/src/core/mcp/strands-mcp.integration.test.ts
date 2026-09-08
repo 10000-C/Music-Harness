@@ -48,4 +48,26 @@ describe('Strands MCP integration', () => {
     expect(tools.map((tool) => tool.name)).toEqual(P0_MCP_TOOL_NAMES);
     await client.disconnect();
   });
+
+  it('mechanically removes requestScopeExtension from the repair-mode tool list', async () => {
+    const server = new MusicCoreMcpHttpServer({
+      projectId,
+      runtimeDirectory: await makeRuntimeDirectory(),
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () => Promise.resolve({ ok: true }),
+      },
+      createToken: () => 'strands-repair-integration-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const client = createStrandsMcpClient(descriptor, { repairMode: true });
+
+    const tools = await client.listTools();
+
+    expect(tools.map((tool) => tool.name)).toEqual(
+      P0_MCP_TOOL_NAMES.filter((name) => name !== 'requestScopeExtension'),
+    );
+    await client.disconnect();
+  });
 });

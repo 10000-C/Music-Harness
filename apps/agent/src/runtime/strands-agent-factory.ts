@@ -24,6 +24,10 @@ interface StrandsAgentRuntimeFactoryDependencies {
   readonly storageRoot: string;
 }
 
+export interface StrandsAgentRuntimeOptions {
+  readonly repairMode?: boolean;
+}
+
 export interface StrandsAgentRuntime {
   readonly agent: Agent;
   readonly mcpClient: McpClient;
@@ -38,6 +42,7 @@ export class StrandsAgentRuntimeFactory {
   public async create(
     projectId: ProjectId,
     sessionId: AgentSessionId,
+    options: StrandsAgentRuntimeOptions = {},
   ): Promise<StrandsAgentRuntime> {
     const [modelConfig, descriptor] = await Promise.all([
       this.dependencies.settings.getActiveModelConfig(),
@@ -47,7 +52,7 @@ export class StrandsAgentRuntimeFactory {
       sessionId,
       this.dependencies.storageRoot,
     );
-    const mcpClient = createStrandsMcpClient(descriptor);
+    const mcpClient = createStrandsMcpClient(descriptor, options);
     const agent = new Agent({
       model: new DynamicOpenAiChatModel(
         modelConfig,

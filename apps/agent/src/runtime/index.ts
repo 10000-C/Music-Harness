@@ -3,4 +3,5 @@ export type {
   ActiveModelSettingsPort,
   RuntimeDescriptorPort,
   StrandsAgentRuntime,
+  StrandsAgentRuntimeOptions,
 } from './strands-agent-factory.js';
