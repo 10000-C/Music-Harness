@@ -8,6 +8,8 @@
 | 架构基线 | System Architecture V1.2 |
 | 产品基线 | PRD V1.5 |
 
+> **历史文档说明：** 本文记录 2026-07-30 基础骨架设计时的依赖预期。当前 P0 以 PRD V1.11 / System Architecture V1.9 为准：SQLite 已从 P0 删除，Agent Session 改由 Strands SessionManager/Storage 管理；Provider 与 Agent-side MCP Client 也直接使用 Strands 能力。本文中相关旧条目仅保留为历史设计记录，不构成当前实现要求。
+
 ## 1. 目标
 
 为 Agent Music Workstation 建立可持续扩展的 pnpm Monorepo 基础骨架，使后续 Electron、React、Music Core、Strands、MCP、openDAW 和 SQLite 实现能够在明确的模块边界内增量接入。
@@ -92,7 +94,7 @@ Agent-Music-Workstation/
 
 ### 5.2 `apps/agent`
 
-未来承载 Strands、Provider Adapter 和 MCP Client。基础阶段只建立目录和配置，不安装 Strands 或模型 SDK。
+未来承载 Strands Agent Runtime、Agent Workflow、Agent / Model Settings，以及对 Strands 原生 OpenAI-compatible Model 与 Agent-side MCP Client 的配置集成。基础阶段只建立目录和配置，不安装 Strands 或模型 SDK。
 
 ### 5.3 `packages/contracts`
 

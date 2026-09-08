@@ -1352,7 +1352,9 @@ Provider Adapter 已通过本地 OpenAI-compatible fake Provider 验证流式 SS
 
 ### 3. 实现约束
 
-Provider Adapter 必须将 SSE 拼接、JSON 参数校验、超时、AbortSignal 和错误脱敏封装在自身 Interface 后；Agent Loop 不应理解 SSE frame。P0 继续只支持 Chat Completions，不增加 Responses API 双协议适配。
+> **历史说明：** 本 Spike 验证的是 Chat Completions Tool Call、流式、取消、超时和错误映射的可行性。其“自研 Provider Adapter / SSE 拼接”实现约束已被 Architecture V1.9 ADR-044 替代；正式 A4 直接使用 Strands 原生 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client，并以本 Spike 的行为断言作为回归标准。
+
+P0 继续只支持 Chat Completions，不增加 Responses API 双协议适配。
 
 ### 4. 证据索引
 
