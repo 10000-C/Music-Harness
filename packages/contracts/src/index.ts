@@ -1,3 +1,4 @@
+export { isAgentCommand, isAgentEvent } from './agent.js';
 export {
   CANDIDATE_ERROR_CODES,
   isCandidateCommand,
@@ -11,6 +12,15 @@ export {
   isTrackId,
 } from './domain.js';
 
+export type {
+  AgentCommand,
+  AgentCommandResult,
+  AgentConversationMessage,
+  AgentEvent,
+  AgentExecutionId,
+  AgentSessionId,
+  AgentSessionSummary,
+} from './agent.js';
 export type {
   CandidateCommand,
   CandidateErrorCode,
@@ -42,6 +52,7 @@ export type {
 } from './domain.js';
 
 export { isPlaybackCompilation, isTimelineViewModel } from './composition.js';
+export { isMcpRuntimeDescriptor } from './mcp.js';
 export { createMidiNoteNumber, isMidiNoteNumber } from './music-values.js';
 
 export type {
@@ -57,6 +68,7 @@ export type {
   TimelineViewModel,
 } from './composition.js';
 
+export type { McpRuntimeDescriptor } from './mcp.js';
 export type { MidiNoteNumber } from './music-values.js';
 
 export {
