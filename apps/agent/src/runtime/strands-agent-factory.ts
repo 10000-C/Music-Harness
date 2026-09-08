@@ -32,13 +32,14 @@ interface StrandsAgentRuntimeFactoryDependencies {
 
 export interface StrandsAgentRuntimeOptions {
   readonly repairMode?: boolean;
+  readonly instructions?: string;
 }
 
 export interface StrandsAgentRuntime {
   readonly agent: Agent;
   readonly mcpClient: McpClient;
   stream(
-    text: string,
+    text: string | undefined,
     signal: AbortSignal,
   ): AsyncGenerator<AgentStreamEvent, AgentResult, undefined>;
   dispose(): Promise<void>;
@@ -69,7 +70,10 @@ export class StrandsAgentRuntimeFactory {
         this.dependencies.settings,
       ),
       tools: [mcpClient],
-      systemPrompt: AGENT_SYSTEM_PROMPT,
+      systemPrompt:
+        options.instructions === undefined
+          ? AGENT_SYSTEM_PROMPT
+          : `${AGENT_SYSTEM_PROMPT}\n${options.instructions}`,
       sessionManager: session.sessionManager,
       storage: session.storage,
       contextManager: 'auto',
@@ -80,7 +84,8 @@ export class StrandsAgentRuntimeFactory {
     return {
       agent,
       mcpClient,
-      stream: (text, signal) => agent.stream(text, { cancelSignal: signal }),
+      stream: (text, signal) =>
+        agent.stream(text ?? [], { cancelSignal: signal }),
       dispose: async () => {
         await mcpClient.disconnect();
       },

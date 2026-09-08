@@ -78,7 +78,7 @@ interface RuntimeScript {
 
 const runtimeFromScript = (
   script: RuntimeScript,
-  prompts: string[],
+  prompts: (string | undefined)[],
 ): AgentRuntimePort => ({
   stream: async function* (text, signal) {
     prompts.push(text);
@@ -109,12 +109,15 @@ const makeHarness = (
   maxRepairAttempts: readonly number[] = [2],
 ) => {
   const runtimes = [...scripts];
-  const prompts: string[] = [];
+  const prompts: (string | undefined)[] = [];
   const create = vi.fn(
     (
       project: ProjectId,
       session: AgentSessionId,
-      options: { readonly repairMode: boolean },
+      options: {
+        readonly repairMode: boolean;
+        readonly instructions: string;
+      },
     ): Promise<AgentRuntimePort> => {
       void project;
       void session;
@@ -269,8 +272,11 @@ describe('AgentWorkflow', () => {
     start(harness.workflow, harness.emit, { taskId, candidateId });
     await harness.terminal;
 
-    expect(harness.prompts[0]).toContain(taskId);
-    expect(harness.prompts[0]).toContain('getTaskContext');
+    expect(harness.prompts[0]).toBe('Create a groove.');
+    expect(harness.create.mock.calls[0]?.[2].instructions).toContain(taskId);
+    expect(harness.create.mock.calls[0]?.[2].instructions).toContain(
+      'getTaskContext',
+    );
     expect(harness.cancelTask).toHaveBeenCalledWith({
       projectId,
       candidateId,
@@ -338,8 +344,12 @@ describe('AgentWorkflow', () => {
     await harness.terminal;
 
     expect(harness.create).toHaveBeenCalledTimes(2);
-    expect(harness.create.mock.calls[0]?.[2]).toEqual({ repairMode: false });
-    expect(harness.create.mock.calls[1]?.[2]).toEqual({ repairMode: true });
+    expect(harness.create.mock.calls[0]?.[2].repairMode).toBe(false);
+    expect(harness.create.mock.calls[1]?.[2].repairMode).toBe(true);
+    expect(harness.prompts).toEqual(['Create a groove.', undefined]);
+    expect(harness.create.mock.calls[1]?.[2].instructions).toContain(
+      'METER_MISMATCH',
+    );
     expect(harness.getMaxRepairAttempts).toHaveBeenCalledTimes(1);
     expect(harness.cancelTask).not.toHaveBeenCalled();
     expect(harness.events.at(-1)?.type).toBe('agent.executionCompleted');

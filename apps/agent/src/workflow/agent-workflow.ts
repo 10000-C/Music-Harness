@@ -14,7 +14,7 @@ export interface AgentRuntimeResult {
 
 export interface AgentRuntimePort {
   stream(
-    text: string,
+    text: string | undefined,
     signal: AbortSignal,
   ): AsyncGenerator<unknown, AgentRuntimeResult, undefined>;
   dispose(): Promise<void>;
@@ -24,7 +24,10 @@ export interface AgentRuntimeFactoryPort {
   create(
     projectId: ProjectId,
     sessionId: AgentSessionId,
-    options: { readonly repairMode: boolean },
+    options: {
+      readonly repairMode: boolean;
+      readonly instructions: string;
+    },
   ): Promise<AgentRuntimePort>;
 }
 
@@ -205,24 +208,24 @@ const validationFromFinishTask = (
   return { valid: value.validation.valid, issues };
 };
 
-const executionPrompt = (input: StartAgentExecutionInput): string => {
-  if (input.task === undefined) {
-    return [
-      `Current projectId: ${input.projectId}.`,
-      'User request:',
-      input.text,
-    ].join('\n');
+const executionInstructions = (
+  execution: ActiveExecution,
+  validation?: CandidateValidationReport,
+): string => {
+  const instructions = [`Current projectId: ${execution.projectId}.`];
+  if (execution.task !== undefined) {
+    instructions.push(
+      `A confirmed Candidate Task is active with taskId ${execution.task.taskId}.`,
+      'Before any Task-bound operation, call getTaskContext with that taskId to obtain the current authoritative Scope and execution envelope.',
+    );
   }
-  return [
-    `Current projectId: ${input.projectId}.`,
-    `A confirmed Candidate Task is already active with taskId ${input.task.taskId}.`,
-    'Before any Task-bound operation, call getTaskContext with that taskId to obtain the current authoritative Scope and execution envelope.',
-    'User request:',
-    input.text,
-  ].join('\n');
+  if (validation !== undefined) {
+    instructions.push(repairInstructions(validation));
+  }
+  return instructions.join('\n');
 };
 
-const repairPrompt = (validation: CandidateValidationReport): string => {
+const repairInstructions = (validation: CandidateValidationReport): string => {
   const issues = validation.issues
     .map((issue) => `- ${issue.code}: ${issue.message}`)
     .join('\n');
@@ -272,14 +275,13 @@ export class AgentWorkflow {
       settlement: Promise.resolve(),
     };
     this.active = execution;
-    execution.settlement = this.runExecution(
-      execution,
-      executionPrompt(input),
-    ).finally(() => {
-      if (this.active === execution) {
-        this.active = undefined;
-      }
-    });
+    execution.settlement = this.runExecution(execution, input.text).finally(
+      () => {
+        if (this.active === execution) {
+          this.active = undefined;
+        }
+      },
+    );
     void execution.settlement.catch(() => undefined);
     return executionId;
   }
@@ -317,7 +319,8 @@ export class AgentWorkflow {
   ): Promise<void> {
     let repairAttempt = 0;
     let repairMode = false;
-    let prompt = initialPrompt;
+    let prompt: string | undefined = initialPrompt;
+    let repairValidation: CandidateValidationReport | undefined;
 
     try {
       for (;;) {
@@ -327,7 +330,12 @@ export class AgentWorkflow {
           return;
         }
 
-        const outcome = await this.runInvocation(execution, prompt, repairMode);
+        const outcome = await this.runInvocation(
+          execution,
+          prompt,
+          repairMode,
+          repairValidation,
+        );
 
         if (isCancelRequested(execution) || outcome.kind === 'cancelled') {
           await this.rollbackActiveTask(execution);
@@ -353,7 +361,8 @@ export class AgentWorkflow {
             );
           }
           repairMode = true;
-          prompt = repairPrompt(outcome.validation);
+          repairValidation = outcome.validation;
+          prompt = undefined;
           continue;
         }
 
@@ -388,8 +397,9 @@ export class AgentWorkflow {
 
   private async runInvocation(
     execution: ActiveExecution,
-    prompt: string,
+    prompt: string | undefined,
     repairMode: boolean,
+    repairValidation: CandidateValidationReport | undefined,
   ): Promise<InvocationOutcome> {
     const abortController = new AbortController();
     execution.invocationAbortController = abortController;
@@ -400,7 +410,10 @@ export class AgentWorkflow {
     const runtime = await this.dependencies.runtimeFactory.create(
       execution.projectId,
       execution.sessionId,
-      { repairMode },
+      {
+        repairMode,
+        instructions: executionInstructions(execution, repairValidation),
+      },
     );
     let validationFailure: CandidateValidationReport | undefined;
 
