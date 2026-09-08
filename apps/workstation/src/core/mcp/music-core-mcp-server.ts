@@ -1,0 +1,346 @@
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  chmod,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from 'node:http';
+import { join } from 'node:path';
+
+import { McpServer, StreamableHTTPServerTransport } from './mcp-sdk-runtime.js';
+import {
+  TRACK_IDS,
+  isMcpRuntimeDescriptor,
+  type McpRuntimeDescriptor,
+  type ProjectId,
+} from '@agent-music/contracts';
+import { z } from 'zod';
+
+import type { MusicCoreToolName } from './music-core-tool-host.js';
+
+export interface MusicCoreToolInvoker {
+  listTools(): readonly MusicCoreToolName[];
+  call(name: MusicCoreToolName, input: unknown): Promise<unknown>;
+}
+
+const trackIdSchema = z.enum(TRACK_IDS);
+const trackIdsSchema = z
+  .array(trackIdSchema)
+  .min(1)
+  .refine((trackIds) => new Set(trackIds).size === trackIds.length, {
+    message: 'trackIds must not contain duplicates',
+  });
+const scopeSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('wholeProject'), trackIds: trackIdsSchema }),
+  z
+    .object({
+      type: z.literal('timeRange'),
+      trackIds: trackIdsSchema,
+      startTick: z.int().nonnegative(),
+      endTick: z.int().positive(),
+    })
+    .refine((value) => value.startTick < value.endTick, {
+      message: 'startTick must be less than endTick',
+    }),
+]);
+const envelopeSchema = z.object({
+  taskId: z.uuid(),
+  projectId: z.uuid(),
+  candidateId: z.uuid(),
+  baseRevision: z.string().min(1),
+  expectedScopeRevision: z.int().nonnegative(),
+});
+const replacementSchema = z.object({
+  trackId: trackIdSchema,
+  abc: z.string(),
+});
+
+const toolResult = (value: unknown) => ({
+  content: [
+    {
+      type: 'text' as const,
+      text: JSON.stringify(value),
+    },
+  ],
+});
+
+const registerJsonTool = (
+  server: McpServer,
+  host: MusicCoreToolInvoker,
+  name: MusicCoreToolName,
+  description: string,
+  schema: z.ZodType,
+): void => {
+  server.registerTool(
+    name,
+    { description, inputSchema: schema },
+    async (input) => toolResult(await host.call(name, schema.parse(input))),
+  );
+};
+
+const registerTools = (server: McpServer, host: MusicCoreToolInvoker): void => {
+  registerJsonTool(
+    server,
+    host,
+    'getTaskContext',
+    'Read the current authorized Candidate Task context.',
+    z.object({ taskId: z.uuid() }),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'getScopedComposition',
+    'Read Canonical composition content inside the authorized Scope.',
+    envelopeSchema,
+  );
+  registerJsonTool(
+    server,
+    host,
+    'submitGenerationPlan',
+    'Submit the initial generation plan and wait for user confirmation.',
+    z.object({
+      projectId: z.uuid(),
+      summary: z.string().min(1),
+      scope: scopeSchema,
+    }),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'requestScopeExtension',
+    'Request a superset Scope and wait for product authorization.',
+    z.object({
+      envelope: envelopeSchema,
+      requestedScope: scopeSchema,
+    }),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'replaceScopedMusic',
+    'Replace musical content only inside the authorized Scope.',
+    z.object({
+      envelope: envelopeSchema,
+      replacements: z.array(replacementSchema).min(1),
+    }),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'updateGlobalMeter',
+    'Update the global meter for an authorized whole-project Task.',
+    z.object({
+      envelope: envelopeSchema,
+      numerator: z.int().positive(),
+      denominator: z.int().positive(),
+    }),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'finishTask',
+    'Validate and finish the current Candidate Task.',
+    envelopeSchema,
+  );
+};
+
+const defaultIsProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export class RuntimeDescriptorStore {
+  public constructor(
+    private readonly runtimeDirectory: string,
+    private readonly isProcessAlive: (
+      pid: number,
+    ) => boolean = defaultIsProcessAlive,
+  ) {}
+
+  public descriptorPath(projectId: ProjectId): string {
+    return join(this.runtimeDirectory, `${projectId}.json`);
+  }
+
+  public async write(descriptor: McpRuntimeDescriptor): Promise<void> {
+    await mkdir(this.runtimeDirectory, { recursive: true, mode: 0o700 });
+    const destination = this.descriptorPath(descriptor.projectId);
+    const temporary = `${destination}.${String(process.pid)}.tmp`;
+    await writeFile(temporary, `${JSON.stringify(descriptor, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
+    await rename(temporary, destination);
+    await chmod(destination, 0o600);
+  }
+
+  public async remove(projectId: ProjectId): Promise<void> {
+    await rm(this.descriptorPath(projectId), { force: true });
+  }
+
+  public async cleanupStale(): Promise<void> {
+    await mkdir(this.runtimeDirectory, { recursive: true, mode: 0o700 });
+    const entries = await readdir(this.runtimeDirectory, {
+      withFileTypes: true,
+    });
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+        .map(async (entry) => {
+          const path = join(this.runtimeDirectory, entry.name);
+          try {
+            const value: unknown = JSON.parse(await readFile(path, 'utf8'));
+            if (
+              !isMcpRuntimeDescriptor(value) ||
+              !this.isProcessAlive(value.pid)
+            ) {
+              await rm(path, { force: true });
+            }
+          } catch {
+            await rm(path, { force: true });
+          }
+        }),
+    );
+  }
+}
+
+interface MusicCoreMcpHttpServerOptions {
+  readonly projectId: ProjectId;
+  readonly runtimeDirectory: string;
+  readonly toolHost: MusicCoreToolInvoker;
+  readonly createToken?: () => string;
+}
+
+const tokenMatches = (
+  authorization: string | undefined,
+  token: string,
+): boolean => {
+  const prefix = 'Bearer ';
+  if (!authorization?.startsWith(prefix)) {
+    return false;
+  }
+  const supplied = Buffer.from(authorization.slice(prefix.length));
+  const expected = Buffer.from(token);
+  return (
+    supplied.length === expected.length && timingSafeEqual(supplied, expected)
+  );
+};
+
+export class MusicCoreMcpHttpServer {
+  private readonly descriptorStore: RuntimeDescriptorStore;
+  private readonly instanceToken: string;
+  private server: ReturnType<typeof createServer> | undefined;
+  private descriptor: McpRuntimeDescriptor | undefined;
+
+  public constructor(private readonly options: MusicCoreMcpHttpServerOptions) {
+    this.descriptorStore = new RuntimeDescriptorStore(options.runtimeDirectory);
+    this.instanceToken =
+      options.createToken?.() ?? randomBytes(32).toString('base64url');
+  }
+
+  public async start(): Promise<McpRuntimeDescriptor> {
+    if (this.server !== undefined) {
+      throw new Error('Music Core MCP Server is already running');
+    }
+    await this.descriptorStore.cleanupStale();
+
+    const server = createServer((request, response) => {
+      void this.handleRequest(request, response);
+    });
+    this.server = server;
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        server.off('error', reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    if (address === null || typeof address === 'string') {
+      await this.closeServer();
+      throw new Error('Music Core MCP Server failed to bind an ephemeral port');
+    }
+
+    const descriptor: McpRuntimeDescriptor = {
+      projectId: this.options.projectId,
+      endpoint: `http://127.0.0.1:${String(address.port)}/mcp`,
+      instanceToken: this.instanceToken,
+      pid: process.pid,
+    };
+    await this.descriptorStore.write(descriptor);
+    this.descriptor = descriptor;
+    return descriptor;
+  }
+
+  public async stop(): Promise<void> {
+    const descriptor = this.descriptor;
+    this.descriptor = undefined;
+    if (descriptor !== undefined) {
+      await this.descriptorStore.remove(descriptor.projectId);
+    }
+    await this.closeServer();
+  }
+
+  private async handleRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    if (request.url !== '/mcp') {
+      response.writeHead(404).end();
+      return;
+    }
+    if (!tokenMatches(request.headers.authorization, this.instanceToken)) {
+      response.writeHead(401).end();
+      return;
+    }
+    if (request.method !== 'POST') {
+      response.writeHead(405).end();
+      return;
+    }
+
+    const mcpServer = new McpServer({
+      name: 'agent-music-workstation-core',
+      version: '1.0.0',
+    });
+    registerTools(mcpServer, this.options.toolHost);
+    const transport = new StreamableHTTPServerTransport({
+      enableJsonResponse: true,
+    });
+
+    try {
+      await mcpServer.connect(transport);
+      await transport.handleRequest(request, response);
+    } finally {
+      await transport.close();
+      await mcpServer.close();
+    }
+  }
+
+  private async closeServer(): Promise<void> {
+    const server = this.server;
+    this.server = undefined;
+    if (server === undefined) {
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error !== undefined) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  }
+}

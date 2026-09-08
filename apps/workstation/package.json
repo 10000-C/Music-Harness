@@ -9,8 +9,10 @@
   },
   "dependencies": {
     "@agent-music/contracts": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "abcjs": "6.6.4",
-    "midi-file": "1.2.4"
+    "midi-file": "1.2.4",
+    "zod": "4.1.12"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
