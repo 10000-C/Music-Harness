@@ -1,7 +1,7 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.11 A4 Execution & Session Decisions\
-**状态：** P0 产品范围已确认；A3 Candidate Transaction 决策已冻结；A4 已确认执行与会话决策已冻结\
+**版本：** V1.12 Project Multi-Session Decision\
+**状态：** P0 产品范围已确认；A3 Candidate Transaction 决策已冻结；A4 执行、会话与 Project 多 Session 决策已冻结\
 **日期：** 2026-09-08\
 **开发周期：** 10–15 天\
 **团队规模：** 2 人\
@@ -20,7 +20,7 @@
 - **P1：** P0 稳定后实现，不阻塞首发。
 - **P2：** 后续能力，不为其提前引入 P0 状态复杂度。
 
-### 1.2 V1.11 A4 执行与会话调整
+### 1.2 V1.12 A4 执行与会话调整
 
 - Agent Runtime 使用 Strands；OpenAI-compatible Provider、Agent-side MCP Client、Session 与 Context 管理均优先使用 Strands 已提供能力，不重复实现 Provider/MCP 协议层、Session transcript 或 compaction。
 - 用户级 Agent / Model Settings 归 A4 Agent Toolchain 所有；P0 删除 SQLite，A5 收缩为 Export Preparation。
@@ -28,8 +28,8 @@
 - Cancel 统一表示取消当前 Agent 操作：正式 Task 尚未创建时只终止 A4 Workflow；正式 Task 已创建时必须同时 `cancelTask` 并回滚当前 Task。
 - `finishTask` validation failure 才进入有限 repair；repair 不允许 Scope Extension，一轮 `ValidationReport → repair → finishTask` 计为一次 `repairAttempt`，每轮开始前读取最新 `maxRepairAttempts`。
 - 模型配置不冻结；每次 Strands model invocation 读取当前 active model configuration。Provider/MCP transient retry 优先交给 Strands，A4 不实现第二层通用 retry loop；最终 execution failure 必须取消并回滚 Active Task。
-- Agent Session 直接由 Strands Session 管理与 Storage 持久化；Renderer 不直接读取其存储格式。Agent Service 崩溃时不恢复运行中的 Task，已有 Active Task 必须取消并回滚。
-- A4 → Renderer 复用既有 Agent Service → Main/Preload → Renderer typed transport，主要承载 assistant 文本流与执行终态/错误；原始 MCP Tool Result 和 A4 内部 Workflow 状态不作为 Renderer Contract 暴露。
+- Agent Session 直接由 Strands Session 管理与 Storage 持久化；Renderer 不直接读取其存储格式。一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session；Agent Service 崩溃时不恢复运行中的 Task，已有 Active Task 必须取消并回滚。
+- A4 → Renderer 复用既有 Agent Service → Main/Preload → Renderer typed transport，承载最小 Session lifecycle、用户消息/Cancel、assistant 文本流与执行终态/错误；原始 MCP Tool Result 和 A4 内部 Workflow 状态不作为 Renderer Contract 暴露。
 
 ### 1.3 V1.9 相对 V1.7 的主要调整
 
@@ -649,10 +649,13 @@ P0 不引入应用级 SQLite。Agent 会话、消息、Tool Call / Tool Result �
 约束：
 
 - Agent Session 属于 A4/Strands，不是音乐工程事实；
+- 一个 Project 可以关联多个 Agent Session；不同 Project 的 Session 不混用；
+- P0 同一 Project 同时只有一个 Active Session，不支持多个 Session 后台并行执行；切换 Session 前当前 Agent execution 必须已经 completed / failed / cancelled；
+- P0 Agent 面板提供最小的“新建 Session / 切换已有 Session”能力，不引入 rename、search、pin、folder 等复杂会话管理；
 - 具体 Session 文件格式和内部目录结构由 Strands Storage 管理，不作为产品 Contract；
-- Renderer 不直接读取或解析 Strands Session 文件，只通过 A4 的会话接口消费历史消息和实时文本；
+- Renderer 不直接读取或解析 Strands Session 文件，只通过 A4 的会话接口列出项目 Session、创建/打开 Session、读取 Active Session，并消费历史消息和实时文本；
 - Session 可以在 Agent Service 重启后恢复对话上下文，但 P0 不恢复崩溃时仍在运行的 A3 Task/Candidate execution；
-- 复制或“另存为”项目不会自动复制原项目对应的 Agent Session。
+- 复制或“另存为”项目不会自动复制原项目对应的 Agent Session；新 `projectId` 使用自己的 Session 集合。
 
 ### 11.4 全局模型配置
 
@@ -929,4 +932,5 @@ P0 发布必须满足：
 57. 一轮 `ValidationReport → repair → finishTask` 计为一次 `repairAttempt`；每轮 repair 开始前读取最新 `maxRepairAttempts`，达到上限则取消并回滚当前 Task。
 58. 模型配置允许 Workflow 途中修改；每次 Strands model invocation 使用当时最新 active model configuration。
 59. P0 Agent Session 直接交由 Strands SessionManager/Storage 管理，不自研 transcript、不使用 SQLite；Renderer 不直接依赖 Strands 的持久化格式。
+60. 一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session；Agent UI 只提供最小的新建/切换能力，不支持多个 Session 后台并行执行，“另存为”后的新项目不继承原项目 Session。
 60. Agent Service 崩溃不恢复运行中的工程 Task；若 A3 存在 Active Task，必须取消并回滚到 `taskBaseCheckpoint`。

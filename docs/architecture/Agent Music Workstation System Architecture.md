@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.9 |
-| 需求基线 | Agent Music Workstation PRD V1.11 A4 Execution & Session Decisions |
-| 状态 | P0 架构基线；A3 Candidate Transaction 决策已冻结；A4 已确认执行与会话决策已冻结 |
+| 架构版本 | V1.10 |
+| 需求基线 | Agent Music Workstation PRD V1.12 Project Multi-Session Decision |
+| 状态 | P0 架构基线；A3 Candidate Transaction 决策已冻结；A4 执行、会话与 Project 多 Session 决策已冻结 |
 | 日期 | 2026-09-08 |
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Strands、MCP、Git/worktree |
 
-> 本版在 V1.8 A4 开发准备基线上继续冻结 A4 执行与会话边界：统一 Cancel/rollback、Strands-owned transient retry、repair Scope/计数规则、动态模型与 repair 配置、Strands Session/Storage、Agent Service crash rollback，以及最小化的 assistant text stream transport。P0 删除 SQLite。
+> 本版在 V1.9 A4 执行与会话基线上补齐 Project 多 Session 语义：一个 Project 可关联多个 Strands Session，P0 同时只有一个 Active Session；Renderer 通过 A4 最小 Session lifecycle Contract 创建/切换会话，不直接访问 Storage，也不允许多个 Session 后台并行执行。
 
 ---
 
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.11 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.12 冲突时，以 PRD 为准。
 
 ---
 
@@ -86,6 +86,7 @@
 | ADR-051 | Dynamic Agent settings | 模型配置不冻结，每次 Strands model invocation 读取当前 active model configuration；每次准备进入下一轮 repair 前读取最新 `maxRepairAttempts`。 |
 | ADR-052 | Strands Session ownership | Agent Session 直接交给 Strands SessionManager/Storage；A4 只提供应用级 session 标识、生命周期和 Renderer-facing session access，不自研 transcript/compaction，Renderer 不直接读取持久化格式。 |
 | ADR-053 | Agent Service crash | P0 不恢复运行中的 Agent Task。Agent Service 崩溃时若 A3 存在 Active Task，必须取消并回滚；Strands Session 可用于恢复对话，但不能恢复未完成工程事务。 |
+| ADR-054 | Project multi-session | 一个 Project 可关联多个 Agent Session，但 P0 同时只有一个 Active Session。A4 是 `projectId ↔ sessionId` 关联和 Active Session 的 owner；Renderer 只能通过 A4 最小 Session lifecycle Contract 创建、列出、打开和读取 Active Session。Session 切换不恢复或迁移 Active Task，P0 不支持多个 Session 后台并行 execution。 |
 
 > **职责边界：Global Meter 修改与音乐重排分离。** `updateGlobalMeter` 允许 Task 编辑过程中暂时保留旧 ABC barline；A2 不自动拆分 Note/Rest、不自动添加 Tie，也不根据新拍号改编音乐。Agent 负责后续 wholeProject 重排；最终 Candidate 的 Meter/小节一致性属于 `finishTask` 验证边界。
 
@@ -184,7 +185,7 @@ flowchart LR
 
 - 自研 React 六轨时间轴、Clip 展示、Transport、Playhead、Loop 和连续 Scope 选区；
 - Agent 对话、确认、Current/Candidate 状态；
-- 通过 Renderer-side `AgentClient` 发送用户消息并消费 assistant 文本流与执行终态/错误；React 组件不直接管理 Agent Service 进程、底层 IPC、A4 Workflow 状态或原始 MCP Tool Result；
+- 通过 Renderer-side `AgentClient` 列出/创建/打开 Project Session、读取 Active Session、发送用户消息/Cancel，并消费 assistant 文本流与执行终态/错误；React 组件不直接管理 Agent Service 进程、底层 IPC、A4 Workflow 状态、Strands Storage 或原始 MCP Tool Result；
 - 通过 `OpenDawRuntimeAdapter` 管理一个活动 openDAW Runtime；
 - 从 Music Core 接收 `TimelineViewModel` 和 `PlaybackCompilation`，由 `OpenDawRuntimeAdapter` 构建 RuntimeSnapshot；
 - 不直接读取或修改 openDAW BoxGraph；
@@ -209,8 +210,8 @@ flowchart LR
 - 使用 Strands Agent-side MCP Client 读取 runtime descriptor 并连接 Music Core MCP Server；
 - 计划、工具循环、有限修复和取消；
 - 拥有 Agent / Model Settings 与 A4 Workflow 内部状态；
-- 使用 Strands SessionManager/Storage 管理 Agent Session、恢复与运行时 Context；
-- 通过既有 typed Agent transport 向 Main / Preload 发布 assistant 文本流与执行终态/错误，不透传原始 MCP Tool Result 或完整 Workflow 状态；
+- 使用 Strands SessionManager/Storage 管理 Agent Session、恢复与运行时 Context；A4 维护 `projectId ↔ sessionId` 关联和每个 Project 的唯一 Active Session；
+- 通过既有 typed Agent transport 接收/发布最小 Session lifecycle、用户消息/Cancel、assistant 文本流与执行终态/错误，不透传原始 MCP Tool Result 或完整 Workflow 状态；
 - 通过 MCP 重新读取工程事实；
 - 不依赖 Electron API，不直接连接 React；
 - 无项目目录、Git 或 openDAW 写权限。
@@ -1281,11 +1282,14 @@ A4 Agent Service
 职责边界：
 
 - Strands 负责 Session message history、Tool Call/Tool Result context、Session restore、Context management 与 compaction；
-- A4 负责应用级 sessionId/projectId 关联、create/open/resume/close 生命周期，以及 Renderer-facing session access；
+- A4 负责应用级 `projectId ↔ sessionId` 关联、Session create/list/open/close 生命周期和每个 Project 的 Active Session 选择；
+- 一个 Project 可关联多个 Session，但 P0 同时只有一个 Active Session；不支持多个 Session 后台并行 execution；
+- Session 切换只能发生在当前 execution 已 completed / failed / cancelled 后；切换 Session 不恢复、转移或继续旧 Session 的 Active A3 Task；
+- Renderer-facing 最小 Session Contract 至少包含 `listSessions(projectId)`、`createSession(projectId)`、`openSession(projectId, sessionId)`、`getActiveSession(projectId)`；具体函数命名可在共享 Contract 中等价实现；
 - 持久化格式和内部文件布局属于 Strands Storage 实现细节，不进入共享 Contracts；
 - Renderer 不直接访问 Session Storage；
 - Agent Service 重启后可以恢复会话，但 P0 不恢复崩溃时仍在运行的 A3 Task/Candidate execution；
-- 项目“另存为”不自动复制原项目的 Agent Session。
+- 项目“另存为”不自动复制原项目的 Agent Session；新 `projectId` 对应独立 Session 集合。
 
 ---
 
@@ -1297,7 +1301,7 @@ A4 Agent Service
 - Command 包含 `requestId` 和幂等键；
 - Core Candidate/Task Event 在相应对象存在时携带 `projectId`、`taskId`、`candidateId` 和序列号；A4 的 pre-Task Agent Event 不伪造尚不存在的 Task/Candidate ID；
 - Core ↔ Renderer 跨进程只传输 A2 的 `PlaybackCompilation`、`TimelineViewModel` 及 Core 业务 Command/Event；其中大 MIDI 使用 transferable buffer 或内部临时文件，ScopeMapping 和 RuntimeSnapshot 都不跨 Core/Renderer 边界；
-- A4 ↔ Renderer 复用稳定 typed Agent transport，经 Main / Preload 做 bridge；Contract 只包含 UI 必需的用户消息输入、assistant 文本流、取消命令与执行终态/错误，不暴露 A4 完整 Workflow state 或原始 MCP Tool Result；
+- A4 ↔ Renderer 复用稳定 typed Agent transport，经 Main / Preload 做 bridge；Contract 只包含 UI 必需的 Session lifecycle、用户消息输入、assistant 文本流、取消命令与执行终态/错误，不暴露 A4 完整 Workflow state、Strands Storage 或原始 MCP Tool Result；
 - Renderer 不获得任意文件路径访问。
 
 ### 16.2 主要方向
@@ -1307,7 +1311,7 @@ A4 Agent Service
 | Renderer → Core | createScope、startTask、cancelTask、approveScopeExtension、rejectScopeExtension、acceptCandidate、rejectCandidate、loadPreview、exportCurrent |
 | Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、replaceScopedMusic、updateGlobalMeter、finishTask |
 | Core → Renderer | candidateChanged、taskChanged、scopeExtensionRequested、validationResult、currentCommitted、candidateInvalidated、error |
-| Renderer ↔ Agent Service（经 Main / Preload） | `sendMessage` / `cancelCurrentExecution`；assistant text delta；execution completed / failed / cancelled。原始 MCP Tool Result 与 A4 内部 Workflow state 不进入该 Contract |
+| Renderer ↔ Agent Service（经 Main / Preload） | Project Session 的 list/create/open/getActive；`sendMessage` / `cancelCurrentExecution`；assistant text delta；execution completed / failed / cancelled。原始 MCP Tool Result、Strands Storage 与 A4 内部 Workflow state 不进入该 Contract |
 | Main → Services | openProject、closeProject、restartService、chooseExportPath |
 
 ### 16.3 A3 与 A4 状态分工
@@ -1341,7 +1345,7 @@ Electron Main / Preload
 = typed transport bridge only
         ↓
 Renderer AgentClient
-= chat stream subscription + send/cancel facade
+= active-session facade + chat stream subscription + send/cancel
         ↓
 React
 = presentation only
@@ -1612,3 +1616,4 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerInvocation
 48. 模型配置每次 invocation 动态读取；`maxRepairAttempts` 每轮 repair 开始前动态读取，不冻结进 Task/Workflow snapshot。
 49. Agent Session 由 Strands SessionManager/Storage 管理；Renderer 不直接读取持久化格式，A4 不自研 transcript/compaction。
 50. Agent Service crash 不恢复运行中的工程 Task；存在 Active Task 时必须取消并回滚。
+51. 一个 Project 可关联多个 Agent Session，但 P0 同时只有一个 Active Session；A4 独占 Project/Session 关联与 Active Session 选择，Renderer 仅通过最小 Session lifecycle Contract 操作，Session 切换不得留下后台 execution 或恢复旧 Active Task。
