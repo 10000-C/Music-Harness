@@ -65,6 +65,9 @@ describe('StrandsAgentRuntimeFactory', () => {
     const second = await factory.create(projectId, sessionId);
 
     expect(first.agent.sessionId).toBe(sessionId);
+    expect(first.agent.systemPrompt).toContain('submitGenerationPlan');
+    expect(first.agent.systemPrompt).toContain('getTaskContext');
+    expect(first.agent.systemPrompt).toContain('finishTask');
     expect(second.agent.sessionId).toBe(sessionId);
     expect(first.agent.model.getConfig().modelId).toBe('model-a');
     expect(second.agent.model.getConfig().modelId).toBe('model-b');

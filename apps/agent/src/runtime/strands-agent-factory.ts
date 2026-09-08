@@ -1,4 +1,9 @@
-import { Agent, type McpClient } from '@strands-agents/sdk';
+import {
+  Agent,
+  type AgentResult,
+  type AgentStreamEvent,
+  type McpClient,
+} from '@strands-agents/sdk';
 import type {
   AgentSessionId,
   McpRuntimeDescriptor,
@@ -9,6 +14,7 @@ import { createStrandsMcpClient } from '../mcp/index.js';
 import { DynamicOpenAiChatModel } from '../model/index.js';
 import { createStrandsSession } from '../session/index.js';
 import type { AgentModelConfig } from '../settings/index.js';
+import { AGENT_SYSTEM_PROMPT } from './agent-system-prompt.js';
 
 export interface ActiveModelSettingsPort {
   getActiveModelConfig(): Promise<AgentModelConfig>;
@@ -31,6 +37,10 @@ export interface StrandsAgentRuntimeOptions {
 export interface StrandsAgentRuntime {
   readonly agent: Agent;
   readonly mcpClient: McpClient;
+  stream(
+    text: string,
+    signal: AbortSignal,
+  ): AsyncGenerator<AgentStreamEvent, AgentResult, undefined>;
   dispose(): Promise<void>;
 }
 
@@ -59,6 +69,7 @@ export class StrandsAgentRuntimeFactory {
         this.dependencies.settings,
       ),
       tools: [mcpClient],
+      systemPrompt: AGENT_SYSTEM_PROMPT,
       sessionManager: session.sessionManager,
       storage: session.storage,
       contextManager: 'auto',
@@ -69,6 +80,7 @@ export class StrandsAgentRuntimeFactory {
     return {
       agent,
       mcpClient,
+      stream: (text, signal) => agent.stream(text, { cancelSignal: signal }),
       dispose: async () => {
         await mcpClient.disconnect();
       },
