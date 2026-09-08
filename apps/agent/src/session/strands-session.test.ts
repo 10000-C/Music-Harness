@@ -8,10 +8,16 @@ import {
   type BaseModelConfig,
   type ModelStreamEvent,
 } from '@strands-agents/sdk';
-import type { AgentSessionId } from '@agent-music/contracts';
+import type {
+  AgentConversationMessage,
+  AgentSessionId,
+} from '@agent-music/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createStrandsSession } from './strands-session.js';
+import {
+  createStrandsSession,
+  readStrandsConversation,
+} from './strands-session.js';
 
 const sessionId = '33333333-3333-4333-8333-333333333333' as AgentSessionId;
 const tempDirectories: string[] = [];
@@ -93,6 +99,65 @@ describe('createStrandsSession', () => {
     expect(restoredAgent.messages.map((message) => message.toJSON())).toEqual(
       firstAgent.messages.map((message) => message.toJSON()),
     );
+  });
+
+  it('projects restored Session history to user/assistant text without tool internals', async () => {
+    const storageRoot = await makeStorageRoot();
+    const resources = createStrandsSession(sessionId, storageRoot);
+    const agent = new Agent({
+      model: createNoopModel(),
+      messages: [
+        {
+          role: 'user',
+          content: [{ text: 'Make the bass line tighter.' }],
+        },
+        {
+          role: 'assistant',
+          content: [{ text: 'I will tighten the syncopation.' }],
+        },
+        {
+          role: 'assistant',
+          content: [
+            {
+              toolUse: {
+                name: 'getScopedComposition',
+                toolUseId: 'tool-1',
+                input: { hidden: 'internal' },
+              },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              toolResult: {
+                toolUseId: 'tool-1',
+                status: 'success',
+                content: [{ text: 'private tool result' }],
+              },
+            },
+          ],
+        },
+      ],
+      sessionManager: resources.sessionManager,
+      storage: resources.storage,
+      contextManager: 'auto',
+      printer: false,
+    });
+    await agent.initialize();
+    await resources.sessionManager.saveSnapshot({
+      target: agent,
+      isLatest: true,
+    });
+
+    const messages = await readStrandsConversation(sessionId, storageRoot);
+    const expected: readonly AgentConversationMessage[] = [
+      { role: 'user', text: 'Make the bass line tighter.' },
+      { role: 'assistant', text: 'I will tighten the syncopation.' },
+    ];
+
+    expect(messages).toEqual(expected);
   });
 
   it('isolates different Session IDs inside the same Strands storage root', async () => {

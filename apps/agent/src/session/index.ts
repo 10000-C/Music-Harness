@@ -1,5 +1,8 @@
 export { SessionRegistry, SessionRegistryError } from './session-registry.js';
-export { createStrandsSession } from './strands-session.js';
+export {
+  createStrandsSession,
+  readStrandsConversation,
+} from './strands-session.js';
 export type {
   SessionRegistryDependencies,
   SessionRegistryErrorCode,
