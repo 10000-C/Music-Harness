@@ -5,6 +5,8 @@ import { isAgentCommand, isAgentEvent } from './agent.js';
 const projectId = '11111111-1111-4111-8111-111111111111';
 const sessionId = '22222222-2222-4222-8222-222222222222';
 const executionId = '33333333-3333-4333-8333-333333333333';
+const taskId = '44444444-4444-4444-8444-444444444444';
+const candidateId = '55555555-5555-4555-8555-555555555555';
 
 const expectValidCommand = (command: unknown): void => {
   expect(isAgentCommand(command)).toBe(true);
@@ -48,6 +50,14 @@ describe('Agent command contract', () => {
       text: 'Make the bass line more syncopated.',
     });
     expectValidCommand({
+      type: 'agent.message.send',
+      requestId: 'request-5b',
+      projectId,
+      sessionId,
+      task: { taskId, candidateId },
+      text: 'Make the confirmed scoped change.',
+    });
+    expectValidCommand({
       type: 'agent.execution.cancel',
       requestId: 'request-6',
       projectId,
@@ -71,6 +81,16 @@ describe('Agent command contract', () => {
         projectId,
         sessionId,
         text: '',
+      }),
+    ).toBe(false);
+    expect(
+      isAgentCommand({
+        type: 'agent.message.send',
+        requestId: 'request-5b',
+        projectId,
+        sessionId,
+        task: { taskId: 'not-a-uuid', candidateId },
+        text: 'Make the confirmed scoped change.',
       }),
     ).toBe(false);
     expect(

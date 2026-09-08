@@ -1,4 +1,4 @@
-import type { ProjectId } from './domain.js';
+import type { CandidateId, ProjectId, TaskId } from './domain.js';
 
 declare const agentSessionIdBrand: unique symbol;
 declare const agentExecutionIdBrand: unique symbol;
@@ -44,6 +44,10 @@ export type AgentCommand =
   | (AgentCommandBase & {
       readonly type: 'agent.message.send';
       readonly sessionId: AgentSessionId;
+      readonly task?: {
+        readonly taskId: TaskId;
+        readonly candidateId: CandidateId;
+      };
       readonly text: string;
     })
   | (AgentCommandBase & {
@@ -139,7 +143,14 @@ export const isAgentCommand = (value: unknown): value is AgentCommand => {
     case 'agent.session.open':
       return isUuid(value.sessionId);
     case 'agent.message.send':
-      return isUuid(value.sessionId) && isNonEmptyString(value.text);
+      return (
+        isUuid(value.sessionId) &&
+        (value.task === undefined ||
+          (isRecord(value.task) &&
+            isUuid(value.task.taskId) &&
+            isUuid(value.task.candidateId))) &&
+        isNonEmptyString(value.text)
+      );
     default:
       return false;
   }
