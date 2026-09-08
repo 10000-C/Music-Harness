@@ -25,7 +25,10 @@ export declare class McpServer {
       readonly description?: string;
       readonly inputSchema?: unknown;
     },
-    callback: (input: unknown) => Promise<McpTextResult>,
+    callback: (
+      input: unknown,
+      extra: { readonly signal: AbortSignal },
+    ) => Promise<McpTextResult>,
   ): unknown;
   public connect(transport: StreamableHTTPServerTransport): Promise<void>;
   public close(): Promise<void>;

@@ -145,6 +145,39 @@ describe('MusicCoreToolHost', () => {
     expect(mocks.startTask).toHaveBeenCalledWith({ projectId, scope });
   });
 
+  it('cancels a pending generation plan without creating a Task even if approval arrives later', async () => {
+    let resolveDecision: ((value: 'approved') => void) | undefined;
+    const { host, mocks } = makeHarness();
+    const abortController = new AbortController();
+    mocks.confirmationRequest.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDecision = resolve;
+      }),
+    );
+
+    const pending = host.call(
+      'submitGenerationPlan',
+      {
+        projectId,
+        summary: 'Build a six-track groove.',
+        scope,
+      },
+      { signal: abortController.signal },
+    );
+    await Promise.resolve();
+    abortController.abort();
+
+    await expect(pending).resolves.toEqual({
+      approved: false,
+      decision: 'cancelled',
+    });
+    expect(mocks.startTask).not.toHaveBeenCalled();
+
+    resolveDecision?.('approved');
+    await Promise.resolve();
+    expect(mocks.startTask).not.toHaveBeenCalled();
+  });
+
   it.each(['rejected', 'cancelled'] as const)(
     'does not create a Task when generation plan is %s',
     async (decision) => {

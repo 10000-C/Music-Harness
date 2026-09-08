@@ -25,7 +25,17 @@ const makeRuntimeDirectory = async (): Promise<string> => {
 
 const makeServer = async () => {
   const runtimeDirectory = await makeRuntimeDirectory();
-  const call = vi.fn((name: string) => Promise.resolve({ name, taskId }));
+  const call = vi.fn(
+    (
+      name: string,
+      input: unknown,
+      options?: { readonly signal?: AbortSignal },
+    ) => {
+      void input;
+      void options;
+      return Promise.resolve({ name, taskId });
+    },
+  );
   const server = new MusicCoreMcpHttpServer({
     projectId,
     runtimeDirectory,
@@ -91,7 +101,11 @@ describe('MusicCoreMcpHttpServer', () => {
       throw new Error('Expected text MCP result');
     }
     expect(JSON.parse(text.text)).toEqual({ name: 'getTaskContext', taskId });
-    expect(call).toHaveBeenCalledWith('getTaskContext', { taskId });
+    expect(call).toHaveBeenCalledTimes(1);
+    const callArguments = call.mock.calls[0];
+    expect(callArguments?.[0]).toBe('getTaskContext');
+    expect(callArguments?.[1]).toEqual({ taskId });
+    expect(callArguments?.[2]?.signal).toBeInstanceOf(AbortSignal);
 
     await client.close();
   });

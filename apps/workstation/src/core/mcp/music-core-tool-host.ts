@@ -29,6 +29,7 @@ export interface GenerationPlanConfirmationPort {
     readonly projectId: ProjectId;
     readonly summary: string;
     readonly scope: TaskScope;
+    readonly signal?: AbortSignal;
   }): Promise<GenerationPlanDecision>;
 }
 
@@ -54,6 +55,8 @@ interface ReplaceScopedMusicInput {
   readonly replacements: readonly TrackReplacement[];
 }
 
+const isAborted = (signal?: AbortSignal): boolean => signal?.aborted === true;
+
 interface UpdateGlobalMeterInput {
   readonly envelope: TaskExecutionEnvelope;
   readonly numerator: number;
@@ -69,7 +72,11 @@ export class MusicCoreToolHost {
     return P0_MCP_TOOL_NAMES;
   }
 
-  public async call(name: MusicCoreToolName, input: unknown): Promise<unknown> {
+  public async call(
+    name: MusicCoreToolName,
+    input: unknown,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<unknown> {
     switch (name) {
       case 'getTaskContext': {
         const { taskId } = input as { readonly taskId: TaskId };
@@ -80,7 +87,10 @@ export class MusicCoreToolHost {
           input as TaskExecutionEnvelope,
         );
       case 'submitGenerationPlan':
-        return this.submitGenerationPlan(input as GenerationPlanInput);
+        return this.submitGenerationPlan(
+          input as GenerationPlanInput,
+          options.signal,
+        );
       case 'requestScopeExtension':
         return this.dependencies.agent.requestScopeExtension(
           input as ScopeExtensionInput,
@@ -102,10 +112,18 @@ export class MusicCoreToolHost {
 
   private async submitGenerationPlan(
     input: GenerationPlanInput,
+    signal?: AbortSignal,
   ): Promise<unknown> {
-    const decision = await this.dependencies.confirmation.request(input);
-    if (decision !== 'approved') {
-      return { approved: false, decision };
+    if (isAborted(signal)) {
+      return { approved: false, decision: 'cancelled' };
+    }
+
+    const decision = await this.waitForGenerationPlanDecision(input, signal);
+    if (decision !== 'approved' || isAborted(signal)) {
+      return {
+        approved: false,
+        decision: isAborted(signal) ? 'cancelled' : decision,
+      };
     }
 
     const task = await this.dependencies.control.startTask({
@@ -113,5 +131,28 @@ export class MusicCoreToolHost {
       scope: input.scope,
     });
     return { approved: true, task };
+  }
+
+  private async waitForGenerationPlanDecision(
+    input: GenerationPlanInput,
+    signal?: AbortSignal,
+  ): Promise<GenerationPlanDecision> {
+    const confirmation = this.dependencies.confirmation.request({
+      ...input,
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (signal === undefined) {
+      return confirmation;
+    }
+
+    return new Promise<GenerationPlanDecision>((resolve, reject) => {
+      const onAbort = (): void => {
+        resolve('cancelled');
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      confirmation.then(resolve, reject).finally(() => {
+        signal.removeEventListener('abort', onAbort);
+      });
+    });
   }
 }

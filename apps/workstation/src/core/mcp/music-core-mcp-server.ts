@@ -28,7 +28,11 @@ import type { MusicCoreToolName } from './music-core-tool-host.js';
 
 export interface MusicCoreToolInvoker {
   listTools(): readonly MusicCoreToolName[];
-  call(name: MusicCoreToolName, input: unknown): Promise<unknown>;
+  call(
+    name: MusicCoreToolName,
+    input: unknown,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<unknown>;
 }
 
 const trackIdSchema = z.enum(TRACK_IDS);
@@ -82,7 +86,10 @@ const registerJsonTool = (
   server.registerTool(
     name,
     { description, inputSchema: schema },
-    async (input) => toolResult(await host.call(name, schema.parse(input))),
+    async (input, extra) =>
+      toolResult(
+        await host.call(name, schema.parse(input), { signal: extra.signal }),
+      ),
   );
 };
 
