@@ -2,18 +2,33 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement A4 on `feat/a4`: Strands-based OpenAI-compatible Agent execution, Strands MCP client and Session management, Project multi-session lifecycle, Settings, bounded repair/cancel semantics, Core MCP integration adapters, and the minimal Renderer-facing Agent transport contract.
+**Goal:** Implement A4 on `feat/a4`: Strands-based OpenAI-compatible Agent execution, Strands MCP client and Session management, Project multi-session lifecycle, Settings, bounded repair/cancel semantics, Core MCP integration adapters, and the minimal Renderer-facing Agent transport contract. Architecture V1.13 additionally requires the product runtime to converge on one Core-process-scoped MCP connection across Project switches.
 
-**Architecture:** `apps/agent` owns Settings, Project/Session association, Strands Agent construction and A4 Workflow. It creates a fresh Strands Agent per workflow invocation while `DynamicOpenAiChatModel` re-resolves the active model configuration for every Strands model call; the active `sessionId` restores durable conversation state through Strands `SessionManager` + `LocalFileStorage`. `apps/workstation/src/core/mcp` is a thin transport adapter over the existing A3 Agent/Control ports; it owns loopback MCP hosting, runtime descriptor and `submitGenerationPlan` confirmation handoff, but no A4 Workflow logic. A4 transaction rollback is expressed through a narrow injected host-control port rather than adding an eighth Agent MCP tool.
+**Architecture:** `apps/agent` owns Settings, Project/Session association, Strands Agent construction and A4 Workflow. It creates a fresh Strands Agent per workflow invocation while `DynamicOpenAiChatModel` re-resolves the active model configuration for every Strands model call; the active `sessionId` restores durable conversation state through Strands `SessionManager` + `LocalFileStorage`. `apps/workstation/src/core/mcp` is a thin transport adapter over the existing A3 Agent/Control ports; in the formal product runtime it owns one loopback MCP server and Core-process-scoped runtime descriptor whose lifetime is independent of Project close/open. A4 connects to that single Core MCP and never chooses an endpoint by `projectId`. A4 transaction rollback remains a narrow injected host-control port rather than an eighth Agent MCP tool.
 
 **Tech Stack:** Node.js 24.18.1, pnpm 9.15.9, TypeScript 5.9 strict mode, Vitest 4.1, `@strands-agents/sdk` 1.16.x, OpenAI SDK 6.x peer required by Strands, MCP TypeScript SDK v1.x compatible with Strands, Zod v4.
+
+## Architecture V1.13 Delta — Required Before B1 Project-Switch Integration
+
+The initial A4 implementation used a Project-scoped runtime descriptor and created an MCP client from `projectId` for each invocation. PRD V1.15 / Architecture V1.13 supersede that **formal product topology** while preserving the seven-tool MCP contract and the standalone `core:mcp --project` development harness.
+
+Before B1 Project-switch integration is considered complete:
+
+- shared product `McpRuntimeDescriptor` becomes Core-process-scoped (`endpoint`, `instanceToken`, `pid`); Project selection is not connection discovery;
+- product Music Core starts one MCP Server per Core process and keeps it alive across `closeProject(A) → openProject(B)`;
+- A4 creates/reuses one Core MCP infrastructure connection and does not call descriptor discovery with `projectId`; `projectId` remains in Agent commands and A3 execution envelopes only for authority validation;
+- `cancelCurrentExecution(projectId)` must resolve only after any bootstrapped Active Task rollback has completed, so B1 can use it as the Project-switch barrier;
+- no `switchProject` Agent Tool is added; B1/B2 own user-initiated Project switching.
+
+The existing `core:mcp --project ...` CLI remains intentionally Project-bound for Claude Code/A-layer regression and is not the product process composition root.
 
 ## Global Constraints
 
 - Branch: `feat/a4`, based on `dev` commit `dc72bae`.
 - TDD: one public-seam behavior at a time; verify red before implementation and green after implementation.
 - Atomic commits: each task below ends in an independently reviewable commit.
-- P0 exposes exactly seven Agent MCP tools: `getTaskContext`, `getScopedComposition`, `submitGenerationPlan`, `requestScopeExtension`, `replaceScopedMusic`, `updateGlobalMeter`, `finishTask`.
+- Product runtime uses one Core-process-scoped MCP connection across Project switches; A4 does not maintain one MCP endpoint per Project.
+- P0 exposes exactly seven Agent MCP tools: `getTaskContext`, `getScopedComposition`, `submitGenerationPlan`, `requestScopeExtension`, `replaceScopedMusic`, `updateGlobalMeter`, `finishTask`; the Agent-facing `submitGenerationPlan` schema is `summary + scope` only, with Core/MCP injecting the Active Project ID.
 - A4 must use Strands native OpenAI-compatible model, MCP client, SessionManager/Storage and context management; no custom SSE parser, generic retry loop, transcript engine or compaction engine.
 - Model configuration is read at each Strands model call. `maxRepairAttempts` is read immediately before each new repair round.
 - Repair never requests Scope Extension. One `ValidationReport → repair → finishTask` cycle counts as one `repairAttempt`.
@@ -39,7 +54,7 @@
 **Interfaces:**
 - Produces branded `AgentSessionId` and `AgentExecutionId` values at shared IPC boundaries.
 - Produces `AgentSessionSummary`, `AgentCommand`, `AgentCommandResult`, and `AgentEvent` discriminated unions.
-- Produces `McpRuntimeDescriptor` and runtime validators.
+- Produces the MCP runtime descriptor contract and runtime validators. Under Architecture V1.13 the formal product descriptor is Core-process-scoped rather than Project-scoped; the older `{projectId,...}` shape is a migration target, not the final B1 contract.
 - Contract validators accept only UUID project/session/execution IDs, non-empty endpoint/token fields, known command/event variants, and the exact declared keys for each variant/nested payload; undeclared fields are rejected.
 
 - [ ] **Step 1: Add failing contract tests** for valid/invalid runtime descriptors, Project session commands, message/cancel commands, text delta, completed/failed/cancelled terminal events, and otherwise-valid variants containing forbidden extra fields.
@@ -106,7 +121,7 @@
 - Modify: `pnpm-lock.yaml`
 
 **Interfaces:**
-- `CoreMcpServer.start(projectId)` binds only `127.0.0.1` on an ephemeral port and writes `{projectId, endpoint, instanceToken, pid}` to the injected runtime descriptor store.
+- Architecture V1.13 target: `CoreMcpServer.start()` binds one `127.0.0.1` ephemeral endpoint per Core process and writes a Core-process-scoped descriptor `{endpoint, instanceToken, pid}`. Project close/open does not stop the server. The earlier `start(projectId)` behavior is retained only by the standalone dev harness until the product composition root is migrated.
 - `CoreMcpServer.stop()` closes HTTP/MCP resources and removes the descriptor; descriptor publish/remove failures are exception-safe and cannot leave a logically failed server bound.
 - `GenerationPlanConfirmationPort.request(input)` waits for product approval and returns an approved `TaskScope` or rejection/cancellation; approval then calls existing `CandidateControlPort.startTask`.
 - All Task-bound tools delegate to `CandidateAgentPort`; no Candidate authorization logic is duplicated in the MCP layer.
@@ -115,7 +130,7 @@
 - [ ] **Step 2: Implement descriptor storage and token generation.**
 - [ ] **Step 3: Write a failing MCP host test** asserting `tools/list` returns exactly the seven P0 tools and missing/wrong bearer token is rejected.
 - [ ] **Step 4: Implement loopback Streamable HTTP using MCP SDK v1.x and Zod tool schemas.**
-- [ ] **Step 5: Add failing delegation tests** for each tool, including a pending `submitGenerationPlan` that creates no Task before confirmation and starts a Task only after approval.
+- [ ] **Step 5: Add failing delegation tests** for each tool, including a pending `submitGenerationPlan` whose Agent-facing schema omits `projectId`, whose MCP adapter injects the bound Active Project, and that creates no Task before confirmation but starts a Task only after approval. Add timeout cancellation coverage proving MCP `notifications/cancelled` reaches the original Tool Call signal.
 - [ ] **Step 6: Implement only serialization/error-normalization adapters over A3; do not move A2/A3 rules into the tool host.**
 - [ ] **Step 7: Verify MCP unit/HTTP integration tests and workstation typecheck.**
 - [ ] **Step 8: Commit:** `feat(core): expose candidate tools over mcp`.
@@ -130,16 +145,16 @@
 - Create: `apps/agent/src/runtime/index.ts`
 
 **Interfaces:**
-- Runtime descriptor client discovers the descriptor for the requested Project and rejects mismatched/stale descriptors.
+- Architecture V1.13 target: runtime descriptor discovery resolves the single live Core instance and rejects stale/malformed descriptors; it does not take `projectId` to choose an endpoint.
 - Each invocation calls `AgentSettingsStore.getActiveModelConfig()` and creates `OpenAIModel({ api: 'chat', ... })` from the latest settings.
-- MCP uses Strands `McpClient` with the descriptor endpoint and instance token header; no custom MCP protocol client exists.
+- MCP uses Strands `McpClient` with the Core descriptor endpoint and instance token header; the connection is reusable across Project close/open, and no custom MCP protocol client exists.
 - Strands `Agent` receives the active SessionManager/LocalFileStorage and `contextManager: 'auto'`.
 
-- [ ] **Step 1: Write failing descriptor discovery tests** for valid project, project mismatch, dead PID, malformed descriptor, and secret-safe errors.
-- [ ] **Step 2: Implement minimal descriptor reader.**
+- [ ] **Architecture V1.13 follow-up:** replace Project-scoped discovery tests with Core-instance discovery tests (live descriptor, dead PID, malformed descriptor, secret-safe errors) and add a Project A → B switch integration proving the same MCP endpoint/client remains usable.
+- [ ] **Architecture V1.13 follow-up:** migrate the descriptor reader/factory so Project IDs no longer select endpoints; preserve `projectId` only in workflow/business calls.
 - [ ] **Step 3: Write a failing factory test** showing two sequential invocations observe two different active model configurations without changing the Session ID.
-- [ ] **Step 4: Implement OpenAI Chat Completions model + Strands McpClient construction using current settings/descriptor per invocation.**
-- [ ] **Step 5: Add an integration test against Task 4's real local MCP server** proving Strands sees the seven tools through MCP.
+- [ ] **Architecture V1.13 follow-up:** keep model configuration dynamic per invocation/model call, but move Strands MCP infrastructure construction to the Core-instance lifecycle so Project close/open reuses the same endpoint/client instead of selecting a descriptor per Project.
+- [ ] **Step 5: Add an integration test against Task 4's real local MCP server** proving Strands sees the seven tools through MCP; V1.13 completion additionally requires Project A close → Project B open with the same MCP endpoint/client and correct active-project guards.
 - [ ] **Step 6: Verify runtime tests and agent typecheck.**
 - [ ] **Step 7: Commit:** `feat(agent): integrate strands model and mcp runtime`.
 
@@ -207,7 +222,7 @@ A/B/C/D answer different questions. `tools/list` success, Strands MCP connectivi
 
 ## Plan Self-Review
 
-- Spec coverage: Settings ownership, Strands Provider/MCP/Session, Project multi-session, dynamic model config, dynamic repair cap, long-held generation-plan confirmation, mechanical confirmed-Task bootstrap, no repair Scope Extension, unified cancel/final-failure rollback, controlled-fatal cleanup, abrupt-process Core reconciliation, and strict minimal Renderer transport all map to explicit tasks.
+- Spec coverage: Settings ownership, Strands Provider/MCP/Session, Project multi-session, single Core MCP connection across Project switching, dynamic model config, dynamic repair cap, long-held generation-plan confirmation, mechanical confirmed-Task bootstrap, no repair Scope Extension, unified cancel/final-failure rollback, controlled-fatal cleanup, abrupt-process Core reconciliation, and strict minimal Renderer transport all map to explicit tasks or the V1.13 migration delta above.
 - No placeholders: every task has concrete file boundaries, public seams, red/green verification and a commit boundary.
 - Type consistency: shared IDs/commands/events originate in `packages/contracts`; A4 internal ports remain in `apps/agent`; A3 transaction types remain owned by existing Core/contracts and are not duplicated.
 - Scope control: B1/B2/B4 implementation is not included; A4 only defines the shared transport data contract they will consume later.

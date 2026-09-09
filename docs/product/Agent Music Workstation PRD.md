@@ -1,7 +1,7 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.14 Agent Crash Reconciliation\
-**状态：** P0 产品范围已确认；A3 Candidate Transaction 决策已冻结；A4 执行、会话与 Project 多 Session 决策已冻结\
+**版本：** V1.15 Single-Core MCP Project Switching\
+**状态：** P0 产品范围已确认；A3 Candidate Transaction、A4 执行/会话、单 Core/MCP Project 切换决策已冻结\
 **日期：** 2026-09-09\
 **开发周期：** 10–15 天\
 **团队规模：** 2 人\
@@ -20,7 +20,16 @@
 - **P1：** P0 稳定后实现，不阻塞首发。
 - **P2：** 后续能力，不为其提前引入 P0 状态复杂度。
 
-### 1.2 V1.14 A4 执行、会话、Task Bootstrap 与 Crash Reconciliation
+### 1.2 V1.15 单 Core/MCP 与 Project 切换
+
+- P0 一个窗口同时只有一个打开项目。正式桌面产品运行时使用一个长期存活的 Music Core Utility Process、一个 MCP Server 和 `0..1` 个 Active Project；项目切换不创建第二个并行 Project Core/MCP，也不要求 Agent 在多个 MCP Endpoint 之间选择。
+- MCP Endpoint、Instance Token 与 Core 进程同生命周期；关闭当前项目并打开另一个项目时 MCP 连接保持不变。Project 是 Core 的确定性 Active Project 状态，不是 Agent 可调用的 `switchProject` Tool。
+- 用户在运行中的 Agent execution、planning/awaiting confirmation 或 Active Task 存在时切换项目，B 侧 UI 必须先提示该操作会取消当前 Agent 操作。用户确认后调用统一 Cancel；若已有正式 Task，必须等待 `cancelTask` 完成并回滚到 `taskBaseCheckpoint`，之后才允许关闭旧项目并打开新项目。
+- 用户拒绝切换时当前项目和 Agent 操作保持不变；Cancel/rollback 失败时切换必须 fail-closed，旧项目继续保持打开，不能强制进入新项目。
+- `submitGenerationPlan` 不要求 Agent 提供 `projectId`；MCP Host 使用 Core 当前 Active Project 确定性注入 Project 身份。批准后返回的 Task bootstrap / `getTaskContext` 再向 Agent 提供权威 `projectId`。`projectId` 继续保留在 Task execution envelope 和 A3 授权校验中，但不用于选择 MCP Endpoint。
+- `core:mcp --project ...` 属于开发/外部 Agent 单项目验证 harness，可继续项目绑定；其生命周期不定义正式桌面产品的 MCP 拓扑。
+
+### 1.3 V1.14 A4 执行、会话、Task Bootstrap 与 Crash Reconciliation
 
 - Agent Runtime 使用 Strands；OpenAI-compatible Provider、Agent-side MCP Client、Session 与 Context 管理均优先使用 Strands 已提供能力，不重复实现 Provider/MCP 协议层、Session transcript 或 compaction。
 - 用户级 Agent / Model Settings 归 A4 Agent Toolchain 所有；P0 删除 SQLite，A5 收缩为 Export Preparation。
@@ -32,13 +41,13 @@
 - A4 → Renderer 复用既有 Agent Service → Main/Preload → Renderer typed transport，承载最小 Session lifecycle、用户消息/Cancel、assistant 文本流与执行终态/错误；原始 MCP Tool Result 和 A4 内部 Workflow 状态不作为 Renderer Contract 暴露。
 - 普通局部修改在 UI 确认后由 A3 先创建正式 Task；Renderer/B1 向 A4 的 `sendMessage` 只附带最小 `{taskId, candidateId}` bootstrap。A4 必须首先调用 `getTaskContext({taskId})` 获取 A3 权威的 Scope、baseRevision、scopeRevision 与 execution envelope；Agent transport 不复制这些授权状态。
 
-### 1.3 V1.9 相对 V1.7 的主要调整
+### 1.4 V1.9 相对 V1.7 的主要调整
 
 - 冻结 P0 Velocity：支持每事件 `1..127`；`0` 在 Standard MIDI 中表示 Note Off，因此不得作为 Note onset Velocity。一个 Chord 内所有 pitch 共享 Velocity，Tie chain 只在起音处设置。
 - 补齐 Agent 修改全局拍号的正式能力：仅允许覆盖全部六轨的 `wholeProject` Task，并使用专用 `updateGlobalMeter` 工具。
 - P0 MCP Tool 由 6 个增为 7 个；轨道片段替换与全局拍号修改保持不同的授权和写入接口。
 
-### 1.4 V1.6 的工作区调整
+### 1.5 V1.6 的工作区调整
 
 - P0 产品工作区改为自研 React UI，不 fork、内嵌或直接复用 openDAW Studio UI。
 - openDAW 仅作为 SDK/Core Runtime，负责播放、音频图、运行时工程对象、Solo/Mute 和离线渲染。
@@ -64,6 +73,7 @@ Agent Music Workstation 是一款本地优先、Agent-first 的桌面音乐创�
 - 试听 Candidate，并在 Current 与 Candidate 间切换；
 - 将 Candidate 整体接受为新 Current，或整体拒绝；
 - 重新打开最后成功提交的 Current；
+- 在同一窗口中关闭当前项目并打开另一个项目；
 - 从 Current 导出 MIDI、ABC，以及技术 Gate 通过后的 WAV。
 
 ### 2.1 核心价值
@@ -154,6 +164,15 @@ P0 UI 可以提供：
 - 同一项目同一时间只有一个可写应用实例；
 - 不开发独立 Web 端；
 - macOS 保持架构兼容，但首发不承诺正式支持。
+
+### 4.1.1 项目切换
+
+- P0 同时最多只有一个 Active Project，不实现单窗口多项目常驻。
+- 没有运行中的 Agent 操作时，用户可以关闭当前项目并打开另一个项目；正式产品不因项目切换重启 Music Core 或 MCP Server。
+- 若当前存在 Agent execution（包括 planning / awaiting confirmation / executing / repairing）或 Active Task，UI 必须在切换前提示用户。
+- 用户确认切换后，先执行统一 Cancel；pre-Task 阶段只终止 Workflow，已有 Active Task 时必须 `cancelTask` 并完成回滚。只有 Cancel/rollback 成功并且旧项目可以安全关闭后，才打开目标项目。
+- 用户拒绝、Cancel 失败或回滚失败时不得切换项目。
+- Project 切换不增加 Agent Tool；Agent 无法通过自然语言或 MCP Tool 主动改变 Active Project。
 
 ### 4.2 固定六轨
 
@@ -515,7 +534,8 @@ P0 不保证：
 - Key Map 或调式变化；
 - Scope 扩展；
 - 接受 Candidate 并更新 Current；
-- 会影响当前选区之外音乐位置或播放时长的操作。
+- 会影响当前选区之外音乐位置或播放时长的操作；
+- 当前存在运行中 Agent 操作或 Active Task 时切换项目。
 
 普通局部音符、节奏、Velocity 或和声内容修改使用轻量确认。
 
@@ -538,7 +558,7 @@ P0 向 Agent 暴露 7 个高层工具：
 
 1. `getTaskContext`：读取当前项目、Candidate、Task Scope、能力和状态；
 2. `getScopedComposition`：读取 Scope 内 Canonical ABC 和必要的只读上下文；
-3. `submitGenerationPlan`：首次生成前提交工程计划并请求用户确认；P0 中该调用等待用户决策后返回，确认后才创建正式 Task；
+3. `submitGenerationPlan`：首次生成前提交工程计划并请求用户确认；Agent-facing 输入只包含计划摘要和 Scope，Project 由 MCP Host 绑定当前 Active Project；P0 中该调用等待用户决策后返回，确认后才创建正式 Task；
 4. `requestScopeExtension`：申请扩大当前 Task Scope；
 5. `replaceScopedMusic`：提交 Scope 内 ABC 片段，由 Music Core 定位并原子替换；
 6. `updateGlobalMeter`：在覆盖全部六轨的 `wholeProject` Task 中修改唯一 Global Meter；该工具是底层工程事实修改能力，不自动重排音乐内容；
@@ -554,7 +574,7 @@ Agent 不获得以下工具：
 
 `replaceScopedMusic` 直接接收 ABC 片段。结构化 MusicPatch 仅作为 Music Core 内部事务表示，不要求 Agent 构造第二套编曲格式。
 
-`submitGenerationPlan` 是确认前的特殊 MCP Tool：它不创建 Candidate、不授予工程写权限。调用后 UI 展示计划并请求用户决策；P0 先采用长时间挂起该 Tool Call 的最简实现。用户确认后由 Core/A3 创建正式 Candidate/Task，该调用再返回 Task bootstrap 信息；用户拒绝或取消时返回未批准结果。不存在 `awaitingConfirmation` Tool，`awaiting_confirmation` 只是 A4 Workflow 状态。
+`submitGenerationPlan` 是确认前的特殊 MCP Tool：Agent 不传 `projectId`，MCP Host 以当前 Active Project 注入 Project 身份；它不创建 Candidate、不授予工程写权限。调用后 UI 展示计划并请求用户决策；P0 先采用长时间挂起该 Tool Call 的最简实现。用户确认后由 Core/A3 创建正式 Candidate/Task，该调用再返回 Task bootstrap 信息；用户拒绝或取消时返回未批准结果。不存在 `awaitingConfirmation` Tool，`awaiting_confirmation` 只是 A4 Workflow 状态。
 
 除 bootstrap `getTaskContext({ taskId })` 与 Task 创建前的 `submitGenerationPlan` 外，所有 Task-bound MCP 读写调用统一携带 execution envelope：`taskId`、`projectId`、`candidateId`、`baseRevision`、`expectedScopeRevision`。这些字段不是 Agent 的授权声明，而是 A3 用于逐项比对权威 Task/Candidate 状态的迟到结果保护。允许操作不单独持久化，由 A3 根据当前 Scope 与 P0 capability 实时推导。用户确认并创建正式 Task 之前，所有 Task-bound Tool 必须机械不可用，不能依赖 Agent 自觉等待。
 
@@ -872,6 +892,8 @@ P0 发布必须满足：
 34. Candidate 不能导出；
 35. WAV 在 Gate 通过后从 Current 导出；
 36. “另存为”生成新项目且不保留原 Git 历史。
+37. 同一窗口从 Project A 切到 Project B 时不启动第二个 Core/MCP，正式产品的 Core/MCP/Agent 进程与 MCP Endpoint 保持不变。
+38. 若切换时存在 Agent execution 或 Active Task，UI 必须先提示；确认后等待统一 Cancel、必要的 Task rollback 与旧 Project 安全关闭完成才进入 B，拒绝或失败时保持 A。
 
 ---
 
@@ -928,7 +950,7 @@ P0 发布必须满足：
 49. Scope 决定允许修改的范围，并由 A3 确定性推导当前 P0 `allowedOperations`；不持久化第二份权限状态。
 50. A4 直接使用 Strands 的 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client，不重复实现 Provider 协议层或 MCP Client。
 51. Agent / Model `settings.json` 归 A4 所有；A5 只负责 Export Preparation。
-52. `submitGenerationPlan` 保留为 P0 MCP Tool，并在确认前作为唯一计划提交入口；P0 先采用 Tool Call 等待 UI 用户决策后再返回的语义，确认前不存在正式 Task，也不允许任何 Task-bound 工程写入。
+52. `submitGenerationPlan` 保留为 P0 MCP Tool，并在确认前作为唯一计划提交入口；Agent-facing 输入不包含 `projectId`，由 MCP Host 绑定当前 Active Project；P0 先采用 Tool Call 等待 UI 用户决策后再返回的语义，确认前不存在正式 Task，也不允许任何 Task-bound 工程写入。
 53. A4 内部 Workflow 状态不作为 Renderer Contract 暴露；既有 Agent Service → Main/Preload → Renderer typed transport 主要承载 assistant 文本流与执行终态/错误，原始 MCP Tool Result 不经该通道透传。
 54. Cancel 统一取消当前 Agent 操作：planning/awaiting_confirmation 阶段不创建正式 Task；executing/repairing 阶段必须终止 Strands 执行并调用 A3 `cancelTask` 回滚当前 Task。
 55. Provider/MCP transient retry 优先交给 Strands；A4 不维护第二层通用 retry loop。Strands 最终 execution failure 若已有 Active Task，必须 `cancelTask` 回滚，`failed` 不得遗留 Active Task。
@@ -938,3 +960,5 @@ P0 发布必须满足：
 59. P0 Agent Session 直接交由 Strands SessionManager/Storage 管理，不自研 transcript、不使用 SQLite；Renderer 不直接依赖 Strands 的持久化格式。
 60. 一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session；Agent UI 只提供最小的新建/切换能力，不支持多个 Session 后台并行执行，“另存为”后的新项目不继承原项目 Session。
 61. Agent Service 崩溃不恢复运行中的工程 Task：受控 `fatal` / `shutdown` 由 A4 调用 Workflow cleanup；非受控 Agent 子进程退出由 B1 通知 Core，A3 通过 Project-only reconciliation 控制命令定位并取消权威 Active Task，回滚到 `taskBaseCheckpoint`。
+62. P0 正式桌面产品一个窗口使用一个长期存活的 Core Utility Process 和一个 MCP Server，Core 同时只有 `0..1` Active Project；Project 切换不重启 MCP，Agent 不按 Project 维护多个 Endpoint。
+63. Project 切换属于 B1/B2 宿主生命周期，不是 Agent Tool；运行中 Agent 操作/Active Task 存在时必须先 UI 确认并完成统一 Cancel/rollback，任何失败都阻止切换。

@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.12 |
-| 需求基线 | Agent Music Workstation PRD V1.14 Agent Crash Reconciliation |
-| 状态 | P0 架构基线；A3 Candidate Transaction 决策已冻结；A4 执行、会话与 Project 多 Session 决策已冻结 |
+| 架构版本 | V1.13 |
+| 需求基线 | Agent Music Workstation PRD V1.15 Single-Core MCP Project Switching |
+| 状态 | P0 架构基线；A3 Candidate Transaction、A4 执行/会话、单 Core/MCP Project 切换决策已冻结 |
 | 日期 | 2026-09-09 |
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Strands、MCP、Git/worktree |
 
-> 本版在 V1.11 Confirmed Task Bootstrap 基线上补齐 Agent crash reconciliation：受控 `fatal` / `shutdown` 由 A4 cleanup；非受控 Agent 子进程退出由 B1 supervisor 通知 Core，A3 依据 Project 权威状态取消并回滚 Active Task。七个 Agent MCP Tool 不变。
+> 本版在 V1.12 Agent Crash Reconciliation 基线上冻结 P0 Project 切换拓扑：正式桌面产品使用一个长期存活的 Core Utility Process + 一个 MCP Server + `0..1` Active Project；Project 切换由 B1/B2 的确定性宿主流程发起，必要时先统一 Cancel/rollback，再由 Core close/open Project。MCP Endpoint 不随 Project 切换，七个 Agent MCP Tool 不变。
 
 ---
 
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.14 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.15 冲突时，以 PRD 为准。
 
 ---
 
@@ -56,7 +56,7 @@
 | ADR-021 | 项目文件 | P0 Git 权威文件仅 `project.json` 与 `composition.abc`。 |
 | ADR-022 | MCP 进程 | MCP Server 位于 Music Core Utility Process。 |
 | ADR-023 | MCP Transport | 使用只监听 localhost 的 Streamable HTTP；P0 不实现 stdio Bridge。 |
-| ADR-024 | Endpoint 发现 | Music Core 使用随机端口，并在用户运行时目录创建、维护和删除实例描述文件。 |
+| ADR-024 | MCP Endpoint 生命周期 | Music Core 使用一个 Core-process-scoped 随机 localhost 端口和 Instance Token，并在用户运行时目录维护 Core 实例描述文件；Project close/open 不重建 Endpoint。 |
 | ADR-025 | MCP 权限 | Instance Token 负责连接；服务器端 TaskContext 负责写入授权。 |
 | ADR-026 | 模型协议 | P0 只支持 OpenAI-compatible Chat Completions。 |
 | ADR-027 | Agent Session | P0 不使用应用级 SQLite；Agent Session、消息、Tool Call / Tool Result 上下文、恢复与 Context 管理由 Strands Session 能力及其 Storage 负责，不作为工程事实。 |
@@ -78,7 +78,7 @@
 | ADR-043 | Candidate 权威变化 | P0 Candidate 只允许 `composition.abc` 产生业务差异；`project.json` 必须保持 baseRevision 版本。checkpoint 只 stage `composition.abc`，成功 Task/Accept 均允许 empty commit。 |
 | ADR-044 | Strands 集成边界 | A4 直接使用 Strands 的 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client；不重复实现 SSE Provider 协议层或第二套 MCP Client。A4 只负责配置映射、生命周期、应用级错误归一化与脱敏。 |
 | ADR-045 | A4 Settings ownership | 用户级 Agent / Model `settings.json` 归 A4 所有；A4 负责读取、Schema 校验、活动模型选择和安全写回。A5 只负责 Export Preparation。 |
-| ADR-046 | Generation Plan 确认 | `submitGenerationPlan` 保留为七个 P0 MCP Tool 之一。P0 先采用 Tool Call 等待 UI 用户决策后再返回的最简协议；确认前不创建正式 A3 Task，Task-bound Tool 机械不可用；确认后由 A3 创建 Candidate/Task，再返回 Task bootstrap 信息。 |
+| ADR-046 | Generation Plan 确认 | `submitGenerationPlan` 保留为七个 P0 MCP Tool 之一。Agent-facing Schema 不含 `projectId`，MCP Host 以 Core 当前 Active Project 注入 Project 身份。P0 采用 Tool Call 等待 UI 用户决策后再返回的协议；确认前不创建正式 A3 Task，Task-bound Tool 机械不可用；确认后由 A3 创建 Candidate/Task，再返回 Task bootstrap 信息。 |
 | ADR-047 | Agent text transport | A4 内部 Workflow 状态不作为 Renderer Contract 暴露。既有 Agent Service → Main/Preload → Renderer typed transport 主要承载用户消息、assistant 文本流与执行终态/错误；Main/Preload 只负责 transport，原始 MCP Tool Result 不经该通道透传。 |
 | ADR-048 | A4 Cancel | Cancel 统一表示取消当前 Agent 操作。正式 Task 尚未创建时只终止 A4 Workflow；已有 Active Task 时先终止 Strands execution，再调用 A3 `cancelTask` 回滚到 `taskBaseCheckpoint`。 |
 | ADR-049 | Execution failure / retry | Provider 与 MCP transient retry 优先使用 Strands/底层 Client 自身能力；A4 不实现第二层通用 retry loop。最终 non-validation execution failure 必须取消并回滚 Active Task，`failed` 不得遗留 Active Task。 |
@@ -88,6 +88,8 @@
 | ADR-053 | Agent Service crash | P0 不恢复运行中的 Agent Task。受控 `fatal` / `shutdown` 在 Agent Process 仍存活时由 A4 `Workflow.shutdown()` 取消并回滚；若 Agent 子进程突然退出，Electron Main/B1 Process Supervisor 必须向 Core 发送 Project-only `candidate.cancelActiveTaskForAgentLoss` control command，由 A3 使用自身权威 Candidate/Task ID 执行既有 `cancelTask` 回滚。该 control command 不属于七个 Agent MCP Tool。Strands Session 只恢复对话，不恢复未完成工程事务。 |
 | ADR-054 | Project multi-session | 一个 Project 可关联多个 Agent Session，但 P0 同时只有一个 Active Session。A4 是 `projectId ↔ sessionId` 关联和 Active Session 的 owner；Renderer 只能通过 A4 最小 Session lifecycle Contract 创建、列出、打开和读取 Active Session。Session 切换不恢复或迁移 Active Task，P0 不支持多个 Session 后台并行 execution。 |
 | ADR-055 | Confirmed local Task bootstrap | 普通局部修改由 Renderer/Core 控制链先让 A3 创建正式 Task，再通过 Agent transport 把最小 `{taskId, candidateId}` 随用户消息交给 A4。A4 不信任或缓存 Renderer Scope/baseRevision/scopeRevision；必须以 `getTaskContext({taskId})` 读取 A3 权威 Scope 与 execution envelope。 |
+| ADR-056 | 单 Core/MCP Active Project | P0 正式桌面产品一个窗口使用一个长期存活的 Music Core Utility Process 和一个 MCP Server；Core 同时只持有 `0..1` Active Project。Project 切换只替换 Core 的 Active Project，不启动第二个 Project Core/MCP，也不由 Agent 选择 Endpoint。 |
+| ADR-057 | Project 切换 barrier | B2/B4 负责切换提示，B1 负责生命周期编排。确认切换后必须先让 A4 Cancel 当前 execution；已有 Active Task 时等待 A3 rollback 完成，再停止/释放旧 Project 的播放状态并执行 Core close/open。Cancel/rollback/close 任一步失败都禁止切换；Core/MCP 连接保持存活。 |
 
 > **职责边界：Global Meter 修改与音乐重排分离。** `updateGlobalMeter` 允许 Task 编辑过程中暂时保留旧 ABC barline；A2 不自动拆分 Note/Rest、不自动添加 Tie，也不根据新拍号改编音乐。Agent 负责后续 wholeProject 重排；最终 Candidate 的 Meter/小节一致性属于 `finishTask` 验证边界。
 
@@ -156,8 +158,8 @@ Built-in Agent Service 是可选独立进程，包括：
 flowchart LR
     MAIN[Electron Main]
     RENDERER[React Renderer<br/>Product UI + OpenDawRuntimeAdapter]
-    CORE[Music Core Utility Process\nProject + ABC + MCP + Git]
-    AGENT[Optional Built-in Agent Service\nStrands + Chat Completions]
+    CORE[Music Core Utility Process\n0..1 Active Project + ABC + one MCP + Git]
+    AGENT[Optional Built-in Agent Service\nStrands + one Core MCP connection]
     SESSION[(Strands Session Storage)]
     FS[(Local Project Git Repository)]
 
@@ -175,8 +177,8 @@ flowchart LR
 #### Electron Main
 
 - 应用和窗口生命周期；
-- 启动、监督 Utility Process 与 Agent Service；检测 Agent 子进程非受控退出，并向 Core 发送 Project-only Agent-loss reconciliation control command；
-- 项目路径、文件选择和导出路径；
+- 启动、监督一个长期存活的 Utility Process 与 Agent Service；Project close/open 不重启 Core/MCP；检测 Agent 子进程非受控退出，并向 Core 发送 Project-only Agent-loss reconciliation control command；
+- 项目路径、文件选择和导出路径；在用户确认 Project 切换后编排 Agent Cancel/rollback barrier 与 Core close/open；
 - 通过 Main / Preload 为 A4 与 Renderer 提供受控 typed Agent IPC transport bridge；
 - 对用户消息、assistant 文本 delta、执行终态/错误只做 Schema 校验、路由和生命周期处理，不解释 planning、repairing、confirmation 等 A4 内部业务语义；
 - 不创建或维护 MCP Endpoint、Instance Token 和运行时描述文件；
@@ -185,7 +187,7 @@ flowchart LR
 #### Renderer
 
 - 自研 React 六轨时间轴、Clip 展示、Transport、Playhead、Loop 和连续 Scope 选区；
-- Agent 对话、确认、Current/Candidate 状态；
+- Agent 对话、确认、Current/Candidate 状态；当 Project 切换会终止运行中的 Agent 操作/Active Task 时展示明确确认，拒绝则保持当前 Project；
 - 通过 Renderer-side `AgentClient` 列出/创建/打开 Project Session、读取 Active Session、发送用户消息/Cancel，并消费 assistant 文本流与执行终态/错误；React 组件不直接管理 Agent Service 进程、底层 IPC、A4 Workflow 状态、Strands Storage 或原始 MCP Tool Result；
 - 通过 `OpenDawRuntimeAdapter` 管理一个活动 openDAW Runtime；
 - 从 Music Core 接收 `TimelineViewModel` 和 `PlaybackCompilation`，由 `OpenDawRuntimeAdapter` 构建 RuntimeSnapshot；
@@ -194,21 +196,21 @@ flowchart LR
 
 #### Music Core Utility Process
 
-- 项目目录、项目元数据与 Current Git 的创建、打开、校验、迁移、显式恢复和另存为；
+- 项目目录、项目元数据与 Current Git 的创建、打开、校验、迁移、显式恢复和另存为；同一 Core 同时只维护 `0..1` Active Project；
 - 进程内项目写入串行化与不同应用实例打开同一项目的写锁；
 - Canonical ABC Parser/Normalizer/Serializer；
 - Scope Mapping；
 - 领域事件、MIDI、Scope Mapping 与 TimelineViewModel 编译；
 - 不依赖 openDAW SDK，不生成或持有 RuntimeSnapshot；
 - MCP Tool Host；
-- MCP Endpoint、Instance Token 和运行时描述文件生命周期；
+- 单一 MCP Endpoint、Instance Token 和 Core-process-scoped runtime descriptor 生命周期；Project close/open 不停止 MCP；
 - TaskContext、Candidate 和 Git/worktree；Agent 子进程丢失时按 Project 权威状态定位并取消唯一 Active Task；
 - 导出前重新编译与验证。
 
 #### Agent Service
 
 - 使用 Strands 执行 OpenAI-compatible Chat Completions 与单 Agent Loop；
-- 使用 Strands Agent-side MCP Client 读取 runtime descriptor 并连接 Music Core MCP Server；
+- 使用 Strands Agent-side MCP Client 连接单一 Music Core MCP Server；A4 不根据 `projectId` 选择或切换多个 MCP Endpoint；
 - 计划、工具循环、有限修复和取消；
 - 拥有 Agent / Model Settings 与 A4 Workflow 内部状态；
 - 使用 Strands SessionManager/Storage 管理 Agent Session、恢复与运行时 Context；A4 维护 `projectId ↔ sessionId` 关联和每个 Project 的唯一 Active Session；
@@ -578,18 +580,21 @@ P0 不执行完整工程的事后 Scope Diff。安全性来自：
 
 ## 10. MCP Server 与连接
 
-### 10.1 部署位置
+### 10.1 部署位置与生命周期
 
-MCP Server 位于 Music Core Utility Process：
+MCP Server 位于长期存活的 Music Core Utility Process：
 
 ```text
-Agent
-→ MCP HTTP
+Agent Service
+→ one MCP HTTP connection
 → Music Core Tool Host
+→ 0..1 Active Project
 → TaskContext / Scope Mapping / Candidate / Git
 ```
 
-Music Core 管理 MCP Server 生命周期、随机端口、Instance Token 和运行时描述文件；Electron Main 只负责启动、监督和关闭 Core 进程，不管理 MCP 连接信息，也不转发具体工具调用。
+P0 正式桌面产品中，一个窗口只启动一个 Core Utility Process 和一个 MCP Server。Core 可以在没有打开 Project 时保持 MCP ready；打开/关闭/切换 Project 只替换 Core 的 Active Project，不重新启动 MCP Server，不改变 Endpoint/Instance Token，也不要求 Agent 重连。
+
+Music Core 管理 MCP Server、随机端口、Instance Token 和 Core runtime descriptor 生命周期；Electron Main 只负责 Core/Agent 进程监督和 Project 生命周期编排，不管理或转发 MCP 连接信息。
 
 ### 10.2 Transport
 
@@ -600,17 +605,18 @@ http://127.0.0.1:<ephemeral-port>/mcp
 ```
 
 - 只监听 `127.0.0.1`；
-- 使用随机端口；
+- 每个 Core 进程使用一个随机端口；
 - P0 不实现 stdio Bridge；
-- Music Workstation 可以先独立启动，Agent 后续连接。
+- Music Workstation 可以先独立启动，Agent 后续连接；
+- P0 不因 Project 切换创建第二个 MCP Server。
+- Streamable HTTP 必须按 MCP session 复用 transport，使客户端 request timeout / cancel notification 能触发原 Tool Call 的 `AbortSignal`；不得为每个 POST 创建彼此隔离的协议实例。
 
 ### 10.3 Runtime Descriptor
 
-Music Core 在项目打开且 MCP Server ready 后写入用户运行时目录：
+正式桌面产品的 runtime descriptor 描述 **Core/MCP 实例**，不是 Project：
 
 ```json
 {
-  "projectId": "project-uuid",
   "endpoint": "http://127.0.0.1:43127/mcp",
   "instanceToken": "high-entropy-token",
   "pid": 12345
@@ -622,20 +628,48 @@ Music Core 在项目打开且 MCP Server ready 后写入用户运行时目录：
 - 文件只允许当前用户读取；
 - 不进入项目或 Git；
 - 由 Music Core 创建、更新和删除；
-- 关闭项目或停止 MCP Server 后删除；
+- MCP ready 后发布，Core/MCP shutdown 后删除；Project close/open 不删除；
 - Music Core 启动时清理 PID 已失效的描述文件；
-- 支持多个项目实例使用不同端口。
+- Active Project 不通过 descriptor 选择，Project 状态留在 Core 内。
 
-### 10.4 权限模型
+现有 `core:mcp --project ...` 开发 harness 仍允许发布项目绑定 descriptor，以便 Claude Code/A-layer 单项目验证；该 harness 不定义正式桌面产品 Contract。正式 B1 联调前，共享 `McpRuntimeDescriptor` 与 A4 descriptor discovery 需要按本节迁移为 Core-process-scoped 语义。
 
-- `instanceToken` 只负责连接认证；
-- Agent 不能自行创建 Task、Candidate 或 Scope；正式 Task 只在用户确认后由 Core/A3 创建；
-- `taskId` 与 `candidateId` 使用全局唯一 ID；
-- `getTaskContext({ taskId })` 是 Task execution envelope 的 bootstrap 入口；
-- 除 bootstrap 与 Task 创建前的 `submitGenerationPlan` 外，所有 Task-bound MCP read/write 都必须携带 `taskId`、`projectId`、`candidateId`、`baseRevision`、`expectedScopeRevision`；
-- A3 必须逐项与服务器端 Active Task/Candidate 权威状态核对，调用方携带的字段不构成授权声明；
-- `allowedOperations` 不持久化，A3 根据当前 `TaskScope` 与 P0 capability 实时推导；
-- 连接 Token 不能绕过 Task Scope、Candidate state 或 baseline guard。
+### 10.4 Active Project 绑定与权限
+
+- Core 同时只有 `0..1` Active Project；
+- 没有 Active Project 时，所有需要工程上下文的 Agent Tool 必须 fail-closed，不允许把 Project path 作为 Tool 参数临时打开工程；
+- `submitGenerationPlan` 的 Agent-facing Schema 不接受 `projectId`；MCP Host 将 Core 当前 Active Project 的 `projectId` 注入内部确认/startTask 调用。批准后生成的 Task 与所有 Task-bound execution envelope 中的 `projectId` 必须匹配当前 Active Project；A3 继续校验 task/candidate/baseRevision/scopeRevision，连接本身不构成工程授权；
+- `instanceToken` 只负责连接认证，不能绕过 Project、Task Scope、Candidate state 或 baseline guard；
+- Agent 没有 `switchProject` MCP Tool，也不能通过自然语言改变 Core Active Project；
+- `taskId` 与 `candidateId` 使用全局唯一 ID；`getTaskContext({taskId})` 仍是 confirmed Task bootstrap 入口；
+- `allowedOperations` 不持久化，由 A3 根据当前 `TaskScope` 与 P0 capability 实时推导。
+
+### 10.5 Project 切换 barrier
+
+Project 切换是宿主应用生命周期，不是 MCP Tool：
+
+```text
+Renderer requests Project B
+→ if Agent execution / Active Task exists: show confirmation
+→ user rejects: remain on Project A
+→ user confirms
+→ B1 calls A4 cancelCurrentExecution(Project A)
+→ pre-Task: Workflow terminates
+→ Active Task: A3 cancelTask + rollback completes
+→ settle any in-flight MCP Tool call
+→ B3 stops/disposes old playback Runtime state
+→ Core closeProject(A)
+→ Core openProject(B)
+→ rebuild PlaybackCompilation / TimelineViewModel / RuntimeSnapshot
+→ Agent keeps the same MCP connection
+```
+
+安全规则：
+
+- B1 不根据 UI 猜测 Task ID；统一 Cancel 的 Promise 必须在 rollback 完成后才视为成功；
+- Core close Project 时若仍有 Active Task 或未 settle 的工程 mutation/Tool Call，必须 fail-closed；不得为切换项目强杀业务事务；
+- Cancel、rollback 或 close 任一步失败时保持旧 Project 打开并向 UI 返回结构化错误；
+- Project switch 不恢复、迁移或继续旧 Project 的运行中 Task；Candidate 恢复能力仍遵循 P0 既有恢复边界。
 
 ---
 
@@ -776,7 +810,7 @@ getTaskContext({ taskId })
 
 #### `submitGenerationPlan`
 
-首次生成前由 A4 调用该 MCP Tool 提交工程计划并请求 UI 用户确认。该 Tool 不属于 A3 Candidate mutation，不创建 Candidate，也不在确认前授予任何 Task-bound 工程能力。
+首次生成前由 A4 调用该 MCP Tool 提交工程计划并请求 UI 用户确认。Agent-facing 输入为 `summary + scope`，不携带 `projectId`；MCP Host 从 Core 当前 Active Project 确定性注入 Project 身份。该 Tool 不属于 A3 Candidate mutation，不创建 Candidate，也不在确认前授予任何 Task-bound 工程能力。
 
 P0 先采用长时间挂起 Tool Call 的最简确认协议：
 
@@ -1370,7 +1404,13 @@ A4 的 `planning`、`awaiting_confirmation`、`executing`、`repairing` 是内�
 6. Core 重建 Mapping、MIDI 和 TimelineViewModel，并由 Renderer/B3 构建 RuntimeSnapshot；
 7. A3 只按有效 cleanup marker 清理已授权 Candidate 残留；无 marker 的 Candidate 资源报告为 orphan，不恢复也不自动删除。
 
-### 17.2 另存为
+### 17.2 切换项目
+
+P0 单窗口 Project 切换复用 10.5 的 barrier：若存在 Agent execution/Active Task，先由 B 侧 UI 确认并完成 A4 Cancel + A3 rollback；随后停止旧播放 Runtime、关闭旧 Project，再打开目标 Project。Core Utility Process、MCP Server、Endpoint 和 Agent MCP connection 在整个切换过程中保持存活。
+
+Project close/open 任一步失败时不得进入“半切换”状态；旧 Project 若尚未成功关闭，应继续作为 Active Project。
+
+### 17.3 另存为
 
 ```text
 source Current HEAD tree
@@ -1469,6 +1509,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 - 同一项目一个 Agent 写 Task；
 - 同一项目一个 Candidate；
 - Music Core 使用项目级串行写队列，Project Store、Candidate Accept/回滚和导出准备复用同一写入协调机制；
+- P0 一个窗口同时只有 `0..1` Active Project；Project close/open 不创建第二个 Core/MCP；
 - Project Store 在 `.agent-music/locks/` 维护跨实例项目写锁，同一项目同时最多一个可写应用实例；
 - 创建或打开项目时获取写锁，正常关闭时释放；stale lock 可安全识别，失锁实例后续写入必须 fail-closed；
 - 读取可以并发；
@@ -1505,13 +1546,13 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 ### 21.2 Contract 测试
 
 - MCP Tool Schema 和错误码；
-- HTTP Endpoint、Token 和运行时描述文件；
+- Core-process-scoped HTTP Endpoint、Token 和 runtime descriptor；Project close/open 不改变 endpoint/token，descriptor 不使用 `projectId` 选择连接；
 - Core IPC Command/Event 与最小 Agent text transport Contract；Agent transport validator 对所有 variant 与嵌套 message/session/task 采用 exact-key allowlist；
 - Agent transport 只允许用户消息/Cancel、assistant text delta 与 execution terminal event，不透传原始 MCP Tool Result 或 A4 Workflow state；
 - Main / Preload Agent transport bridge 不解释 A4 Workflow 业务状态；
 - `PlaybackCompilation`、`TimelineViewModel` 与 `OpenDawRuntimeAdapter.buildSnapshot/loadSnapshot` 输入输出；
 - Strands Chat Completions 集成的流式、Tool Call、取消、超时、动态模型配置读取和最终错误归一化；
-- Strands Agent-side MCP Client 对 runtime descriptor、Instance Token、七个正式 MCP Tool 与底层 transient retry 行为的兼容；
+- Strands Agent-side MCP Client 对 Core runtime descriptor、Instance Token、七个正式 MCP Tool 与底层 transient retry 行为的兼容；Project A → B 切换不重建 MCP connection；
 - Strands SessionManager/Storage 的 create/open/resume/close 与 Renderer-facing session access；
 - React 组件只能接收 `TimelineViewModel` 和 Runtime Adapter 接口，不能导入 BoxGraph/Box 类型。
 
@@ -1526,6 +1567,8 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 - 文件原子替换和 Git commit 阶段进程终止；
 - Renderer、Core 和 Agent Service 分别崩溃；受控 Agent fatal/shutdown 由 A4 cleanup；非受控 Agent 子进程退出由 B1 检测并触发 Core/A3 `cancelActiveTaskForAgentLoss`，两条路径都必须保证 Active Task cancel + rollback；重启后只允许恢复 Strands Session 对话而不能恢复未完成 Task；
 - Strands 最终 provider/MCP execution failure 不遗留 Active Task；
+- Project A → B 基础切换在同一 Core/MCP/Agent 进程中完成，endpoint/token 不变，A lock 释放后 B lock 获得；
+- planning/awaiting_confirmation/executing/repairing 或 Active Task 存在时切换 Project：UI 拒绝保持 A；确认后等待 A4 Cancel、A3 rollback、in-flight Tool settle，再 close A/open B；任一步失败保持 A 且不得出现半切换；
 - Windows 中文路径、长路径、Defender 和 stale lock；
 - 打开最后 Current；
 - 另存为不复制历史；
@@ -1598,7 +1641,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 27. openDAW 只作为可替换的 SDK/Core Runtime，经 `OpenDawRuntimeAdapter` 使用。
 28. React UI 不直接读取或修改 openDAW BoxGraph，也不持久化 Runtime UUID。
 29. P2 手动编辑默认通过领域编辑命令更新 Canonical ABC，再重建 RuntimeSnapshot。
-30. MCP Endpoint、Instance Token 和 Runtime Descriptor 的生命周期由 Music Core 管理，Electron Main 不管理 MCP 连接信息。
+30. P0 正式桌面产品每个窗口只有一个长期存活的 Core/MCP；Endpoint、Instance Token 和 Core-process-scoped Runtime Descriptor 的生命周期由 Music Core 管理，Project close/open 不重建 MCP，Electron Main 不管理 MCP 连接信息。
 31. 同一项目同时最多一个可写应用实例；所有 Current Git 正式写入必须经过 A1 项目级串行写入机制。
 32. 正式 Task 只在用户确认后创建；A3 不拥有 planning、awaiting_confirmation 或 repair loop。
 33. Candidate `baseRevision` 在 Candidate 生命周期内不可变；Task `taskBaseCheckpoint` 只用于单 Task 回滚。
@@ -1611,7 +1654,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 40. 自动 Candidate cleanup 必须有持久化 cleanup marker 授权；无 marker 残留不恢复、不自动删除。
 41. A4 使用 Strands 原生 OpenAI-compatible Chat Completions 与 Agent-side MCP Client，不维护第二套 Provider/MCP 协议实现。
 42. Agent / Model Settings 与 Strands Session 集成属于 A4；A5 只负责 Export Preparation。
-43. `submitGenerationPlan` 是七个 P0 MCP Tool 之一；确认前不创建正式 Task，P0 先使用等待 UI 用户决策后再返回的 Tool Call 语义。
+43. `submitGenerationPlan` 是七个 P0 MCP Tool 之一；Agent-facing Schema 不含 `projectId`，Project 由 MCP Host 绑定当前 Active Project；确认前不创建正式 Task，P0 使用等待 UI 用户决策后再返回的 Tool Call 语义。
 44. A4 内部 Workflow state 不进入 Renderer Contract；Agent Service → Main/Preload → Renderer 只传 UI 必需的用户消息/Cancel、assistant text stream 与 execution terminal event，原始 MCP Tool Result 不透传。
 45. Cancel 若已有 Active Task，必须 `cancelTask` 并回滚；最终 `failed` Workflow 不得遗留 Active Task。
 46. Provider/MCP transient retry 优先由 Strands/底层 Client 负责；A4 不维护第二层通用 retry loop。
@@ -1620,3 +1663,5 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 49. Agent Session 由 Strands SessionManager/Storage 管理；Renderer 不直接读取持久化格式，A4 不自研 transcript/compaction。
 50. Agent Service crash 不恢复运行中的工程 Task；受控 fatal/shutdown 由 A4 cleanup，非受控 Agent 子进程退出由 B1 → Core/A3 Project-only reconciliation 取消并回滚权威 Active Task。
 51. 一个 Project 可关联多个 Agent Session，但 P0 同时只有一个 Active Session；A4 独占 Project/Session 关联与 Active Session 选择，Renderer 仅通过最小 Session lifecycle Contract 操作，Session 切换不得留下后台 execution 或恢复旧 Active Task。
+52. P0 一个窗口同时只有 `0..1` Active Project；Project 切换由 B1/B2 宿主流程决定，Agent 无 `switchProject` Tool，也不维护多个 Project MCP Endpoint。
+53. 存在运行中 Agent execution/Active Task 时切换 Project 必须先经 UI 确认并完成统一 Cancel；Active Task rollback、in-flight Tool settle 和旧 Project close 未成功前不得打开新 Project。
