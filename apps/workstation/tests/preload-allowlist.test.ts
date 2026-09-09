@@ -16,6 +16,7 @@ it('exposes only the DesktopBridge allowlist and no raw Electron objects', async
   expect(Object.keys(exposed.agentMusic as object).sort()).toEqual([
     'chooseExportPath',
     'chooseProjectDirectory',
+    'dispatchCandidate',
     'dispatchProject',
     'getServiceSnapshot',
     'onServiceSnapshot',

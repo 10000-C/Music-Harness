@@ -17,11 +17,16 @@ import {
   type CoreProjectRequest,
 } from '../../shared/project-bridge.js';
 import {
+  isCoreCandidateResponse,
+  type CoreCandidateRequest,
+} from '../../shared/candidate-bridge.js';
+import {
   isCorePlaybackResponse,
   type CorePlaybackRequest,
   type CorePlaybackResponse,
 } from '../../shared/playback-bridge.js';
 import type { ProjectEvent } from '@agent-music/contracts';
+import type { CandidateEvent } from '@agent-music/contracts';
 
 export type {
   ServiceFleetSnapshot,
@@ -37,6 +42,9 @@ export interface ServiceSupervisor {
   dispatchProject(
     command: CoreProjectRequest['command'],
   ): Promise<ProjectEvent>;
+  dispatchCandidate(
+    command: CoreCandidateRequest['command'],
+  ): Promise<readonly CandidateEvent[]>;
   readCurrentPlayback(): Promise<CorePlaybackResponse>;
 }
 
@@ -99,6 +107,15 @@ export const createServiceSupervisor = (
     {
       readonly generation: number;
       readonly resolve: (response: CorePlaybackResponse) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
+  const pendingCandidates = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly resolve: (events: readonly CandidateEvent[]) => void;
       readonly reject: (error: Error) => void;
       readonly timeout: ReturnType<typeof setTimeout>;
     }
@@ -186,6 +203,12 @@ export const createServiceSupervisor = (
         cancel(pending.timeout);
         pending.reject(new Error('The Music Core process restarted.'));
         pendingPlayback.delete(requestId);
+      }
+      for (const [requestId, pending] of pendingCandidates) {
+        if (pending.generation !== generations.core) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Music Core process restarted.'));
+        pendingCandidates.delete(requestId);
       }
     }
     generations[service] += 1;
@@ -380,6 +403,15 @@ export const createServiceSupervisor = (
       }
       return;
     }
+    if (service === 'core' && isCoreCandidateResponse(message)) {
+      const pending = pendingCandidates.get(message.requestId);
+      if (pending?.generation === generation) {
+        cancel(pending.timeout);
+        pendingCandidates.delete(message.requestId);
+        pending.resolve(message.events);
+      }
+      return;
+    }
     if (!isServiceToMainMessage(message)) {
       fail(service, generation);
       return;
@@ -513,6 +545,49 @@ export const createServiceSupervisor = (
           pendingProjects.delete(command.requestId);
           reject(
             new Error('Music Core could not receive the project command.'),
+          );
+        }
+      });
+    },
+
+    dispatchCandidate(command) {
+      if (states.core !== 'ready') {
+        return Promise.reject(new Error('Music Core is not ready.'));
+      }
+      const process = processes.get('core');
+      if (process === undefined) {
+        return Promise.reject(new Error('Music Core is unavailable.'));
+      }
+      const generation = generations.core;
+      if (pendingCandidates.has(command.requestId)) {
+        return Promise.reject(
+          new Error('A matching Candidate command is already pending.'),
+        );
+      }
+      return new Promise<readonly CandidateEvent[]>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingCandidates.delete(command.requestId);
+          reject(
+            new Error('Music Core did not respond to the Candidate command.'),
+          );
+        }, 15_000);
+        pendingCandidates.set(command.requestId, {
+          generation,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send({
+            type: 'candidateCommand',
+            protocolVersion: 1,
+            command,
+          } satisfies CoreCandidateRequest);
+        } catch {
+          cancel(timeout);
+          pendingCandidates.delete(command.requestId);
+          reject(
+            new Error('Music Core could not receive the Candidate command.'),
           );
         }
       });

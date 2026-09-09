@@ -42,6 +42,7 @@ const supervisor = {
     requestId: 'project-test',
     sequence: 1,
   })),
+  dispatchCandidate: vi.fn(async () => []),
   readCurrentPlayback: vi.fn(),
   shutdown: vi.fn(async () => undefined),
   subscribe: vi.fn((listener: (snapshot: unknown) => void) => {
@@ -69,6 +70,7 @@ describe('shell Main IPC and dialogs', () => {
       [
         channels.directory,
         channels.exportPath,
+        channels.candidate,
         channels.playback,
         channels.project,
         channels.restart,
@@ -105,6 +107,20 @@ describe('shell Main IPC and dialogs', () => {
       event: { type: 'project.closed', requestId: 'project-test', sequence: 1 },
     });
     expect(supervisor.dispatchProject).toHaveBeenCalledWith(command);
+  });
+
+  it('forwards Candidate control commands without exposing Core internals', async () => {
+    const command = {
+      type: 'candidate.reject' as const,
+      requestId: 'candidate-test',
+      projectId: '00000000-0000-4000-8000-000000000001',
+      candidateId: '00000000-0000-4000-8000-000000000002',
+    };
+    await expect(invoke(channels.candidate, command)).resolves.toEqual({
+      ok: true,
+      events: [],
+    });
+    expect(supervisor.dispatchCandidate).toHaveBeenCalledWith(command);
   });
 
   it('forwards a validated Current playback bundle and fails closed otherwise', async () => {

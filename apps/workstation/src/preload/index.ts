@@ -7,6 +7,8 @@ import {
   isProjectDirectoryPurpose,
   isProjectCommand,
   isProjectCommandResult,
+  isCandidateCommand,
+  isCandidateCommandResult,
   isCorePlaybackResponse,
   shellIpcChannels,
   type CommandResult,
@@ -90,6 +92,22 @@ const bridge = {
       };
     const value = await invoke(shellIpcChannels.project, command);
     return isProjectCommandResult(value)
+      ? value
+      : {
+          ok: false,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
+  },
+  async dispatchCandidate(command: unknown) {
+    if (!isCandidateCommand(command))
+      return {
+        ok: false,
+        code: 'INVALID_CANDIDATE_COMMAND',
+        userMessage: 'Invalid Candidate command.',
+      };
+    const value = await invoke(shellIpcChannels.candidate, command);
+    return isCandidateCommandResult(value)
       ? value
       : {
           ok: false,

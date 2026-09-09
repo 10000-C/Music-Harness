@@ -1,4 +1,6 @@
 export { FakeWorkstationCoreClient } from './fake-workstation-core-client.js';
+export { dispatchCandidateRendererCommand } from './candidate-command-dispatcher.js';
+export { projectCandidateEvents } from './candidate-event-projection.js';
 export {
   FAKE_CANDIDATE_ID,
   FAKE_PROJECT_ID,

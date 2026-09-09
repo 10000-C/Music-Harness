@@ -145,6 +145,48 @@ describe('ServiceSupervisor', () => {
       code: 'COMPILATION_FAILED',
     });
   });
+  it('routes the complete Candidate event batch only to its matching request', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    const command = {
+      type: 'candidate.reject' as const,
+      requestId: 'candidate-reject-1',
+      projectId: '00000000-0000-4000-8000-000000000001' as never,
+      candidateId: '00000000-0000-4000-8000-000000000002' as never,
+    };
+    const pending = supervisor.dispatchCandidate(command);
+    expect(processes.sent).toContainEqual({
+      type: 'candidateCommand',
+      protocolVersion: 1,
+      command,
+    });
+    const events = [
+      {
+        type: 'candidate.invalidated' as const,
+        requestId: command.requestId,
+        sequence: 1,
+        candidateId: command.candidateId,
+      },
+      {
+        type: 'candidate.changed' as const,
+        requestId: command.requestId,
+        sequence: 2,
+      },
+    ];
+    processes.emit('core', {
+      type: 'candidateEvents',
+      protocolVersion: 1,
+      requestId: command.requestId,
+      events,
+    });
+    await expect(pending).resolves.toEqual(events);
+  });
   it('keeps an in-flight Core command when the Agent restarts', async () => {
     const processes = adapter();
     const supervisor = (active = createServiceSupervisor(processes));

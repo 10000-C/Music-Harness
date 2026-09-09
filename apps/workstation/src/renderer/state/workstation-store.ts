@@ -16,6 +16,7 @@ export type WorkstationStateListener = (state: WorkstationState) => void;
 export interface WorkstationStore {
   getState(): WorkstationState;
   dispatch(action: WorkstationUiAction): void;
+  applyCoreEvent(event: CoreEvent): void;
   execute(command: RendererCommand): Promise<void>;
   subscribe(listener: WorkstationStateListener): () => void;
   dispose(): void;
@@ -131,6 +132,7 @@ export const connectWorkstationStore = async (
       state = nextState;
       publishState(listeners, nextState);
     },
+    applyCoreEvent: publishEvent,
     execute: async (command) => {
       if (disposed) {
         throw new Error('Cannot execute a command after store disposal.');

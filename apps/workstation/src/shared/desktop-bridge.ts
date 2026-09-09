@@ -7,9 +7,10 @@ import type {
   FileDialogResult,
   ProjectDirectoryPurpose,
   ProjectCommandResult,
+  CandidateCommandResult,
 } from './shell-contracts.js';
 import type { CorePlaybackResponse } from './playback-bridge.js';
-import type { ProjectCommand } from '@agent-music/contracts';
+import type { CandidateCommand, ProjectCommand } from '@agent-music/contracts';
 export interface DesktopBridge {
   getServiceSnapshot(): Promise<ServiceFleetSnapshot>;
   restartService(service: ServiceKind): Promise<CommandResult>;
@@ -21,6 +22,7 @@ export interface DesktopBridge {
   ): Promise<DirectoryDialogResult>;
   chooseExportPath(request: ExportPathRequest): Promise<FileDialogResult>;
   dispatchProject(command: ProjectCommand): Promise<ProjectCommandResult>;
+  dispatchCandidate(command: CandidateCommand): Promise<CandidateCommandResult>;
   readCurrentPlayback(): Promise<CorePlaybackResponse | null>;
 }
 declare global {

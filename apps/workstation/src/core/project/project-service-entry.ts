@@ -4,9 +4,21 @@ import {
   ProjectIpcHandler,
 } from './index.js';
 import {
+  CandidateCleanupManager,
+  CandidateGitRepository,
+  CandidateIpcHandler,
+  CandidateTransaction,
+} from '../candidate/index.js';
+import { CompositionPipeline } from '../composition/index.js';
+import { randomUUID } from 'node:crypto';
+import {
   type CoreProjectRequest,
   type CoreProjectResponse,
 } from '../../shared/project-bridge.js';
+import {
+  type CoreCandidateRequest,
+  type CoreCandidateResponse,
+} from '../../shared/candidate-bridge.js';
 import {
   isMainToServiceMessage,
   type ServiceKind,
@@ -18,6 +30,16 @@ const service: ServiceKind = 'core';
 const foundation = new ProjectFoundation();
 const handler = new ProjectIpcHandler(foundation);
 const playback = new CurrentPlaybackReader(foundation);
+const candidateRepository = new CandidateGitRepository();
+const candidateTransaction = new CandidateTransaction({
+  project: foundation,
+  composition: new CompositionPipeline(),
+  repository: candidateRepository,
+  cleanup: new CandidateCleanupManager(candidateRepository),
+  createId: randomUUID,
+  now: () => new Date().toISOString(),
+});
+const candidateHandler = new CandidateIpcHandler(candidateTransaction);
 let commandQueue = Promise.resolve();
 const utilityParentPort = (
   process as unknown as {
@@ -51,6 +73,23 @@ const enqueue = async (
         protocolVersion: 1,
         event,
       } satisfies CoreProjectResponse);
+    })
+    .catch(() => undefined);
+  await commandQueue;
+};
+
+const enqueueCandidate = async (
+  command: CoreCandidateRequest['command'],
+): Promise<void> => {
+  commandQueue = commandQueue
+    .then(async () => {
+      const events = await candidateHandler.handle(command);
+      send({
+        type: 'candidateEvents',
+        protocolVersion: 1,
+        requestId: command.requestId,
+        events,
+      } satisfies CoreCandidateResponse);
     })
     .catch(() => undefined);
   await commandQueue;
@@ -93,6 +132,10 @@ const handle = async (message: unknown): Promise<void> => {
         // boundary. The Renderer can show an actionable fail-safe state.
         send(currentPlaybackFailure(message.requestId, error));
       }
+      return;
+    }
+    if (message.type === 'candidateCommand') {
+      await enqueueCandidate(message.command);
       return;
     }
     await enqueue(message.command);

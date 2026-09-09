@@ -3,7 +3,12 @@ import {
   type ServiceKind,
 } from '../shared/service-lifecycle.js';
 import type { ProjectEvent } from '@agent-music/contracts';
+import {
+  isCandidateCommand as isContractCandidateCommand,
+  type CandidateEvent,
+} from '@agent-music/contracts';
 import { isProjectCommand, isProjectEvent } from './project-bridge.js';
+import { isCoreCandidateResponse } from './candidate-bridge.js';
 import { isCorePlaybackResponse } from './playback-bridge.js';
 import type { CorePlaybackResponse } from './playback-bridge.js';
 
@@ -14,6 +19,7 @@ export const shellIpcChannels = {
   directory: 'shell:directory',
   exportPath: 'shell:export',
   project: 'shell:project',
+  candidate: 'shell:candidate',
   playback: 'shell:playback',
 } as const;
 
@@ -35,6 +41,9 @@ export interface ExportPathRequest {
 export type FileDialogResult = DirectoryDialogResult;
 export type ProjectCommandResult =
   | Readonly<{ ok: true; event: ProjectEvent }>
+  | Readonly<{ ok: false; code: string; userMessage: string }>;
+export type CandidateCommandResult =
+  | Readonly<{ ok: true; events: readonly CandidateEvent[] }>
   | Readonly<{ ok: false; code: string; userMessage: string }>;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -107,6 +116,7 @@ export const isExportPathRequest = (
 };
 
 export { isProjectCommand, isProjectEvent };
+export const isCandidateCommand = isContractCandidateCommand;
 export { isCorePlaybackResponse };
 export type { CorePlaybackResponse };
 
@@ -115,6 +125,23 @@ export const isProjectCommandResult = (
 ): value is ProjectCommandResult => {
   if (!isRecord(value) || typeof value.ok !== 'boolean') return false;
   if (value.ok) return isProjectEvent(value.event);
+  return (
+    typeof value.code === 'string' && typeof value.userMessage === 'string'
+  );
+};
+
+export const isCandidateCommandResult = (
+  value: unknown,
+): value is CandidateCommandResult => {
+  if (!isRecord(value) || typeof value.ok !== 'boolean') return false;
+  if (value.ok) {
+    return isCoreCandidateResponse({
+      type: 'candidateEvents',
+      protocolVersion: 1,
+      requestId: 'shell-candidate-result',
+      events: value.events,
+    });
+  }
   return (
     typeof value.code === 'string' && typeof value.userMessage === 'string'
   );

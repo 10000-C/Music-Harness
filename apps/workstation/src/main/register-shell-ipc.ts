@@ -4,6 +4,8 @@ import {
   isExportPathRequest,
   isProjectDirectoryPurpose,
   isProjectCommand,
+  isCandidateCommand,
+  isCandidateCommandResult,
   isCorePlaybackResponse,
   shellIpcChannels,
 } from '../shared/shell-contracts.js';
@@ -72,6 +74,37 @@ export const registerShellIpc = (
       };
     }
   });
+  ipcMain.handle(
+    shellIpcChannels.candidate,
+    async (_event, command: unknown) => {
+      if (!isCandidateCommand(command)) {
+        return {
+          ok: false,
+          code: 'INVALID_CANDIDATE_COMMAND',
+          userMessage: 'Invalid Candidate command.',
+        };
+      }
+      try {
+        const result = {
+          ok: true as const,
+          events: await supervisor.dispatchCandidate(command),
+        };
+        return isCandidateCommandResult(result)
+          ? result
+          : {
+              ok: false,
+              code: 'CORE_INVALID_RESPONSE',
+              userMessage: 'Music Core returned an invalid Candidate result.',
+            };
+      } catch {
+        return {
+          ok: false,
+          code: 'CORE_UNAVAILABLE',
+          userMessage: 'Music Core is unavailable. Try again.',
+        };
+      }
+    },
+  );
   ipcMain.handle(shellIpcChannels.playback, async () => {
     try {
       const result = await supervisor.readCurrentPlayback();
