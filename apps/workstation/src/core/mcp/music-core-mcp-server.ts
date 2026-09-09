@@ -168,6 +168,12 @@ const defaultIsProcessAlive = (pid: number): boolean => {
   }
 };
 
+export interface RuntimeDescriptorStorePort {
+  cleanupStale(): Promise<void>;
+  write(descriptor: McpRuntimeDescriptor): Promise<void>;
+  remove(projectId: ProjectId): Promise<void>;
+}
+
 export class RuntimeDescriptorStore {
   public constructor(
     private readonly runtimeDirectory: string,
@@ -227,6 +233,7 @@ interface MusicCoreMcpHttpServerOptions {
   readonly runtimeDirectory: string;
   readonly toolHost: MusicCoreToolInvoker;
   readonly createToken?: () => string;
+  readonly descriptorStore?: RuntimeDescriptorStorePort;
 }
 
 const tokenMatches = (
@@ -245,13 +252,15 @@ const tokenMatches = (
 };
 
 export class MusicCoreMcpHttpServer {
-  private readonly descriptorStore: RuntimeDescriptorStore;
+  private readonly descriptorStore: RuntimeDescriptorStorePort;
   private readonly instanceToken: string;
   private server: ReturnType<typeof createServer> | undefined;
   private descriptor: McpRuntimeDescriptor | undefined;
 
   public constructor(private readonly options: MusicCoreMcpHttpServerOptions) {
-    this.descriptorStore = new RuntimeDescriptorStore(options.runtimeDirectory);
+    this.descriptorStore =
+      options.descriptorStore ??
+      new RuntimeDescriptorStore(options.runtimeDirectory);
     this.instanceToken =
       options.createToken?.() ?? randomBytes(32).toString('base64url');
   }
@@ -285,7 +294,20 @@ export class MusicCoreMcpHttpServer {
       instanceToken: this.instanceToken,
       pid: process.pid,
     };
-    await this.descriptorStore.write(descriptor);
+    try {
+      await this.descriptorStore.write(descriptor);
+    } catch (publishError) {
+      try {
+        await this.closeServer();
+      } catch (closeError) {
+        throw new AggregateError(
+          [publishError, closeError],
+          'Music Core MCP Server failed to publish its runtime descriptor and close',
+          { cause: closeError },
+        );
+      }
+      throw publishError;
+    }
     this.descriptor = descriptor;
     return descriptor;
   }
@@ -293,10 +315,39 @@ export class MusicCoreMcpHttpServer {
   public async stop(): Promise<void> {
     const descriptor = this.descriptor;
     this.descriptor = undefined;
-    if (descriptor !== undefined) {
-      await this.descriptorStore.remove(descriptor.projectId);
+    let removalError: unknown;
+    try {
+      if (descriptor !== undefined) {
+        await this.descriptorStore.remove(descriptor.projectId);
+      }
+    } catch (error) {
+      removalError = error;
     }
-    await this.closeServer();
+
+    try {
+      await this.closeServer();
+    } catch (closeError) {
+      if (removalError !== undefined) {
+        throw new AggregateError(
+          [removalError, closeError],
+          'Music Core MCP Server failed to remove its runtime descriptor and close',
+          { cause: closeError },
+        );
+      }
+      throw closeError;
+    }
+
+    if (removalError !== undefined) {
+      if (removalError instanceof Error) {
+        throw removalError;
+      }
+      throw new Error(
+        'Music Core MCP Server failed to remove its runtime descriptor',
+        {
+          cause: removalError,
+        },
+      );
+    }
   }
 
   private async handleRequest(

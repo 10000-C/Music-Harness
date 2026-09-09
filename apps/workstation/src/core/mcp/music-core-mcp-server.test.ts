@@ -82,6 +82,61 @@ describe('MusicCoreMcpHttpServer', () => {
     expect(response.status).toBe(401);
   });
 
+  it('closes the HTTP server when runtime descriptor publication fails', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const descriptorStore = {
+      cleanupStale: vi.fn(() => Promise.resolve()),
+      write: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('descriptor write failed'))
+        .mockResolvedValue(undefined),
+      remove: vi.fn(() => Promise.resolve()),
+    };
+    const options = {
+      projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () => Promise.resolve({ ok: true }),
+      },
+      createToken: () => 'publish-failure-token',
+      descriptorStore,
+    };
+    const server = new MusicCoreMcpHttpServer(options);
+    servers.push(server);
+
+    await expect(server.start()).rejects.toThrow('descriptor write failed');
+    await expect(server.start()).resolves.toMatchObject({ projectId });
+  });
+
+  it('closes the HTTP server even when runtime descriptor removal fails', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const descriptorStore = {
+      cleanupStale: vi.fn(() => Promise.resolve()),
+      write: vi.fn(() => Promise.resolve()),
+      remove: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('descriptor remove failed'))
+        .mockResolvedValue(undefined),
+    };
+    const options = {
+      projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () => Promise.resolve({ ok: true }),
+      },
+      createToken: () => 'remove-failure-token',
+      descriptorStore,
+    };
+    const server = new MusicCoreMcpHttpServer(options);
+    servers.push(server);
+    await server.start();
+
+    await expect(server.stop()).rejects.toThrow('descriptor remove failed');
+    await expect(server.start()).resolves.toMatchObject({ projectId });
+  });
+
   it('serves exactly seven tools over real Streamable HTTP and delegates calls', async () => {
     const { call, descriptor } = await makeServer();
     const client = await connectMcpTestClient(
