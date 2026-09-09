@@ -9,7 +9,7 @@ This is a development/interoperability harness. It does not change the product M
 - Node.js 24.x
 - pnpm 9.x
 - dependencies installed from the repository lockfile
-- an existing valid Agent Music project whose Current is clean/ready
+- a writable parent directory for a new Project, or an existing valid Agent Music Project whose Current is clean/ready
 - Claude Code installed on the same machine as the MCP server
 
 The server binds to `127.0.0.1`, so Claude Code must run on the same host.
@@ -22,7 +22,19 @@ From the repository root:
 pnpm install --frozen-lockfile
 ```
 
-## 2. Start the Music Core MCP Server
+## 2. Create a Project if needed
+
+If you do not already have an Agent Music Project:
+
+```bash
+pnpm project:create --path ./my-project
+```
+
+The command creates the real empty Project structure, initializes Git, writes the initial Current, commits `Initial Current`, releases the Project lock, and prints the Project ID and next `core:mcp` command. The target must be absent or empty according to `ProjectFoundation.createProject()` rules.
+
+If you already have a valid Project, skip this step.
+
+## 3. Start the Music Core MCP Server
 
 ```bash
 pnpm core:mcp --project /path/to/agent-music-project
@@ -44,9 +56,9 @@ pnpm core:mcp   --project /path/to/agent-music-project   --runtime-dir /path/to/
 
 The runtime directory must be outside the project directory. The CLI rejects an in-project runtime directory so the endpoint/token descriptor cannot accidentally become project or Git state.
 
-The command opens an existing project only. It does not create a new project. If the Project opens as `recoveryRequired` because Current is dirty, the CLI fails before starting the MCP server; recover Current first.
+The `core:mcp` command opens an existing project only. Use `project:create` separately for initialization. If the Project opens as `recoveryRequired` because Current is dirty, the CLI fails before starting the MCP server; recover Current first.
 
-## 3. Register the printed endpoint in Claude Code
+## 4. Register the printed endpoint in Claude Code
 
 After startup, the CLI prints output with this shape:
 
@@ -72,7 +84,7 @@ claude mcp list
 claude mcp get agent-music
 ```
 
-## 4. Available Music Core tools
+## 5. Available Music Core tools
 
 Claude Code should discover exactly:
 
@@ -88,7 +100,7 @@ finishTask
 
 There is intentionally no eighth cancel/approval tool.
 
-## 5. Generation Plan confirmation
+## 6. Generation Plan confirmation
 
 `submitGenerationPlan` remains a long-held MCP Tool Call. When Claude Code calls it, the MCP server terminal displays the proposed plan and Scope:
 
@@ -103,7 +115,7 @@ Enter `y` or `yes` to approve. Any other answer rejects the plan. Approval goes 
 
 Do not close the MCP server terminal while a confirmation prompt is pending.
 
-## 6. Scope Extension confirmation
+## 7. Scope Extension confirmation
 
 When Claude Code calls `requestScopeExtension`, the real A3 pending Scope Extension is created first. The MCP server terminal then asks:
 
@@ -118,7 +130,7 @@ Enter `y` or `yes` to approve; any other answer rejects through the existing A3 
 
 Approval/rejection is deliberately not exposed as an Agent MCP tool. After `requestScopeExtension` returns, Claude Code should call `getTaskContext` again and use the returned authoritative `scopeRevision` and Scope for all later Task-bound calls.
 
-## 7. Stop the server
+## 8. Stop the server
 
 Use `Ctrl+C` in the MCP server terminal.
 
@@ -131,7 +143,7 @@ Normal termination:
 
 `SIGTERM` follows the same cleanup path.
 
-## 8. Regression use
+## 9. Regression use
 
 For broad A-layer MCP Server regression, use:
 

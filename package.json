@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run --config vitest.config.ts",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
-    "core:mcp": "tsx apps/workstation/src/dev/core-mcp-cli.ts"
+    "core:mcp": "tsx apps/workstation/src/dev/core-mcp-cli.ts",
+    "project:create": "tsx apps/workstation/src/dev/project-create-cli.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
