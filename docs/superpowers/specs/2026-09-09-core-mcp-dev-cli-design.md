@@ -36,7 +36,7 @@ Default runtime directory is user-level and outside the project repository:
 ~/.agent-music/runtime
 ```
 
-The command opens an existing valid project only. It does not create projects.
+The command opens an existing valid project only. It does not create projects. The Project must open in `ready` state; `recoveryRequired` fails before MCP startup.
 
 ## Composition
 
@@ -111,7 +111,7 @@ The token is intentionally printed because this is an explicit local dev harness
 
 ## Runtime
 
-The repository is `noEmit` TypeScript and uses `.js` import specifiers, so the CLI is executed with `tsx`. `tsx` is a workstation development dependency only; it is not part of the product runtime contract.
+The repository is `noEmit` TypeScript and uses `.js` import specifiers, so the CLI is executed with `tsx`. `tsx` is a workspace development dependency used only by the dev CLI; it is not part of the product runtime contract.
 
 ## Testing
 

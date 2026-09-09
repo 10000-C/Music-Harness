@@ -43,7 +43,7 @@
 **Files:**
 - Create: `apps/workstation/src/dev/core-mcp-cli.ts`
 - Create: `apps/workstation/src/dev/core-mcp-cli.integration.test.ts`
-- Modify: `apps/workstation/package.json`
+- Modify: `package.json`
 - Modify: `pnpm-lock.yaml`
 
 **Interfaces:**
