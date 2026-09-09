@@ -24,6 +24,7 @@ export class CurrentPlaybackSession {
   #runtime: PlaybackRuntime | null = null;
   #unsubscribe: (() => void) | null = null;
   #generation = 0;
+  #releaseTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly createRuntime: () => PlaybackRuntime,
@@ -36,7 +37,8 @@ export class CurrentPlaybackSession {
     const generation = ++this.#generation;
     const previous = this.#runtime;
     if (previous === null) this.onState(null);
-    else await this.#release(previous);
+    else this.#queueRelease(previous);
+    await this.#releaseTail;
     if (generation !== this.#generation) return { status: 'stale' };
 
     let runtime: PlaybackRuntime;
@@ -55,26 +57,31 @@ export class CurrentPlaybackSession {
     try {
       const synchronized = await runtime.syncSource(source, input.compilation);
       if (generation !== this.#generation || this.#runtime !== runtime) {
-        await this.#release(runtime);
+        this.#queueRelease(runtime);
+        await this.#releaseTail;
         return { status: 'stale' };
       }
       if (synchronized.status === 'failed') {
-        await this.#release(runtime);
+        this.#queueRelease(runtime);
+        await this.#releaseTail;
         return { status: 'failed', message: synchronized.failure.message };
       }
       const activated = await runtime.activateSource(source);
       if (generation !== this.#generation || this.#runtime !== runtime) {
-        await this.#release(runtime);
+        this.#queueRelease(runtime);
+        await this.#releaseTail;
         return { status: 'stale' };
       }
       if (activated.status === 'failed') {
-        await this.#release(runtime);
+        this.#queueRelease(runtime);
+        await this.#releaseTail;
         return { status: 'failed', message: activated.failure.message };
       }
       this.onState(runtime.getSnapshot());
       return { status: 'ready' };
     } catch {
-      await this.#release(runtime);
+      this.#queueRelease(runtime);
+      await this.#releaseTail;
       return {
         status: 'failed',
         message: 'SoundFont or playback engine could not be loaded.',
@@ -87,9 +94,8 @@ export class CurrentPlaybackSession {
     const runtime = this.#runtime;
     if (runtime === null) {
       this.onState(null);
-      return;
-    }
-    await this.#release(runtime);
+    } else this.#queueRelease(runtime);
+    await this.#releaseTail;
   }
 
   async dispose(): Promise<void> {
@@ -101,13 +107,23 @@ export class CurrentPlaybackSession {
     return runtime === null ? null : await runtime.send(command);
   }
 
-  async #release(runtime: PlaybackRuntime): Promise<void> {
+  #queueRelease(runtime: PlaybackRuntime): void {
     if (this.#runtime !== runtime) return;
     this.#runtime = null;
     const unsubscribe = this.#unsubscribe;
     this.#unsubscribe = null;
     unsubscribe?.();
     this.onState(null);
-    await runtime.dispose();
+    const release = this.#releaseTail.then(async () => {
+      try {
+        await runtime.dispose();
+      } catch {
+        // A dispose failure must not retain this runtime or block a retry.
+      }
+    });
+    this.#releaseTail = release.then(
+      () => undefined,
+      () => undefined,
+    );
   }
 }
