@@ -24,11 +24,10 @@ import type { FakeCoreFixtureName } from './core-client/index.js';
 import { fakeCandidateTimeline } from './core-client/fake-core-fixtures.js';
 import { useWorkstationDemo } from './state/use-workstation-demo.js';
 import { createCurrentPlaybackViewModel } from './core-client/current-playback-view-model.js';
-import {
-  type PlaybackRuntime,
-  type PlaybackRuntimeState,
-} from './opendaw-runtime/index.js';
+import { type PlaybackRuntimeState } from './opendaw-runtime/index.js';
 import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-playback-runtime.js';
+import { CurrentPlaybackSession } from './opendaw-runtime/current-playback-session.js';
+import type { PlaybackCommand } from './opendaw-runtime/types.js';
 import { CompetitionAgentPanel } from './workspace/agent/competition-agent-panel.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
@@ -912,7 +911,8 @@ const LiveProjectWorkspace = () => {
   );
   const [busy, setBusy] = useState(false);
   const latestRequest = useRef(0);
-  const runtime = useRef<PlaybackRuntime | null>(null);
+  const mounted = useRef(false);
+  const playbackSession = useRef<CurrentPlaybackSession | null>(null);
   const playbackRequest = useRef(0);
   const [timeline, setTimeline] = useState<TimelineViewModel | null>(null);
   const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(
@@ -922,9 +922,18 @@ const LiveProjectWorkspace = () => {
     useState<TrackId>('track.keys');
 
   useEffect(() => {
+    mounted.current = true;
+    playbackSession.current = new CurrentPlaybackSession(
+      createSpessaSynthPlaybackRuntime,
+      (state) => {
+        if (mounted.current) setRuntimeState(state);
+      },
+    );
     return () => {
-      const active = runtime.current;
-      runtime.current = null;
+      mounted.current = false;
+      playbackRequest.current += 1;
+      const active = playbackSession.current;
+      playbackSession.current = null;
       void active?.dispose();
     };
   }, []);
@@ -932,7 +941,7 @@ const LiveProjectWorkspace = () => {
   useEffect(() => {
     if (project?.state !== 'ready') {
       setTimeline(null);
-      setRuntimeState(null);
+      void playbackSession.current?.clear();
       return undefined;
     }
     const bridge = window.agentMusic;
@@ -941,6 +950,8 @@ const LiveProjectWorkspace = () => {
       return undefined;
     }
     const request = ++playbackRequest.current;
+    const session = playbackSession.current;
+    if (session === null) return undefined;
     void bridge.readCurrentPlayback().then(async (result) => {
       if (request !== playbackRequest.current) return;
       if (result === null) {
@@ -964,43 +975,17 @@ const LiveProjectWorkspace = () => {
         setMessage('Current playback data did not pass the Renderer boundary.');
         return;
       }
-      try {
-        runtime.current ??= createSpessaSynthPlaybackRuntime();
-        const player = runtime.current;
-        const unsubscribe = player.subscribe(() => {
-          if (request === playbackRequest.current)
-            setRuntimeState(player.getSnapshot());
-        });
-        const source = { kind: 'current' as const, revision: result.revision };
-        const synchronized = await player.syncSource(
-          source,
-          result.compilation,
-        );
-        if (request !== playbackRequest.current) {
-          unsubscribe();
-          return;
-        }
-        if (synchronized.status === 'failed') {
-          unsubscribe();
-          setMessage(synchronized.failure.message);
-          return;
-        }
-        const activated = await player.activateSource(source);
-        if (request !== playbackRequest.current) {
-          unsubscribe();
-          return;
-        }
-        if (activated.status === 'failed') {
-          unsubscribe();
-          setMessage(activated.failure.message);
-          return;
-        }
+      const loaded = await session.load({
+        revision: result.revision,
+        compilation: result.compilation,
+      });
+      if (request !== playbackRequest.current) return;
+      if (loaded.status === 'ready') {
         setTimeline(view);
-        setRuntimeState(player.getSnapshot());
         setMessage('Current is loaded for playback.');
-      } catch {
-        if (request === playbackRequest.current)
-          setMessage('SoundFont or playback engine could not be loaded.');
+      } else if (loaded.status === 'failed') {
+        setTimeline(null);
+        setMessage(loaded.message);
       }
     });
     return () => {
@@ -1008,15 +993,11 @@ const LiveProjectWorkspace = () => {
     };
   }, [project?.currentRevision, project?.state]);
 
-  const sendPlayback = useCallback(
-    async (command: Parameters<PlaybackRuntime['send']>[0]) => {
-      const player = runtime.current;
-      if (player === null) return;
-      const outcome = await player.send(command);
-      if (outcome.status === 'failed') setMessage(outcome.failure.message);
-    },
-    [],
-  );
+  const sendPlayback = useCallback(async (command: PlaybackCommand) => {
+    const outcome = await playbackSession.current?.send(command);
+    if (outcome === undefined || outcome === null) return;
+    if (outcome.status === 'failed') setMessage(outcome.failure.message);
+  }, []);
 
   const dispatch = useCallback(async (command: ProjectCommand) => {
     const bridge = window.agentMusic;

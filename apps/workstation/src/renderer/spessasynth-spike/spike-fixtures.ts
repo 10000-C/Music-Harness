@@ -1,8 +1,5 @@
 import {
   BasicMIDI,
-  BasicPreset,
-  BasicSoundBank,
-  GeneratorTypes,
   MIDIBuilder,
   MIDIControllers,
   MIDIMessageTypes,
@@ -10,6 +7,7 @@ import {
   type MIDIMessage,
   type ModifyMIDIOptions,
 } from 'spessasynth_core';
+import { createBundledP0SoundFont } from '../opendaw-runtime/builtin-soundfont.js';
 
 export interface SpikeNoteEvidence {
   readonly channel: number;
@@ -104,28 +102,7 @@ export const createSpikeMidiFile = (): ArrayBuffer => {
 
 /** Creates a tiny, deterministic SF2 with two selectable presets. */
 export const createSpikeSoundFont = (): ArrayBuffer => {
-  const bank = SoundBankLoader.fromArrayBuffer(
-    BasicSoundBank.getSampleSoundBankFile(),
-  );
-  const instrument = bank.instruments[0];
-  if (instrument === undefined) {
-    throw new Error('SpessaSynth sample SoundFont has no instrument.');
-  }
-
-  const alternatePreset = new BasicPreset(bank);
-  alternatePreset.name = 'Dark Saw';
-  alternatePreset.program = 1;
-  alternatePreset.bankMSB = 0;
-  alternatePreset.bankLSB = 0;
-  alternatePreset.isGMGSDrum = false;
-  alternatePreset.globalZone.setGenerator(
-    GeneratorTypes.initialFilterFc,
-    -4_800,
-  );
-  alternatePreset.createZone(instrument);
-  bank.presets.push(alternatePreset);
-  bank.flush();
-  return bank.writeSF2();
+  return createBundledP0SoundFont();
 };
 
 export const parseSpikeMidi = (
