@@ -23,6 +23,11 @@ import type { FakeCoreFixtureName } from './core-client/index.js';
 import { fakeCandidateTimeline } from './core-client/fake-core-fixtures.js';
 import { useWorkstationDemo } from './state/use-workstation-demo.js';
 import { createCurrentPlaybackViewModel } from './core-client/current-playback-view-model.js';
+import {
+  createLiveCandidateAdapter,
+  type LiveCandidateAdapter,
+  type LiveCandidateState,
+} from './core-client/live-candidate-adapter.js';
 import { type PlaybackRuntimeState } from './opendaw-runtime/index.js';
 import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-playback-runtime.js';
 import { CurrentPlaybackSession } from './opendaw-runtime/current-playback-session.js';
@@ -813,6 +818,9 @@ const LiveProjectWorkspace = () => {
     null,
   );
   const [focusedTrackId, setFocusedTrackId] = useState<TrackId>('track.guitar');
+  const [candidateState, setCandidateState] =
+    useState<LiveCandidateState | null>(null);
+  const candidateAdapter = useRef<LiveCandidateAdapter | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -886,11 +894,65 @@ const LiveProjectWorkspace = () => {
     };
   }, [project?.currentRevision, project?.state]);
 
+  useEffect(() => {
+    const bridge = window.agentMusic;
+    const previous = candidateAdapter.current;
+    candidateAdapter.current = null;
+    previous?.dispose();
+    setCandidateState(null);
+    if (project?.state !== 'ready' || bridge === undefined) return undefined;
+
+    const adapter = createLiveCandidateAdapter({
+      projectId: project.projectId,
+      bridge,
+    });
+    candidateAdapter.current = adapter;
+    setCandidateState(adapter.getState());
+    const unsubscribe = adapter.subscribe(setCandidateState);
+    return () => {
+      unsubscribe();
+      adapter.dispose();
+      if (candidateAdapter.current === adapter) candidateAdapter.current = null;
+    };
+  }, [project?.projectId, project?.state]);
+
   const sendPlayback = useCallback(async (command: PlaybackCommand) => {
     const outcome = await playbackSession.current?.send(command);
     if (outcome === undefined || outcome === null) return;
     if (outcome.status === 'failed') setMessage(outcome.failure.message);
   }, []);
+
+  const resolveCandidate = useCallback(
+    async (resolution: 'accept' | 'reject') => {
+      const adapter = candidateAdapter.current;
+      if (adapter === null || candidateState?.status !== 'ready') return;
+      setBusy(true);
+      try {
+        if (resolution === 'accept') await adapter.accept();
+        else await adapter.reject();
+        const committedRevision = adapter.getState().committedRevision;
+        if (resolution === 'accept' && committedRevision !== null) {
+          setProject((current) =>
+            current === null
+              ? current
+              : { ...current, currentRevision: committedRevision },
+          );
+          setMessage('Candidate applied. Current is reloading for playback.');
+        } else {
+          setMessage('Candidate discarded. Current is unchanged.');
+        }
+      } catch (error: unknown) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : 'Candidate action could not be completed.',
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [candidateState?.status],
+  );
 
   const dispatch = useCallback(async (command: ProjectCommand) => {
     const bridge = window.agentMusic;
@@ -1066,6 +1128,18 @@ const LiveProjectWorkspace = () => {
               })
             }
           />
+          {candidateState?.status === 'ready' && (
+            <CandidateStage
+              title="Candidate ready to review"
+              details={undefined}
+              previewingCandidate={false}
+              candidateAuditionAvailable={false}
+              onReviewCurrent={() => undefined}
+              onReviewCandidate={() => undefined}
+              onAccept={() => void resolveCandidate('accept')}
+              onReject={() => void resolveCandidate('reject')}
+            />
+          )}
           <section className="utility-view" aria-label="Project controls">
             <h2>{projectName}</h2>
             <p>{message}</p>

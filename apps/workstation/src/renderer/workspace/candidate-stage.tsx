@@ -4,6 +4,7 @@ interface CandidateStageProps {
   readonly title: string;
   readonly details: CandidateReviewDetails | undefined;
   readonly previewingCandidate: boolean;
+  readonly candidateAuditionAvailable?: boolean;
   readonly onReviewCurrent: () => void;
   readonly onReviewCandidate: () => void;
   readonly onAccept: () => void;
@@ -14,6 +15,7 @@ export const CandidateStage = ({
   title,
   details,
   previewingCandidate,
+  candidateAuditionAvailable = true,
   onReviewCurrent,
   onReviewCandidate,
   onAccept,
@@ -26,7 +28,9 @@ export const CandidateStage = ({
       <h2 id="candidate-stage-title">{details?.title ?? title}</h2>
       <p>
         {details === undefined
-          ? 'Review this variation in the arrangement before it changes Current.'
+          ? candidateAuditionAvailable
+            ? 'Review this variation in the arrangement before it changes Current.'
+            : 'Candidate state is ready to apply. Audition will appear when Core provides a playback bundle.'
           : `${String(details.changes.length)} musical adjustments, ready to audition.`}
       </p>
     </div>
@@ -41,9 +45,17 @@ export const CandidateStage = ({
       <button
         type="button"
         aria-pressed={previewingCandidate}
+        disabled={!candidateAuditionAvailable}
+        title={
+          candidateAuditionAvailable
+            ? undefined
+            : 'Candidate audition is unavailable until Core provides playback data.'
+        }
         onClick={onReviewCandidate}
       >
-        Listen to Candidate
+        {candidateAuditionAvailable
+          ? 'Listen to Candidate'
+          : 'Candidate audition unavailable'}
       </button>
     </div>
     <div className="candidate-stage__actions">
