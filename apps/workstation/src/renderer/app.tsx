@@ -5,7 +5,6 @@ import {
   type ServiceKind,
   type TaskScope,
   type Tick,
-  type TickRange,
   type RendererTimelineViewModel as TimelineViewModel,
   type TrackId,
 } from './b-contracts/index.js';
@@ -29,6 +28,8 @@ import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-
 import { CurrentPlaybackSession } from './opendaw-runtime/current-playback-session.js';
 import type { PlaybackCommand } from './opendaw-runtime/types.js';
 import { CompetitionAgentPanel } from './workspace/agent/competition-agent-panel.js';
+import { ArrangementMap } from './workspace/arrangement-map.js';
+import { CandidateStage } from './workspace/candidate-stage.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
 import {
@@ -39,14 +40,8 @@ import {
   ProjectSidebar,
   type WorkspaceView,
 } from './workspace/project-sidebar.js';
-import { TrackInspector } from './workspace/track-inspector.js';
-import { TrackSidebar } from './workspace/track-sidebar.js';
-import { Timeline } from './workspace/timeline/timeline.js';
-import {
-  formatBarRange,
-  ticksForBars,
-} from './workspace/timeline/timeline-labels.js';
-import { trackPresentation } from './workspace/timeline/track-palette.js';
+import { ToneConsole } from './workspace/tone-console.js';
+import { ticksForBars } from './workspace/timeline/timeline-labels.js';
 import { TransportBar } from './workspace/transport-bar.js';
 import {
   ServiceHealthNotice,
@@ -116,23 +111,6 @@ const projectNameOf = (
     return project.displayName;
   }
   return 'No project';
-};
-
-const scopeLabel = (
-  selectedTrackIds: readonly TrackId[],
-  range: TickRange | null,
-  timeline: TimelineViewModel | null,
-): string => {
-  if (range === null) return 'Whole project';
-  if (selectedTrackIds.length === 0) return 'No tracks selected';
-  if (timeline === null) return 'Timeline unavailable';
-  const bars = formatBarRange(range, timeline);
-  if (selectedTrackIds.length === TRACK_IDS.length)
-    return `All tracks · ${bars}`;
-  const tracks = selectedTrackIds
-    .map((trackId) => trackPresentation[trackId].label)
-    .join(' + ');
-  return `${tracks} · ${bars}`;
 };
 
 const secondsAtTick = (
@@ -255,8 +233,7 @@ const DemoApp = () => {
   const [soloTrackIds, setSoloTrackIds] = useState<ReadonlySet<TrackId>>(
     () => new Set(),
   );
-  const [inspectedTrackId, setInspectedTrackId] =
-    useState<TrackId>('track.keys');
+  const [focusedTrackId, setFocusedTrackId] = useState<TrackId>('track.guitar');
   const [serviceSnapshot, setServiceSnapshot] =
     useState<ServiceFleetSnapshot | null>(null);
   const transitionTimer = useRef<number | null>(null);
@@ -359,7 +336,7 @@ const DemoApp = () => {
     } else {
       store.dispatch({
         type: 'ui/trackSelectionChanged',
-        trackIds: ['track.keys'],
+        trackIds: TRACK_IDS,
       });
       store.dispatch({ type: 'ui/timeRangeChanged', range: null });
     }
@@ -507,11 +484,6 @@ const DemoApp = () => {
     timeline === null ? 0 : secondsAtTick(timeline, timeline.totalTicks);
   const elapsedSeconds =
     timeline === null ? 0 : secondsAtTick(timeline, ui.playbackTick);
-  const selectionLabel = scopeLabel(
-    ui.selectedTrackIds,
-    ui.timeRange,
-    timeline,
-  );
   const navigationStep =
     timeline === null ? (1 as Tick) : ticksForBars(timeline, 4);
   const statusTone: ProjectStatusTone =
@@ -659,26 +631,11 @@ const DemoApp = () => {
 
   return (
     <div className="workstation-shell" data-fixture={fixture}>
-      <TrackSidebar
-        timeline={timeline}
-        inspectedTrackId={inspectedTrackId}
-        mutedTrackIds={mutedTrackIds}
-        soloTrackIds={soloTrackIds}
-        onInspectTrack={(trackId) => {
-          setInspectedTrackId(trackId);
-          if (authoritative.task.status === 'idle') {
-            store.dispatch({
-              type: 'ui/trackSelectionChanged',
-              trackIds: [trackId],
-            });
-          }
-        }}
-        onToggleMute={(trackId) => {
-          toggleSetValue(setMutedTrackIds, trackId);
-        }}
-        onToggleSolo={(trackId) => {
-          toggleSetValue(setSoloTrackIds, trackId);
-        }}
+      <ProjectSidebar
+        activeView={activeView}
+        projectName={projectName}
+        currentLabel={currentLabel}
+        onViewChange={setActiveView}
       />
 
       <main className="workspace-main">
@@ -719,7 +676,7 @@ const DemoApp = () => {
               durationLabel={
                 blankCurrent ? '--:--' : formatTime(durationSeconds)
               }
-              scopeLabel={selectionLabel}
+              scopeLabel="Current arrangement"
               loopEnabled={ui.loopRange !== null}
               canLoop={ui.timeRange !== null}
               disabled={!canPlay}
@@ -746,54 +703,30 @@ const DemoApp = () => {
                 }
               }}
             />
-            {fixture === 'candidate' && previewingCandidate && (
-              <div className="candidate-preview-badge">
-                Previewing Candidate 01
-              </div>
+            {candidateReady && (
+              <CandidateStage
+                title={authoritative.candidate.summary}
+                details={
+                  explicitFixtureMode && fixture === 'candidate'
+                    ? competitionCandidateDetails
+                    : undefined
+                }
+                previewingCandidate={previewingCandidate}
+                onReviewCurrent={reviewCurrent}
+                onReviewCandidate={reviewCandidate}
+                onAccept={() => resolveCandidate('accept')}
+                onReject={() => resolveCandidate('reject')}
+              />
             )}
-            <Timeline
+            <ArrangementMap
               timeline={timeline}
-              comparisonTimeline={
-                explicitFixtureMode &&
-                fixture === 'candidate' &&
-                previewingCandidate
-                  ? authoritativeTimeline
-                  : null
-              }
-              candidateMode={previewingCandidate}
               playbackTick={ui.playbackTick}
-              selectedTrackIds={[inspectedTrackId]}
-              timeRange={ui.timeRange}
-              loopRange={ui.loopRange}
-              zoom={ui.timelineZoom}
-              startTick={ui.timelineStartTick}
+              focusedTrackId={focusedTrackId}
               mutedTrackIds={mutedTrackIds}
               soloTrackIds={soloTrackIds}
-              onPlaybackTickChange={(tick) => {
-                store.dispatch({ type: 'ui/playbackTickChanged', tick });
-              }}
-              onTrackSelectionChange={(trackIds) => {
-                setInspectedTrackId(trackIds.at(-1) ?? inspectedTrackId);
-                store.dispatch({
-                  type: 'ui/trackSelectionChanged',
-                  trackIds,
-                });
-              }}
-              onTimeRangeChange={(range) => {
-                store.dispatch({ type: 'ui/timeRangeChanged', range });
-                if (ui.loopRange !== null) {
-                  store.dispatch({ type: 'ui/loopRangeChanged', range });
-                }
-              }}
-              onZoomChange={(zoom) => {
-                store.dispatch({ type: 'ui/timelineZoomChanged', zoom });
-              }}
-              onStartTickChange={(tick) => {
-                store.dispatch({
-                  type: 'ui/timelineStartTickChanged',
-                  tick,
-                });
-              }}
+              reviewMode={candidateReady}
+              previewingCandidate={previewingCandidate}
+              onFocusTrack={setFocusedTrackId}
               onToggleMute={(trackId) => {
                 toggleSetValue(setMutedTrackIds, trackId);
               }}
@@ -801,23 +734,19 @@ const DemoApp = () => {
                 toggleSetValue(setSoloTrackIds, trackId);
               }}
             />
-            <TrackInspector
-              trackId={inspectedTrackId}
-              candidateReady={
-                explicitFixtureMode &&
-                fixture === 'candidate' &&
-                authoritative.candidate.status === 'ready' &&
-                previewingCandidate
-              }
-              muted={mutedTrackIds.has(inspectedTrackId)}
-              soloed={soloTrackIds.has(inspectedTrackId)}
-              onToggleMute={(trackId) => {
-                toggleSetValue(setMutedTrackIds, trackId);
-              }}
-              onToggleSolo={(trackId) => {
-                toggleSetValue(setSoloTrackIds, trackId);
-              }}
-            />
+            {!candidateReady && (
+              <ToneConsole
+                trackId={focusedTrackId}
+                muted={mutedTrackIds.has(focusedTrackId)}
+                soloed={soloTrackIds.has(focusedTrackId)}
+                onToggleMute={(trackId) => {
+                  toggleSetValue(setMutedTrackIds, trackId);
+                }}
+                onToggleSolo={(trackId) => {
+                  toggleSetValue(setSoloTrackIds, trackId);
+                }}
+              />
+            )}
           </div>
         ) : (
           <UtilityView
@@ -837,48 +766,13 @@ const DemoApp = () => {
 
       <CompetitionAgentPanel
         state={authoritative}
-        scope={selectedScope()}
-        scopeLabel={selectionLabel}
         prompt={prompt}
-        tab={ui.tab}
         onPromptChange={setPrompt}
-        onTabChange={(tab) => {
-          store.dispatch({ type: 'ui/tabChanged', tab });
-        }}
         onReviewPlan={() => {
           setConfirmationOpen(true);
         }}
         onCancelTask={cancelTask}
         onRetryTask={retryTask}
-        onReviewCandidate={reviewCandidate}
-        previewingCandidate={ui.previewTarget === 'candidate'}
-        candidateDetails={
-          explicitFixtureMode && fixture === 'candidate'
-            ? competitionCandidateDetails
-            : undefined
-        }
-        onReviewCurrent={reviewCurrent}
-        onSelectPianoScope={() => {
-          setInspectedTrackId('track.keys');
-          store.dispatch({
-            type: 'ui/trackSelectionChanged',
-            trackIds: ['track.keys'],
-          });
-          store.dispatch({ type: 'ui/timeRangeChanged', range: null });
-        }}
-        onSelectWholeScope={() => {
-          store.dispatch({
-            type: 'ui/trackSelectionChanged',
-            trackIds: TRACK_IDS,
-          });
-          store.dispatch({ type: 'ui/timeRangeChanged', range: null });
-        }}
-        onAcceptCandidate={() => {
-          resolveCandidate('accept');
-        }}
-        onRejectCandidate={() => {
-          resolveCandidate('reject');
-        }}
       />
 
       <ConfirmationDialog
@@ -918,8 +812,7 @@ const LiveProjectWorkspace = () => {
   const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(
     null,
   );
-  const [inspectedTrackId, setInspectedTrackId] =
-    useState<TrackId>('track.keys');
+  const [focusedTrackId, setFocusedTrackId] = useState<TrackId>('track.guitar');
 
   useEffect(() => {
     mounted.current = true;
@@ -1089,27 +982,6 @@ const LiveProjectWorkspace = () => {
         currentLabel={currentLabel}
         onViewChange={() => undefined}
       />
-      <TrackSidebar
-        timeline={timeline}
-        inspectedTrackId={inspectedTrackId}
-        mutedTrackIds={mutedTrackIds}
-        soloTrackIds={soloTrackIds}
-        onInspectTrack={setInspectedTrackId}
-        onToggleMute={(trackId) =>
-          void sendPlayback({
-            type: 'setMute',
-            trackId,
-            muted: !mutedTrackIds.has(trackId),
-          })
-        }
-        onToggleSolo={(trackId) =>
-          void sendPlayback({
-            type: 'setSolo',
-            trackId,
-            solo: !soloTrackIds.has(trackId),
-          })
-        }
-      />
       <main className="workspace-main">
         <ProjectHeader
           projectName={projectName}
@@ -1247,27 +1119,13 @@ const LiveProjectWorkspace = () => {
           </section>
           {timeline !== null && playback !== null ? (
             <>
-              <Timeline
+              <ArrangementMap
                 timeline={timeline}
-                comparisonTimeline={null}
-                candidateMode={false}
                 playbackTick={playback.positionTick}
-                selectedTrackIds={[inspectedTrackId]}
-                timeRange={null}
-                loopRange={playback.loopRange}
-                zoom={4}
-                startTick={0 as Tick}
+                focusedTrackId={focusedTrackId}
                 mutedTrackIds={mutedTrackIds}
                 soloTrackIds={soloTrackIds}
-                onPlaybackTickChange={(tick) =>
-                  void sendPlayback({ type: 'seek', tick })
-                }
-                onTrackSelectionChange={(trackIds) => {
-                  setInspectedTrackId(trackIds.at(-1) ?? inspectedTrackId);
-                }}
-                onTimeRangeChange={() => undefined}
-                onZoomChange={() => undefined}
-                onStartTickChange={() => undefined}
+                onFocusTrack={setFocusedTrackId}
                 onToggleMute={(trackId) =>
                   void sendPlayback({
                     type: 'setMute',
@@ -1283,11 +1141,10 @@ const LiveProjectWorkspace = () => {
                   })
                 }
               />
-              <TrackInspector
-                trackId={inspectedTrackId}
-                candidateReady={false}
-                muted={mutedTrackIds.has(inspectedTrackId)}
-                soloed={soloTrackIds.has(inspectedTrackId)}
+              <ToneConsole
+                trackId={focusedTrackId}
+                muted={mutedTrackIds.has(focusedTrackId)}
+                soloed={soloTrackIds.has(focusedTrackId)}
                 onToggleMute={(trackId) =>
                   void sendPlayback({
                     type: 'setMute',
