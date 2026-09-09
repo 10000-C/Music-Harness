@@ -1,12 +1,20 @@
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { Agent } from '@strands-agents/sdk';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import type { AgentSessionId } from '@agent-music/contracts';
+
+import { createStrandsSession } from '../session/index.js';
 import type { AgentModelConfig } from '../settings/index.js';
 import { createOpenAiChatModel } from './openai-chat-model.js';
 
 const servers: ReturnType<typeof createServer>[] = [];
+const tempDirectories: string[] = [];
+const sessionId = '77777777-7777-4777-8777-777777777777' as AgentSessionId;
 
 const startFakeOpenAi = async () => {
   const requests: {
@@ -57,6 +65,28 @@ const startFakeOpenAi = async () => {
   };
 };
 
+const storageContains = async (
+  root: string,
+  marker: string,
+): Promise<boolean> => {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      if (await storageContains(path, marker)) {
+        return true;
+      }
+      continue;
+    }
+    if (
+      entry.isFile() &&
+      (await readFile(path)).includes(Buffer.from(marker))
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
 afterEach(async () => {
   await Promise.all(
     servers.splice(0).map(
@@ -71,6 +101,11 @@ afterEach(async () => {
           });
         }),
     ),
+  );
+  await Promise.all(
+    tempDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
@@ -100,5 +135,30 @@ describe('createOpenAiChatModel', () => {
         temperature: 0.25,
       },
     });
+  });
+
+  it('does not persist the configured API key in Strands Session Storage', async () => {
+    const fake = await startFakeOpenAi();
+    const storageRoot = await mkdtemp(join(tmpdir(), 'agent-api-key-session-'));
+    tempDirectories.push(storageRoot);
+    const apiKey = 'session-secret-marker-do-not-persist';
+    const resources = createStrandsSession(sessionId, storageRoot);
+    const model = createOpenAiChatModel({
+      id: 'session-safety-test',
+      endpoint: fake.endpoint,
+      apiKey,
+      model: 'test-model',
+    });
+    const agent = new Agent({
+      model,
+      sessionManager: resources.sessionManager,
+      storage: resources.storage,
+      contextManager: 'auto',
+      printer: false,
+    });
+
+    await agent.invoke('persist only this conversation');
+
+    await expect(storageContains(storageRoot, apiKey)).resolves.toBe(false);
   });
 });
