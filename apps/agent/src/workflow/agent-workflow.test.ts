@@ -110,6 +110,7 @@ const makeHarness = (
 ) => {
   const runtimes = [...scripts];
   const prompts: (string | undefined)[] = [];
+  const getTaskContext = vi.fn().mockResolvedValue(task);
   const create = vi.fn(
     (
       project: ProjectId,
@@ -149,6 +150,7 @@ const makeHarness = (
   };
   const workflow = new AgentWorkflow({
     runtimeFactory,
+    taskBootstrap: { getTaskContext },
     rollback,
     settings: { getMaxRepairAttempts },
     createExecutionId: () => executionId,
@@ -158,6 +160,7 @@ const makeHarness = (
     create,
     cancelTask,
     getMaxRepairAttempts,
+    getTaskContext,
     events,
     emit,
     terminal,
@@ -288,17 +291,27 @@ describe('AgentWorkflow', () => {
     });
   });
 
-  it('bootstraps an already-confirmed local Task before the first model call', async () => {
+  it('mechanically bootstraps an already-confirmed local Task before the first model call', async () => {
     const harness = makeHarness([{ error: new Error('provider failed') }]);
 
     start(harness.workflow, harness.emit, { taskId, candidateId });
     await harness.terminal;
 
-    expect(harness.prompts[0]).toBe('Create a groove.');
-    expect(harness.create.mock.calls[0]?.[2].instructions).toContain(taskId);
-    expect(harness.create.mock.calls[0]?.[2].instructions).toContain(
-      'getTaskContext',
+    expect(harness.getTaskContext).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.any(AbortSignal),
     );
+    expect(harness.getTaskContext.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.create.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(harness.create.mock.calls[0]?.[2].instructions).toContain(
+      'baseRevision: abc123',
+    );
+    expect(harness.create.mock.calls[0]?.[2].instructions).toContain(
+      'expectedScopeRevision: 0',
+    );
+    expect(harness.prompts[0]).toBe('Create a groove.');
     expect(harness.cancelTask).toHaveBeenCalledWith({
       projectId,
       candidateId,

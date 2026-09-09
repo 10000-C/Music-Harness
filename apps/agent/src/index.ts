@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentExecutionId, AgentSessionId } from '@agent-music/contracts';
 
 import { RuntimeDescriptorDiscovery } from './mcp/runtime-descriptor.js';
+import { StrandsTaskBootstrapper } from './mcp/task-bootstrapper.js';
 import { StrandsAgentRuntimeFactory } from './runtime/index.js';
 import { readStrandsConversation, SessionRegistry } from './session/index.js';
 import { AgentService } from './service/index.js';
@@ -60,13 +61,17 @@ export const createAgentService = (
     createId: options.createSessionId ?? defaultCreateSessionId,
     now: options.now ?? defaultNow,
   });
+  const descriptors = new RuntimeDescriptorDiscovery(
+    options.paths.runtimeDirectory,
+  );
   const runtimeFactory = new StrandsAgentRuntimeFactory({
     settings,
-    descriptors: new RuntimeDescriptorDiscovery(options.paths.runtimeDirectory),
+    descriptors,
     storageRoot: options.paths.sessionStorageRoot,
   });
   const workflow = new AgentWorkflow({
     runtimeFactory,
+    taskBootstrap: new StrandsTaskBootstrapper(descriptors),
     rollback: options.rollback,
     settings,
     createExecutionId: options.createExecutionId ?? defaultCreateExecutionId,

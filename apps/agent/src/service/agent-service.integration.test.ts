@@ -134,6 +134,39 @@ describe('AgentService lifecycle integration', () => {
       .mockResolvedValue(undefined);
     const workflow = new AgentWorkflow({
       runtimeFactory,
+      taskBootstrap: {
+        getTaskContext: () =>
+          Promise.resolve({
+            taskId,
+            projectId,
+            candidateId,
+            baseRevision: 'abc123',
+            scope: {
+              type: 'wholeProject',
+              trackIds: [
+                'track.drums',
+                'track.bass',
+                'track.guitar',
+                'track.keys',
+                'track.strings',
+                'track.winds',
+              ],
+            },
+            scopeRevision: 0,
+            state: 'editing',
+            candidateState: 'active',
+            allowedOperations: ['replaceScopedMusic', 'updateGlobalMeter'],
+            trackIds: [
+              'track.drums',
+              'track.bass',
+              'track.guitar',
+              'track.keys',
+              'track.strings',
+              'track.winds',
+            ],
+            createdAt: '2026-09-09T00:00:00.000Z',
+          }),
+      },
       rollback: { cancelTask },
       settings: { getMaxRepairAttempts: () => Promise.resolve(1) },
       createExecutionId: () => executionId,

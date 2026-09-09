@@ -2,6 +2,7 @@ export {
   AgentWorkflow,
   type AgentEventSink,
   type AgentRuntimeFactoryPort,
+  type ConfirmedTaskBootstrapPort,
   type AgentRuntimePort,
   type AgentRuntimeResult,
   type AgentWorkflowDependencies,

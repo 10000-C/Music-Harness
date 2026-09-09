@@ -5,6 +5,7 @@ import type {
   CandidateId,
   CandidateValidationReport,
   ProjectId,
+  TaskContextView,
   TaskId,
 } from '@agent-music/contracts';
 
@@ -35,6 +36,14 @@ export interface RepairSettingsPort {
   getMaxRepairAttempts(): Promise<number>;
 }
 
+export interface ConfirmedTaskBootstrapPort {
+  getTaskContext(
+    projectId: ProjectId,
+    taskId: TaskId,
+    signal: AbortSignal,
+  ): Promise<TaskContextView>;
+}
+
 export interface TaskRollbackPort {
   cancelTask(input: {
     readonly projectId: ProjectId;
@@ -47,6 +56,7 @@ export type AgentEventSink = (event: AgentEvent) => void;
 
 export interface AgentWorkflowDependencies {
   readonly runtimeFactory: AgentRuntimeFactoryPort;
+  readonly taskBootstrap: ConfirmedTaskBootstrapPort;
   readonly rollback: TaskRollbackPort;
   readonly settings: RepairSettingsPort;
   readonly createExecutionId: () => AgentExecutionId;
@@ -66,6 +76,7 @@ type AgentWorkflowErrorCode =
   | 'AGENT_EXECUTION_BUSY'
   | 'AGENT_EXECUTION_FAILED'
   | 'TASK_NOT_FINISHED'
+  | 'TASK_BOOTSTRAP_INVALID'
   | 'REPAIR_LIMIT_EXCEEDED';
 
 class AgentWorkflowError extends Error {
@@ -217,13 +228,20 @@ const validationFromFinishTask = (
 
 const executionInstructions = (
   execution: ActiveExecution,
+  taskContext: TaskContextView | undefined,
   validation?: CandidateValidationReport,
 ): string => {
   const instructions = [`Current projectId: ${execution.projectId}.`];
-  if (execution.task !== undefined) {
+  if (taskContext !== undefined) {
     instructions.push(
-      `A confirmed Candidate Task is active with taskId ${execution.task.taskId}.`,
-      'Before any Task-bound operation, call getTaskContext with that taskId to obtain the current authoritative Scope and execution envelope.',
+      'A confirmed Candidate Task has already been mechanically bootstrapped from A3.',
+      `taskId: ${taskContext.taskId}`,
+      `candidateId: ${taskContext.candidateId}`,
+      `baseRevision: ${taskContext.baseRevision}`,
+      `expectedScopeRevision: ${String(taskContext.scopeRevision)}`,
+      `scope: ${JSON.stringify(taskContext.scope)}`,
+      `allowedOperations: ${taskContext.allowedOperations.join(', ')}`,
+      'Use only this A3-authoritative Task context when constructing Task-bound MCP execution envelopes.',
     );
   }
   if (validation !== undefined) {
@@ -337,11 +355,13 @@ export class AgentWorkflow {
           return;
         }
 
+        const taskContext = await this.bootstrapTaskContext(execution);
         const outcome = await this.runInvocation(
           execution,
           prompt,
           repairMode,
           repairValidation,
+          taskContext,
         );
 
         if (isCancelRequested(execution) || outcome.kind === 'cancelled') {
@@ -405,11 +425,61 @@ export class AgentWorkflow {
     }
   }
 
+  private async bootstrapTaskContext(
+    execution: ActiveExecution,
+  ): Promise<TaskContextView | undefined> {
+    const task = execution.task;
+    if (task === undefined) {
+      return undefined;
+    }
+
+    const abortController = new AbortController();
+    execution.invocationAbortController = abortController;
+    if (execution.cancelRequested) {
+      abortController.abort();
+    }
+
+    try {
+      const context = await this.dependencies.taskBootstrap.getTaskContext(
+        execution.projectId,
+        task.taskId,
+        abortController.signal,
+      );
+      if (
+        context.projectId !== execution.projectId ||
+        context.taskId !== task.taskId
+      ) {
+        throw new AgentWorkflowError(
+          'TASK_BOOTSTRAP_INVALID',
+          'Confirmed Task bootstrap does not match the active Project Task',
+        );
+      }
+
+      execution.task = {
+        projectId: context.projectId,
+        candidateId: context.candidateId,
+        taskId: context.taskId,
+      };
+      if (context.candidateId !== task.candidateId) {
+        throw new AgentWorkflowError(
+          'TASK_BOOTSTRAP_INVALID',
+          'Confirmed Task bootstrap does not match the active Candidate',
+        );
+      }
+      return context;
+    } finally {
+      if (execution.invocationAbortController === abortController) {
+        execution.invocationAbortController = undefined;
+      }
+    }
+  }
+
   private async runInvocation(
     execution: ActiveExecution,
     prompt: string | undefined,
     repairMode: boolean,
     repairValidation: CandidateValidationReport | undefined,
+    taskContext: TaskContextView | undefined,
   ): Promise<InvocationOutcome> {
     const abortController = new AbortController();
     execution.invocationAbortController = abortController;
@@ -422,7 +492,11 @@ export class AgentWorkflow {
       execution.sessionId,
       {
         repairMode,
-        instructions: executionInstructions(execution, repairValidation),
+        instructions: executionInstructions(
+          execution,
+          taskContext,
+          repairValidation,
+        ),
       },
     );
     let validationFailure: CandidateValidationReport | undefined;
