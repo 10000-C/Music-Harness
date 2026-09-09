@@ -13,7 +13,7 @@
 - Use a pnpm Monorepo rooted at the repository root.
 - Enable strict TypeScript plus `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noFallthroughCasesInSwitch`, `useUnknownInCatchVariables`, `verbatimModuleSyntax`, and `isolatedModules`.
 - Keep `packages/contracts` independent of Node and DOM runtime APIs.
-- Do not install Electron, React, Mastra, openDAW, MCP SDK, SQLite/LibSQL, Vite, or packaging dependencies.
+- Do not install Electron, React, Strands, openDAW, MCP SDK, SQLite/LibSQL, Vite, or packaging dependencies.
 - Do not add BrowserWindow, application entry points, development servers, or business placeholders.
 - Preserve empty future directories with `.gitkeep` only.
 - Commit `pnpm-lock.yaml`.
@@ -433,7 +433,7 @@ pnpm list --recursive --depth 0
 find apps packages vendor -type f | sort
 ```
 
-Expected: no direct Electron, React, Mastra, openDAW, MCP, SQLite/LibSQL, Vite, or packaging dependency; app/vendor directories contain only package/config files and approved `.gitkeep` files.
+Expected: no direct Electron, React, Strands, openDAW, MCP, SQLite/LibSQL, Vite, or packaging dependency; app/vendor directories contain only package/config files and approved `.gitkeep` files.
 
 - [ ] **Step 5: Scan secrets and inspect Git diff**
 

@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.7 |
-| 需求基线 | Agent Music Workstation PRD V1.9 Candidate Transaction Decisions |
-| 状态 | P0 架构基线；A3 Candidate Transaction 决策已冻结 |
-| 日期 | 2026-08-13 |
+| 架构版本 | V1.10 |
+| 需求基线 | Agent Music Workstation PRD V1.12 Project Multi-Session Decision |
+| 状态 | P0 架构基线；A3 Candidate Transaction 决策已冻结；A4 执行、会话与 Project 多 Session 决策已冻结 |
+| 日期 | 2026-09-08 |
 | 首发平台 | Windows 10/11 |
-| 核心技术 | Electron、React、TypeScript、openDAW、Mastra、MCP、Git/worktree、SQLite |
+| 核心技术 | Electron、React、TypeScript、openDAW、Strands、MCP、Git/worktree |
 
-> 本版在 V1.6 Composition Pipeline 基线上冻结 A3 Candidate Transaction：Candidate/Task 双状态机、Candidate `baseRevision`、Task execution envelope、严格 Scope Extension、Candidate mutation 并发、checkpoint、Accept/Reject 线性化点、cleanup marker 与稳定领域错误。
+> 本版在 V1.9 A4 执行与会话基线上补齐 Project 多 Session 语义：一个 Project 可关联多个 Strands Session，P0 同时只有一个 Active Session；Renderer 通过 A4 最小 Session lifecycle Contract 创建/切换会话，不直接访问 Storage，也不允许多个 Session 后台并行执行。
 
 ---
 
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.8 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.12 冲突时，以 PRD 为准。
 
 ---
 
@@ -37,7 +37,7 @@
 | ADR-002 | 桌面 UI | React + TypeScript，运行于 Electron Renderer。 |
 | ADR-003 | 音乐工作区 | P0 自研 React 时间轴、Clip 展示、Transport 和连续 Scope；通过 Adapter 使用 openDAW SDK/Core Runtime，不 fork 或内嵌 openDAW Studio UI。 |
 | ADR-004 | Piano Roll | P0 不显示；P2 默认自研 React 编辑器，经 Music Core 更新 Canonical ABC 后重建 Runtime，不直接启用 openDAW Studio UI。 |
-| ADR-005 | Agent Runtime | Mastra 承载单 Agent Loop、会话、计划和有限修复。 |
+| ADR-005 | Agent Runtime | Strands 承载单 Agent Loop、会话、计划和有限修复。 |
 | ADR-006 | Agent 写入边界 | 所有 Agent 工程写入统一经过 Local MCP。 |
 | ADR-007 | 编曲事实来源 | 单一 `composition.abc` 是编曲唯一事实来源。 |
 | ADR-008 | Canonical ABC | 保存为完全展开形式，禁止 Repeat 简写。 |
@@ -59,7 +59,7 @@
 | ADR-024 | Endpoint 发现 | Music Core 使用随机端口，并在用户运行时目录创建、维护和删除实例描述文件。 |
 | ADR-025 | MCP 权限 | Instance Token 负责连接；服务器端 TaskContext 负责写入授权。 |
 | ADR-026 | 模型协议 | P0 只支持 OpenAI-compatible Chat Completions。 |
-| ADR-027 | 对话存储 | 应用级 SQLite 保存对话、Task 和执行记录，不作为工程事实。 |
+| ADR-027 | Agent Session | P0 不使用应用级 SQLite；Agent Session、消息、Tool Call / Tool Result 上下文、恢复与 Context 管理由 Strands Session 能力及其 Storage 负责，不作为工程事实。 |
 | ADR-028 | 模型配置 | 用户级 `~/.agent-music/settings.json` 保存 Endpoint、API Key 和参数。 |
 | ADR-029 | 试听 | Current/Candidate 各缓存 RuntimeSnapshot，只运行一个 openDAW Runtime。 |
 | ADR-030 | 另存为 | 复制 Current 权威文件，生成新项目和新 Git 历史，不保留旧历史。 |
@@ -76,6 +76,17 @@
 | ADR-041 | Accept/Reject 事务点 | Accept 以新 `main` commit 成功为业务成功点；Reject 以 Candidate 授权失效为业务成功点。后续 branch/worktree cleanup 失败不回滚业务结果，也不阻塞新 Candidate。 |
 | ADR-042 | Candidate cleanup | 已结束 Candidate 通过 `.agent-music/candidate-cleanup/<candidateId>.json` marker 授权自动清理。启动时只自动清理有 marker 的残留；无 marker 资源不恢复、不猜测删除。 |
 | ADR-043 | Candidate 权威变化 | P0 Candidate 只允许 `composition.abc` 产生业务差异；`project.json` 必须保持 baseRevision 版本。checkpoint 只 stage `composition.abc`，成功 Task/Accept 均允许 empty commit。 |
+| ADR-044 | Strands 集成边界 | A4 直接使用 Strands 的 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client；不重复实现 SSE Provider 协议层或第二套 MCP Client。A4 只负责配置映射、生命周期、应用级错误归一化与脱敏。 |
+| ADR-045 | A4 Settings ownership | 用户级 Agent / Model `settings.json` 归 A4 所有；A4 负责读取、Schema 校验、活动模型选择和安全写回。A5 只负责 Export Preparation。 |
+| ADR-046 | Generation Plan 确认 | `submitGenerationPlan` 保留为七个 P0 MCP Tool 之一。P0 先采用 Tool Call 等待 UI 用户决策后再返回的最简协议；确认前不创建正式 A3 Task，Task-bound Tool 机械不可用；确认后由 A3 创建 Candidate/Task，再返回 Task bootstrap 信息。 |
+| ADR-047 | Agent text transport | A4 内部 Workflow 状态不作为 Renderer Contract 暴露。既有 Agent Service → Main/Preload → Renderer typed transport 主要承载用户消息、assistant 文本流与执行终态/错误；Main/Preload 只负责 transport，原始 MCP Tool Result 不经该通道透传。 |
+| ADR-048 | A4 Cancel | Cancel 统一表示取消当前 Agent 操作。正式 Task 尚未创建时只终止 A4 Workflow；已有 Active Task 时先终止 Strands execution，再调用 A3 `cancelTask` 回滚到 `taskBaseCheckpoint`。 |
+| ADR-049 | Execution failure / retry | Provider 与 MCP transient retry 优先使用 Strands/底层 Client 自身能力；A4 不实现第二层通用 retry loop。最终 non-validation execution failure 必须取消并回滚 Active Task，`failed` 不得遗留 Active Task。 |
+| ADR-050 | Repair boundary | `finishTask` validation failure 才进入 repair；repair 不允许 Scope Extension。一轮 `ValidationReport → repair → finishTask` 计为一次 `repairAttempt`。 |
+| ADR-051 | Dynamic Agent settings | 模型配置不冻结，每次 Strands model invocation 读取当前 active model configuration；每次准备进入下一轮 repair 前读取最新 `maxRepairAttempts`。 |
+| ADR-052 | Strands Session ownership | Agent Session 直接交给 Strands SessionManager/Storage；A4 只提供应用级 session 标识、生命周期和 Renderer-facing session access，不自研 transcript/compaction，Renderer 不直接读取持久化格式。 |
+| ADR-053 | Agent Service crash | P0 不恢复运行中的 Agent Task。Agent Service 崩溃时若 A3 存在 Active Task，必须取消并回滚；Strands Session 可用于恢复对话，但不能恢复未完成工程事务。 |
+| ADR-054 | Project multi-session | 一个 Project 可关联多个 Agent Session，但 P0 同时只有一个 Active Session。A4 是 `projectId ↔ sessionId` 关联和 Active Session 的 owner；Renderer 只能通过 A4 最小 Session lifecycle Contract 创建、列出、打开和读取 Active Session。Session 切换不恢复或迁移 Active Task，P0 不支持多个 Session 后台并行 execution。 |
 
 > **职责边界：Global Meter 修改与音乐重排分离。** `updateGlobalMeter` 允许 Task 编辑过程中暂时保留旧 ABC barline；A2 不自动拆分 Note/Rest、不自动添加 Tie，也不根据新拍号改编音乐。Agent 负责后续 wholeProject 重排；最终 Candidate 的 Meter/小节一致性属于 `finishTask` 验证边界。
 
@@ -129,10 +140,12 @@ Music Workstation 可以独立启动、打开、播放和导出项目，不要�
 
 Built-in Agent Service 是可选独立进程，包括：
 
-- Mastra；
-- Chat Completions Provider Adapter；
-- 对话与 Workflow；
-- MCP Client。
+- Strands Agent Runtime；
+- Strands OpenAI-compatible Chat Completions Model；
+- Strands Agent-side MCP Client；
+- 对话与 Agent Workflow；
+- Agent / Model Settings；
+- assistant text stream / execution terminal publisher。
 
 内置 Agent 与未来外部 Agent 使用同一个 MCP Endpoint 和同一套工具，不存在私有写入路径。
 
@@ -143,16 +156,16 @@ flowchart LR
     MAIN[Electron Main]
     RENDERER[React Renderer<br/>Product UI + OpenDawRuntimeAdapter]
     CORE[Music Core Utility Process\nProject + ABC + MCP + Git]
-    AGENT[Optional Built-in Agent Service\nMastra + Chat Completions]
-    DB[(App-level SQLite)]
+    AGENT[Optional Built-in Agent Service\nStrands + Chat Completions]
+    SESSION[(Strands Session Storage)]
     FS[(Local Project Git Repository)]
 
     MAIN --> RENDERER
     MAIN --> CORE
-    MAIN --> AGENT
+    MAIN <-->|typed Agent IPC / lifecycle| AGENT
     RENDERER <-->|typed IPC / PlaybackCompilation + TimelineViewModel| CORE
     AGENT <-->|MCP Streamable HTTP\n127.0.0.1 ephemeral| CORE
-    AGENT <--> DB
+    AGENT <--> SESSION
     CORE <--> FS
 ```
 
@@ -161,15 +174,18 @@ flowchart LR
 #### Electron Main
 
 - 应用和窗口生命周期；
-- 启动、监督 Utility Process；
+- 启动、监督 Utility Process 与 Agent Service；
 - 项目路径、文件选择和导出路径；
+- 通过 Main / Preload 为 A4 与 Renderer 提供受控 typed Agent IPC transport bridge；
+- 对用户消息、assistant 文本 delta、执行终态/错误只做 Schema 校验、路由和生命周期处理，不解释 planning、repairing、confirmation 等 A4 内部业务语义；
 - 不创建或维护 MCP Endpoint、Instance Token 和运行时描述文件；
-- 不承载 ABC、Scope、Candidate 或 MCP 业务逻辑。
+- 不承载 ABC、Scope、Candidate、MCP 或 Agent Workflow 业务逻辑。
 
 #### Renderer
 
 - 自研 React 六轨时间轴、Clip 展示、Transport、Playhead、Loop 和连续 Scope 选区；
 - Agent 对话、确认、Current/Candidate 状态；
+- 通过 Renderer-side `AgentClient` 列出/创建/打开 Project Session、读取 Active Session、发送用户消息/Cancel，并消费 assistant 文本流与执行终态/错误；React 组件不直接管理 Agent Service 进程、底层 IPC、A4 Workflow 状态、Strands Storage 或原始 MCP Tool Result；
 - 通过 `OpenDawRuntimeAdapter` 管理一个活动 openDAW Runtime；
 - 从 Music Core 接收 `TimelineViewModel` 和 `PlaybackCompilation`，由 `OpenDawRuntimeAdapter` 构建 RuntimeSnapshot；
 - 不直接读取或修改 openDAW BoxGraph；
@@ -190,9 +206,14 @@ flowchart LR
 
 #### Agent Service
 
-- Chat Completions 调用；
+- 使用 Strands 执行 OpenAI-compatible Chat Completions 与单 Agent Loop；
+- 使用 Strands Agent-side MCP Client 读取 runtime descriptor 并连接 Music Core MCP Server；
 - 计划、工具循环、有限修复和取消；
+- 拥有 Agent / Model Settings 与 A4 Workflow 内部状态；
+- 使用 Strands SessionManager/Storage 管理 Agent Session、恢复与运行时 Context；A4 维护 `projectId ↔ sessionId` 关联和每个 Project 的唯一 Active Session；
+- 通过既有 typed Agent transport 接收/发布最小 Session lifecycle、用户消息/Cancel、assistant 文本流与执行终态/错误，不透传原始 MCP Tool Result 或完整 Workflow 状态；
 - 通过 MCP 重新读取工程事实；
+- 不依赖 Electron API，不直接连接 React；
 - 无项目目录、Git 或 openDAW 写权限。
 
 ---
@@ -223,9 +244,10 @@ agent-music-workstation/
 │   │           └── opendaw/
 │   └── agent/
 │       └── src/
-│           ├── mastra/
-│           ├── provider/
-│           └── mcp-client/
+│           ├── strands/
+│           ├── workflow/
+│           ├── settings/
+│           └── presentation/
 └── packages/
     └── contracts/
         └── src/
@@ -295,7 +317,7 @@ interface ProjectManifest {
 1. `main` HEAD 对应的 Current 权威文件；
 2. Candidate worktree 内的当前 Task 状态；
 3. Canonical ABC 解析出的 AST、事件、MIDI、Scope Mapping 和 TimelineViewModel；
-4. SQLite 中的对话和执行记录；
+4. Strands Session Storage 中的 Agent 会话数据；
 5. Renderer 内由 B3 构建的 RuntimeSnapshot、UI 和播放临时状态。
 
 派生状态不能单独成为工程事实来源。
@@ -663,16 +685,14 @@ A4 单独持有 Agent 执行上下文：
 
 ```ts
 interface AgentExecutionContext {
-  taskId: TaskId;
+  taskId?: TaskId;
   userIntent: string;
   planSummary?: string;
-  modelConfigurationId: string;
-  maxRepairAttempts: number;
   repairAttempt: number;
 }
 ```
 
-`planning`、`awaiting_confirmation` 和 `repairing` 均属于 A4 Agent Workflow。正式 `TaskContext` 只在用户确认后创建。
+`planning`、`awaiting_confirmation` 和 `repairing` 均属于 A4 Agent Workflow。正式 `TaskContext` 只在用户确认后创建，因此确认前 `taskId` 不存在。模型配置和 `maxRepairAttempts` 不冻结进 `AgentExecutionContext`：每次 model invocation 读取当前 active model configuration，每次准备开始下一轮 repair 前读取最新 `maxRepairAttempts`。
 
 ### 11.2 Scope Extension
 
@@ -701,7 +721,35 @@ requestScopeExtension(executionEnvelope, requestedScope)
 
 ### 11.3 Repair ownership
 
-`finishTask` 验证失败时 A3 保留 Candidate 修改并将 Task 恢复为 `editing`，但 A3 不跟踪 repair attempt，也不决定是否再次调用模型。`maxRepairAttempts`、`repairAttempt` 和有限修复循环完全属于 A4 `AgentExecutionContext`。
+`finishTask` validation failure 时 A3 保留 Candidate 修改并将 Task 恢复为 `editing`，但 A3 不跟踪 repair attempt，也不决定是否再次调用模型。A4 的 repair 规则为：
+
+- 只有 `finishTask` validation failure 进入 `repairing`；Provider/MCP/Strands execution failure 不进入 repair；
+- 一轮 `ValidationReport → Agent repair → finishTask` 计为一次 `repairAttempt`；一轮内可执行多个当前 Scope 内的 read/write Tool Call；
+- `repairing` 阶段禁止 `requestScopeExtension`，Scope 在进入 repair 后对该修复阶段保持冻结；
+- 每次准备启动下一轮 repair 前从 Settings 读取最新 `maxRepairAttempts`；若 `repairAttempt >= maxRepairAttempts`，A4 不再启动 repair，并调用 A3 `cancelTask` 回滚当前 Task；
+- Strands/Provider/MCP 的 transient retry 不计入 `repairAttempt`。
+
+### 11.4 Cancel 与最终失败
+
+A4 Cancel 是统一的当前 Agent 操作取消语义：
+
+```text
+planning
+→ abort A4/Strands workflow
+→ no Task created
+
+awaiting_confirmation
+→ end/cancel pending submitGenerationPlan
+→ no Task created
+
+executing | repairing
+→ abort Strands execution / pending calls
+→ A3 cancelTask
+→ rollback taskBaseCheckpoint
+→ no Active Task remains
+```
+
+Provider/MCP transient retry 优先由 Strands 及其底层 Client 处理；A4 不维护第二层通用 retry loop。若 Strands 最终返回 non-validation execution failure，或实际 retry 已耗尽，A4 将其视为最终失败：存在 Active Task 时必须 `cancelTask` 并回滚。P0 不允许 `failed` Workflow 遗留 Active A3 Task。只有真实联调证明 Strands 某个具体 transient gap 无合理处理时，才允许针对该缺口增加窄补偿逻辑。
 
 ---
 
@@ -727,7 +775,22 @@ getTaskContext({ taskId })
 
 #### `submitGenerationPlan`
 
-首次生成前由 A4 提交工程计划。用户确认前不存在正式 A3 TaskContext，Task-bound 写工具不可用。
+首次生成前由 A4 调用该 MCP Tool 提交工程计划并请求 UI 用户确认。该 Tool 不属于 A3 Candidate mutation，不创建 Candidate，也不在确认前授予任何 Task-bound 工程能力。
+
+P0 先采用长时间挂起 Tool Call 的最简确认协议：
+
+```text
+A4 / Strands
+→ submitGenerationPlan(plan)
+→ Core 发布计划确认产品状态
+→ Renderer 展示计划
+→ 用户 approve / reject / cancel
+→ approve：A3 startTask，创建/复用 Candidate + 正式 Task
+          → submitGenerationPlan 返回 Task bootstrap 信息
+→ reject/cancel：返回未批准结果，不创建正式 Task
+```
+
+在该调用返回批准结果前不存在可用的正式 Task bootstrap，也没有可供 `getTaskContext` 使用的有效 `taskId`；所有 Task-bound read/write 必须机械拒绝。`awaiting_confirmation` 只是 A4 Workflow 状态，不新增对应 MCP Tool。
 
 #### `requestScopeExtension`
 
@@ -1160,23 +1223,20 @@ React Editor
 
 ### 15.1 Chat Completions
 
-P0 Provider Adapter 只实现：
+P0 使用 Strands 提供的 OpenAI-compatible Model 能力，并显式固定为 Chat Completions：
 
 ```text
 POST /v1/chat/completions
 ```
 
-支持：
+Strands 负责协议级的 messages、tools / tool_choice、streaming、tool calls 以及其自身 Provider retry。A4 不再自研 SSE Tool Call 增量拼接、第二套 Provider 协议层或通用 retry loop，只负责：
 
-- messages；
-- tools / tool_choice；
-- streaming；
-- tool calls；
-- cancellation；
-- timeout；
-- provider error mapping。
+- 每次 model invocation 读取当前 `activeModelConfigId`，将当时最新的 endpoint、API Key、model 和 parameters 映射到 Strands；
+- invocation / cancellation / timeout 生命周期衔接；
+- 将 Strands 最终错误归一化为应用级错误，并按 A4 最终失败规则回滚 Active Task；
+- 日志与错误文本脱敏。
 
-不实现 Responses API 双协议适配。
+模型配置允许在同一 Workflow 中途修改；后续 invocation 使用最新配置，已完成 invocation 不追溯改变。P0 不实现 Responses API 双协议适配。
 
 ### 15.2 用户级配置
 
@@ -1202,23 +1262,34 @@ interface Settings {
 }
 ```
 
+- 该 Settings Store 属于 A4 Agent Toolchain；A5 不拥有此文件；
 - API Key 为用户级本地明文配置；
 - 文件权限限制为当前用户；
-- 不进入项目、Git、SQLite 或日志；
-- 使用临时文件 + 原子替换写入。
+- 不进入项目、Git、Strands Session Storage 或日志；
+- 使用临时文件 + 原子替换写入；
+- `activeModelConfigId` 与 model parameters 动态生效；`maxRepairAttempts` 在每轮 repair 开始前动态读取。
 
-### 15.3 SQLite
+### 15.3 Strands Session Management
 
-应用级 SQLite 保存：
+P0 不引入应用级 SQLite。Agent Service 直接使用 Strands SessionManager/Storage 管理会话：
 
-- projects；
-- conversations；
-- messages；
-- tasks；
-- tool_calls；
-- validation_results。
+```text
+A4 Agent Service
+→ Strands SessionManager
+→ Strands-compatible local Storage
+```
 
-复制项目目录不会自动复制旧对话或 Task 数据。
+职责边界：
+
+- Strands 负责 Session message history、Tool Call/Tool Result context、Session restore、Context management 与 compaction；
+- A4 负责应用级 `projectId ↔ sessionId` 关联、Session create/list/open/close 生命周期和每个 Project 的 Active Session 选择；
+- 一个 Project 可关联多个 Session，但 P0 同时只有一个 Active Session；不支持多个 Session 后台并行 execution；
+- Session 切换只能发生在当前 execution 已 completed / failed / cancelled 后；切换 Session 不恢复、转移或继续旧 Session 的 Active A3 Task；
+- Renderer-facing 最小 Session Contract 至少包含 `listSessions(projectId)`、`createSession(projectId)`、`openSession(projectId, sessionId)`、`getActiveSession(projectId)`；具体函数命名可在共享 Contract 中等价实现；
+- 持久化格式和内部文件布局属于 Strands Storage 实现细节，不进入共享 Contracts；
+- Renderer 不直接访问 Session Storage；
+- Agent Service 重启后可以恢复会话，但 P0 不恢复崩溃时仍在运行的 A3 Task/Candidate execution；
+- 项目“另存为”不自动复制原项目的 Agent Session；新 `projectId` 对应独立 Session 集合。
 
 ---
 
@@ -1228,8 +1299,9 @@ interface Settings {
 
 - 跨进程消息使用共享 TypeScript Schema 和运行时验证；
 - Command 包含 `requestId` 和幂等键；
-- Event 包含 `projectId`、`taskId`、`candidateId` 和序列号；
-- 跨进程只传输 A2 的 `PlaybackCompilation`、`TimelineViewModel` 及业务 Command/Event；其中大 MIDI 使用 transferable buffer 或内部临时文件，ScopeMapping 和 RuntimeSnapshot 都不跨 Core/Renderer 边界；
+- Core Candidate/Task Event 在相应对象存在时携带 `projectId`、`taskId`、`candidateId` 和序列号；A4 的 pre-Task Agent Event 不伪造尚不存在的 Task/Candidate ID；
+- Core ↔ Renderer 跨进程只传输 A2 的 `PlaybackCompilation`、`TimelineViewModel` 及 Core 业务 Command/Event；其中大 MIDI 使用 transferable buffer 或内部临时文件，ScopeMapping 和 RuntimeSnapshot 都不跨 Core/Renderer 边界；
+- A4 ↔ Renderer 复用稳定 typed Agent transport，经 Main / Preload 做 bridge；Contract 只包含 UI 必需的 Session lifecycle、用户消息输入、assistant 文本流、取消命令与执行终态/错误，不暴露 A4 完整 Workflow state、Strands Storage 或原始 MCP Tool Result；
 - Renderer 不获得任意文件路径访问。
 
 ### 16.2 主要方向
@@ -1239,6 +1311,7 @@ interface Settings {
 | Renderer → Core | createScope、startTask、cancelTask、approveScopeExtension、rejectScopeExtension、acceptCandidate、rejectCandidate、loadPreview、exportCurrent |
 | Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、replaceScopedMusic、updateGlobalMeter、finishTask |
 | Core → Renderer | candidateChanged、taskChanged、scopeExtensionRequested、validationResult、currentCommitted、candidateInvalidated、error |
+| Renderer ↔ Agent Service（经 Main / Preload） | Project Session 的 list/create/open/getActive；`sendMessage` / `cancelCurrentExecution`；assistant text delta；execution completed / failed / cancelled。原始 MCP Tool Result、Strands Storage 与 A4 内部 Workflow state 不进入该 Contract |
 | Main → Services | openProject、closeProject、restartService、chooseExportPath |
 
 ### 16.3 A3 与 A4 状态分工
@@ -1260,7 +1333,25 @@ Candidate: active ↔ ready → accepting | stale
 Task:      editing ↔ validating
 ```
 
-Renderer 只消费产品状态，不获得 branch name、worktree path、Candidate checkpoint SHA、cleanup path 或 Git command。A4 通过 A3 Agent-facing interface 访问 Task-bound read/write；Renderer/Core control interface 负责 start/cancel、Scope Extension 审批、Accept/Reject。
+Renderer 只消费产品状态，不获得 branch name、worktree path、Candidate checkpoint SHA、cleanup path 或 Git command。A4 通过 MCP / A3 Agent-facing interface 访问 Task-bound read/write；Renderer/Core control interface 负责 start/cancel、Scope Extension 审批、Accept/Reject。
+
+Agent 文本通信采用以下职责分工：
+
+```text
+A4 Agent Service / Strands
+= Agent Workflow internal state + assistant output
+        ↓ text delta / execution terminal event
+Electron Main / Preload
+= typed transport bridge only
+        ↓
+Renderer AgentClient
+= active-session facade + chat stream subscription + send/cancel
+        ↓
+React
+= presentation only
+```
+
+A4 的 `planning`、`awaiting_confirmation`、`executing`、`repairing` 是内部状态，不要求 Renderer 镜像。MCP Tool Result 直接返回 Strands Agent Loop，不经 Agent UI transport。`submitGenerationPlan`、Scope Extension 等需要用户授权的产品状态仍沿 Agent → MCP → Core → Renderer / Renderer → Core → A3 的既有控制链完成；Agent text bridge 不成为第二套工程/授权协议。
 
 ---
 
@@ -1290,7 +1381,7 @@ source Current HEAD tree
 
 - 原 Git 历史；
 - Candidate；
-- SQLite 对话和 Task；
+- 原项目对应的 Strands Agent Session；
 - 缓存；
 - 导出文件。
 
@@ -1358,7 +1449,7 @@ Gate 失败时 WAV 降为 P1。
 ```text
 taskId, projectId, candidateId, baseRevision,
 scopeRevision, toolName, validationCode,
-repairAttempt, finalStatus, durationMs, modelConfigurationId
+repairAttempt, finalStatus, durationMs, modelConfigurationIdPerInvocation
 ```
 
 禁止记录：
@@ -1401,7 +1492,9 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 - Candidate/Task 双状态机、Candidate `baseRevision`、Task execution envelope、scopeRevision 和迟到结果；
 - Scope 仅扩展、Pending barrier 与 stale Scope Extension request；
 - `TASK_BUSY` 与 Cancel/Reject 抢占授权；
+- A4 Cancel 在 pre-Task 阶段只结束 Workflow，在 executing/repairing 阶段必须触发 A3 `cancelTask` 回滚；
 - `finishTask` 完整事务 + A2 校验、unexpected Candidate changes 和 empty checkpoint；
+- repair 禁止 Scope Extension；一轮 `ValidationReport → repair → finishTask` 只增加一次 `repairAttempt`，并在轮次边界读取最新 `maxRepairAttempts`；
 - Tick 与屏幕坐标双向转换；
 - 多轨共享单一连续 Product Time Selection；
 - Timeline Clip 展示不依赖 openDAW Runtime UUID。
@@ -1410,9 +1503,13 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 
 - MCP Tool Schema 和错误码；
 - HTTP Endpoint、Token 和运行时描述文件；
-- IPC Command/Event；
+- Core IPC Command/Event 与最小 Agent text transport Contract；
+- Agent transport 只允许用户消息/Cancel、assistant text delta 与 execution terminal event，不透传原始 MCP Tool Result 或 A4 Workflow state；
+- Main / Preload Agent transport bridge 不解释 A4 Workflow 业务状态；
 - `PlaybackCompilation`、`TimelineViewModel` 与 `OpenDawRuntimeAdapter.buildSnapshot/loadSnapshot` 输入输出；
-- Chat Completions 的流式、Tool Call、取消和超时；
+- Strands Chat Completions 集成的流式、Tool Call、取消、超时、动态模型配置读取和最终错误归一化；
+- Strands Agent-side MCP Client 对 runtime descriptor、Instance Token、七个正式 MCP Tool 与底层 transient retry 行为的兼容；
+- Strands SessionManager/Storage 的 create/open/resume/close 与 Renderer-facing session access；
 - React 组件只能接收 `TimelineViewModel` 和 Runtime Adapter 接口，不能导入 BoxGraph/Box 类型。
 
 ### 21.3 集成与故障注入
@@ -1424,7 +1521,8 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 - Accept pre-commit failure 与 post-commit cleanup failure 两侧故障注入；
 - cleanup marker、PendingCleanup 与无 marker orphan；
 - 文件原子替换和 Git commit 阶段进程终止；
-- Renderer、Core 和 Agent Service 分别崩溃；
+- Renderer、Core 和 Agent Service 分别崩溃；Agent Service crash 若存在 Active Task 必须 cancel + rollback，重启后只允许恢复 Strands Session 对话而不能恢复未完成 Task；
+- Strands 最终 provider/MCP execution failure 不遗留 Active Task；
 - Windows 中文路径、长路径、Defender 和 stale lock；
 - 打开最后 Current；
 - 另存为不复制历史；
@@ -1442,7 +1540,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 | TG-005 | Git/worktree | Windows Candidate、多 Task checkpoint、Accept/Reject 和清理。 |
 | TG-006 | Current 恢复 | 只依赖 clean `main` HEAD 恢复。 |
 | TG-007 | MCP HTTP | localhost、随机端口、Token 和多实例描述文件。 |
-| TG-008 | Chat Completions | Tool Call、流式、取消和错误映射。 |
+| TG-008 | Strands Chat Completions Integration | 保留 Tool Call、流式、取消和错误映射的既有行为 Gate；正式 A4 通过 Strands 原生 Chat Completions 集成满足，不要求自研 SSE Provider Adapter。 |
 | TG-009 | MIDI 导出 | 保留核心工程数据。 |
 | TG-010 | WAV | 离线渲染、进度、取消、尾音和原子输出。 |
 
@@ -1484,14 +1582,14 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 14. P0 不持久化 Note/MIDI/Runtime ID。
 15. 一个 Candidate 可以连续承载多个 Task。
 16. 一个成功 Task 形成一个 Candidate checkpoint。
-17. `finishTask` 失败保留修改并允许继续修复。
+17. `finishTask` validation failure 保留修改并允许 A4 有限修复；其他最终 execution failure 不进入 repair。
 18. Accept 将 Candidate 最终树 squash 为一个新 Current Revision。
 19. P0 只保证恢复最后成功 Current。
 20. Candidate 不允许正式导出。
 21. P0 Agent 不修改音色、效果器和混音。
 22. P0 项目 Git 权威文件只有 `project.json` 和 `composition.abc`。
-23. 应用级 SQLite、RuntimeSnapshot、MIDI 缓存和 Agent 对话不能成为工程事实。
-24. API Key 不进入项目、Git、SQLite 或日志。
+23. Strands Agent Session、RuntimeSnapshot、MIDI 缓存和 Agent 对话不能成为工程事实；P0 不使用应用级 SQLite。
+24. API Key 不进入项目、Git、Strands Session Storage 或日志。
 25. 另存为不保留原项目 Git 历史。
 26. P0 产品工作区使用自研 React UI，不 fork、内嵌或直接复用 openDAW Studio UI。
 27. openDAW 只作为可替换的 SDK/Core Runtime，经 `OpenDawRuntimeAdapter` 使用。
@@ -1508,3 +1606,14 @@ repairAttempt, finalStatus, durationMs, modelConfigurationId
 38. 每个成功 Task 都产生唯一 Candidate checkpoint；每个成功 Accept 都产生唯一 Current Revision，均允许 empty commit。
 39. Accept 的线性化点是新 `main` commit 成功；Reject 的线性化点是 Candidate 授权失效。后续 cleanup 不得反向改变业务结果。
 40. 自动 Candidate cleanup 必须有持久化 cleanup marker 授权；无 marker 残留不恢复、不自动删除。
+41. A4 使用 Strands 原生 OpenAI-compatible Chat Completions 与 Agent-side MCP Client，不维护第二套 Provider/MCP 协议实现。
+42. Agent / Model Settings 与 Strands Session 集成属于 A4；A5 只负责 Export Preparation。
+43. `submitGenerationPlan` 是七个 P0 MCP Tool 之一；确认前不创建正式 Task，P0 先使用等待 UI 用户决策后再返回的 Tool Call 语义。
+44. A4 内部 Workflow state 不进入 Renderer Contract；Agent Service → Main/Preload → Renderer 只传 UI 必需的用户消息/Cancel、assistant text stream 与 execution terminal event，原始 MCP Tool Result 不透传。
+45. Cancel 若已有 Active Task，必须 `cancelTask` 并回滚；最终 `failed` Workflow 不得遗留 Active Task。
+46. Provider/MCP transient retry 优先由 Strands/底层 Client 负责；A4 不维护第二层通用 retry loop。
+47. `repairing` 不允许 Scope Extension；一轮 validation→repair→finishTask 计为一次 `repairAttempt`。
+48. 模型配置每次 invocation 动态读取；`maxRepairAttempts` 每轮 repair 开始前动态读取，不冻结进 Task/Workflow snapshot。
+49. Agent Session 由 Strands SessionManager/Storage 管理；Renderer 不直接读取持久化格式，A4 不自研 transcript/compaction。
+50. Agent Service crash 不恢复运行中的工程 Task；存在 Active Task 时必须取消并回滚。
+51. 一个 Project 可关联多个 Agent Session，但 P0 同时只有一个 Active Session；A4 独占 Project/Session 关联与 Active Session 选择，Renderer 仅通过最小 Session lifecycle Contract 操作，Session 切换不得留下后台 execution 或恢复旧 Active Task。

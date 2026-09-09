@@ -8,9 +8,11 @@
 | 架构基线 | System Architecture V1.2 |
 | 产品基线 | PRD V1.5 |
 
+> **历史文档说明：** 本文记录 2026-07-30 基础骨架设计时的依赖预期。当前 P0 以 PRD V1.11 / System Architecture V1.9 为准：SQLite 已从 P0 删除，Agent Session 改由 Strands SessionManager/Storage 管理；Provider 与 Agent-side MCP Client 也直接使用 Strands 能力。本文中相关旧条目仅保留为历史设计记录，不构成当前实现要求。
+
 ## 1. 目标
 
-为 Agent Music Workstation 建立可持续扩展的 pnpm Monorepo 基础骨架，使后续 Electron、React、Music Core、Mastra、MCP、openDAW 和 SQLite 实现能够在明确的模块边界内增量接入。
+为 Agent Music Workstation 建立可持续扩展的 pnpm Monorepo 基础骨架，使后续 Electron、React、Music Core、Strands、MCP、openDAW 和 SQLite 实现能够在明确的模块边界内增量接入。
 
 本阶段只交付工程结构、共享类型入口和代码质量工具，不交付可启动桌面窗口或业务功能。
 
@@ -36,7 +38,7 @@
 - Electron Main、BrowserWindow 或 preload；
 - React 应用和 UI；
 - Electron Utility Process；
-- Mastra Agent Loop；
+- Strands Agent Loop；
 - MCP Server 或 Client；
 - openDAW SDK、WASM、Worker 或 AudioWorklet；
 - SQLite/LibSQL 驱动和 Schema；
@@ -92,7 +94,7 @@ Agent-Music-Workstation/
 
 ### 5.2 `apps/agent`
 
-未来承载 Mastra、Provider Adapter 和 MCP Client。基础阶段只建立目录和配置，不安装 Mastra 或模型 SDK。
+未来承载 Strands Agent Runtime、Agent Workflow、Agent / Model Settings，以及对 Strands 原生 OpenAI-compatible Model 与 Agent-side MCP Client 的配置集成。基础阶段只建立目录和配置，不安装 Strands 或模型 SDK。
 
 ### 5.3 `packages/contracts`
 
@@ -163,7 +165,7 @@ pnpm check
 - `.npmrc` 开启严格 peer dependency 和 workspace 行为约束；
 - 首次安装生成并提交 `pnpm-lock.yaml`；
 - 基础阶段只安装工程质量工具和 contracts 所需的最小依赖；
-- Electron、React、Mastra、openDAW、MCP SDK 和 SQLite 驱动在对应纵切实现时单独引入并验证。
+- Electron、React、Strands、openDAW、MCP SDK 和 SQLite 驱动在对应纵切实现时单独引入并验证。
 
 ## 9. `.gitignore` 策略
 
@@ -194,7 +196,7 @@ pnpm check
 4. TypeScript strict 规则实际生效；
 5. Contracts 可以被两个 app workspace 通过 workspace dependency 引用；
 6. Contracts 测试通过；
-7. 没有安装 Electron、React、Mastra、openDAW、MCP SDK 或 SQLite 驱动；
+7. 没有安装 Electron、React、Strands、openDAW、MCP SDK 或 SQLite 驱动；
 8. 没有添加业务占位实现或伪造启动入口；
 9. Git 工作区在提交后保持 clean；
 10. Secret scan 不发现凭据。
