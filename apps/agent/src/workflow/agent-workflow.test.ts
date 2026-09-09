@@ -266,6 +266,28 @@ describe('AgentWorkflow', () => {
     });
   });
 
+  it('does not report clean shutdown when Active Task rollback fails', async () => {
+    const harness = makeHarness([{ waitForAbort: true }]);
+    harness.cancelTask.mockRejectedValueOnce(new Error('rollback unavailable'));
+
+    start(harness.workflow, harness.emit, { taskId, candidateId });
+    await vi.waitFor(() => {
+      expect(harness.workflow.isRunning(projectId)).toBe(true);
+    });
+
+    await expect(harness.workflow.shutdown()).rejects.toThrow(
+      'Agent Task rollback failed',
+    );
+    expect(harness.events.at(-1)).toEqual({
+      type: 'agent.executionFailed',
+      projectId,
+      sessionId,
+      executionId,
+      code: 'TASK_ROLLBACK_FAILED',
+      message: 'Agent Task rollback failed',
+    });
+  });
+
   it('bootstraps an already-confirmed local Task before the first model call', async () => {
     const harness = makeHarness([{ error: new Error('provider failed') }]);
 

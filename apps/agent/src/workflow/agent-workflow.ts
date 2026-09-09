@@ -78,6 +78,13 @@ class AgentWorkflowError extends Error {
   }
 }
 
+class AgentTaskRollbackError extends Error {
+  public constructor(public readonly rollbackCause: unknown) {
+    super('Agent Task rollback failed');
+    this.name = 'AgentTaskRollbackError';
+  }
+}
+
 interface ActiveTaskReference {
   readonly projectId: ProjectId;
   readonly candidateId: CandidateId;
@@ -377,6 +384,9 @@ export class AgentWorkflow {
         return;
       }
     } catch (error) {
+      if (error instanceof AgentTaskRollbackError) {
+        throw error;
+      }
       if (isCancelRequested(execution)) {
         await this.rollbackActiveTask(execution);
         this.emitTerminal(execution, 'cancelled');
@@ -472,11 +482,20 @@ export class AgentWorkflow {
 
   private async rollbackActiveTask(execution: ActiveExecution): Promise<void> {
     const task = execution.task;
-    execution.task = undefined;
     if (task === undefined) {
       return;
     }
-    await this.dependencies.rollback.cancelTask(task);
+    try {
+      await this.dependencies.rollback.cancelTask(task);
+    } catch (error) {
+      this.emitFailed(
+        execution,
+        'TASK_ROLLBACK_FAILED',
+        'Agent Task rollback failed',
+      );
+      throw new AgentTaskRollbackError(error);
+    }
+    execution.task = undefined;
   }
 
   private emitTerminal(
