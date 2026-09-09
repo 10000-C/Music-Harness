@@ -11,6 +11,7 @@ interface ProjectSidebarProps {
   readonly activeView: WorkspaceView;
   readonly projectName: string;
   readonly currentLabel: string;
+  readonly projectOpen?: boolean;
   readonly onViewChange: (view: WorkspaceView) => void;
   /** Hide routes whose product surface has not reached the live shell yet. */
   readonly availableViews?: readonly WorkspaceView[];
@@ -27,6 +28,7 @@ export const ProjectSidebar = ({
   activeView,
   projectName,
   currentLabel,
+  projectOpen = true,
   onViewChange,
   availableViews,
 }: ProjectSidebarProps) => (
@@ -43,19 +45,31 @@ export const ProjectSidebar = ({
 
     <div className="sidebar-section">
       <span className="sidebar-eyebrow">Project</span>
-      <button
-        type="button"
-        className="project-card"
-        onClick={() => {
-          onViewChange('studio');
-        }}
-      >
-        <img src={projectCover} alt="" width={48} height={48} />
-        <span>
-          <strong>{projectName}</strong>
-          <small>{currentLabel}</small>
-        </span>
-      </button>
+      {projectOpen ? (
+        <button
+          type="button"
+          className="project-card"
+          onClick={() => {
+            onViewChange('studio');
+          }}
+        >
+          <img src={projectCover} alt="" width={48} height={48} />
+          <span>
+            <strong>{projectName}</strong>
+            <small>{currentLabel}</small>
+          </span>
+        </button>
+      ) : (
+        <div className="project-card project-card--empty">
+          <span className="project-card__empty-mark" aria-hidden="true">
+            <WaveSineIcon size={19} weight="regular" />
+          </span>
+          <span>
+            <strong>{projectName}</strong>
+            <small>{currentLabel}</small>
+          </span>
+        </div>
+      )}
     </div>
 
     <nav className="sidebar-section sidebar-navigation" aria-label="Workspace">

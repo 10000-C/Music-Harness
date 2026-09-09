@@ -826,9 +826,7 @@ const displayName = (projectPath: string): string =>
 const LiveProjectWorkspace = () => {
   const [project, setProject] = useState<OpenedProject | null>(null);
   const [activeView, setActiveView] = useState<WorkspaceView>('studio');
-  const [message, setMessage] = useState(
-    'Create a project or open an existing clean Current.',
-  );
+  const [message, setMessage] = useState('Ready.');
   const [busy, setBusy] = useState(false);
   const latestRequest = useRef(0);
   const mounted = useRef(false);
@@ -1103,12 +1101,14 @@ const LiveProjectWorkspace = () => {
         activeView={activeView}
         projectName={projectName}
         currentLabel={currentLabel}
+        projectOpen={project !== null}
         onViewChange={setActiveView}
-        availableViews={['studio', 'export']}
+        availableViews={project === null ? ['studio'] : ['studio', 'export']}
       />
       <main className="workspace-main" id="workspace-main">
         <ProjectHeader
           projectName={projectName}
+          projectOpen={project !== null}
           tempo={bpm}
           keyName={
             keyEvent ? `${keyEvent.tonic} ${keyEvent.mode}` : 'Unavailable'
@@ -1156,173 +1156,212 @@ const LiveProjectWorkspace = () => {
           />
         ) : (
           <div className="workspace-content">
-            <TransportBar
-              playing={playback?.transport === 'playing'}
-              elapsedLabel={playable ? formatTime(elapsed) : '--:--'}
-              durationLabel={playable ? formatTime(duration) : '--:--'}
-              scopeLabel={
-                timeline === null ? 'Timeline unavailable' : 'Current'
-              }
-              loopEnabled={playback?.loopRange !== null && playback !== null}
-              canLoop={playable}
-              disabled={!playable}
-              onTogglePlayback={() =>
-                void sendPlayback({
-                  type: playback?.transport === 'playing' ? 'pause' : 'play',
-                })
-              }
-              onStop={() => void sendPlayback({ type: 'stop' })}
-              onPrevious={() =>
-                void sendPlayback({
-                  type: 'seek',
-                  tick: asTick(
-                    Math.max(
-                      0,
-                      (playback?.positionTick ?? 0) -
-                        (timeline === null ? 0 : ticksForBars(timeline, 4)),
-                    ),
-                  ),
-                })
-              }
-              onNext={() =>
-                void sendPlayback({
-                  type: 'seek',
-                  tick: asTick(
-                    Math.min(
-                      timeline?.totalTicks ?? 0,
-                      (playback?.positionTick ?? 0) +
-                        (timeline === null ? 0 : ticksForBars(timeline, 4)),
-                    ),
-                  ),
-                })
-              }
-              onToggleLoop={() =>
-                void sendPlayback({
-                  type: 'setLoop',
-                  range:
-                    playback?.loopRange === null && timeline !== null
-                      ? { startTick: 0 as Tick, endTick: timeline.totalTicks }
-                      : null,
-                })
-              }
-            />
-            {candidateState?.status === 'ready' && (
-              <CandidateStage
-                title="Candidate ready to review"
-                details={undefined}
-                previewingCandidate={false}
-                candidateAuditionAvailable={false}
-                candidateAcceptanceAvailable={false}
-                onReviewCurrent={unavailableCandidateAudition}
-                onReviewCandidate={unavailableCandidateAudition}
-                onAccept={() => void resolveCandidate('accept')}
-                onReject={() => void resolveCandidate('reject')}
-              />
-            )}
-            <section className="utility-view" aria-label="Project controls">
-              <h2>{projectName}</h2>
-              <p>{message}</p>
-              <div className="project-header__actions">
-                <button
-                  type="button"
-                  disabled={busy || project !== null}
-                  onClick={() => void selectAndDispatch('create')}
-                >
-                  Create project
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || project !== null}
-                  onClick={() => void selectAndDispatch('open')}
-                >
-                  Open project
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || project === null}
-                  onClick={() => void selectAndDispatch('saveAs')}
-                >
-                  Save As
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || project === null}
-                  onClick={() =>
-                    void dispatch({
-                      type: 'project.recoverCurrent',
-                      requestId: liveRequestId('recover'),
-                    })
-                  }
-                >
-                  Recover Current
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || project === null}
-                  onClick={() =>
-                    void dispatch({
-                      type: 'project.close',
-                      requestId: liveRequestId('close'),
-                    })
-                  }
-                >
-                  Close project
-                </button>
-              </div>
-            </section>
-            {timeline !== null && playback !== null ? (
-              <>
-                <ArrangementMap
-                  timeline={timeline}
-                  playbackTick={playback.positionTick}
-                  focusedTrackId={focusedTrackId}
-                  mutedTrackIds={mutedTrackIds}
-                  soloTrackIds={soloTrackIds}
-                  onFocusTrack={setFocusedTrackId}
-                  onToggleMute={(trackId) =>
-                    void sendPlayback({
-                      type: 'setMute',
-                      trackId,
-                      muted: !mutedTrackIds.has(trackId),
-                    })
-                  }
-                  onToggleSolo={(trackId) =>
-                    void sendPlayback({
-                      type: 'setSolo',
-                      trackId,
-                      solo: !soloTrackIds.has(trackId),
-                    })
-                  }
-                />
-                <ToneConsole
-                  trackId={focusedTrackId}
-                  muted={mutedTrackIds.has(focusedTrackId)}
-                  soloed={soloTrackIds.has(focusedTrackId)}
-                  onToggleMute={(trackId) =>
-                    void sendPlayback({
-                      type: 'setMute',
-                      trackId,
-                      muted: !mutedTrackIds.has(trackId),
-                    })
-                  }
-                  onToggleSolo={(trackId) =>
-                    void sendPlayback({
-                      type: 'setSolo',
-                      trackId,
-                      solo: !soloTrackIds.has(trackId),
-                    })
-                  }
-                />
-              </>
-            ) : (
+            {project === null ? (
               <section
-                className="utility-view"
-                aria-label="Timeline empty state"
+                className="project-empty-state"
+                aria-labelledby="project-empty-title"
               >
-                <p>
-                  Open a clean Current to load its six-track playback timeline.
+                <div className="project-empty-state__signal" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </div>
+                <div className="project-empty-state__copy">
+                  <h1 id="project-empty-title">Start your next piece.</h1>
+                  <p>
+                    Create a project to arrange, shape, and review music in one
+                    focused place.
+                  </p>
+                </div>
+                <div className="project-empty-state__actions">
+                  <button
+                    type="button"
+                    className="project-empty-state__primary"
+                    disabled={busy}
+                    onClick={() => void selectAndDispatch('create')}
+                  >
+                    Create Project
+                  </button>
+                  <button
+                    type="button"
+                    className="project-empty-state__secondary"
+                    disabled={busy}
+                    onClick={() => void selectAndDispatch('open')}
+                  >
+                    Open Project
+                  </button>
+                </div>
+                <p className="project-empty-state__note">
+                  Your Current stays local, isolated, and recoverable.
                 </p>
+                {message !== 'Ready.' && (
+                  <p className="project-empty-state__message">{message}</p>
+                )}
               </section>
+            ) : (
+              <>
+                <TransportBar
+                  playing={playback?.transport === 'playing'}
+                  elapsedLabel={playable ? formatTime(elapsed) : '--:--'}
+                  durationLabel={playable ? formatTime(duration) : '--:--'}
+                  scopeLabel={
+                    timeline === null ? 'Timeline unavailable' : 'Current'
+                  }
+                  loopEnabled={
+                    playback?.loopRange !== null && playback !== null
+                  }
+                  canLoop={playable}
+                  disabled={!playable}
+                  onTogglePlayback={() =>
+                    void sendPlayback({
+                      type:
+                        playback?.transport === 'playing' ? 'pause' : 'play',
+                    })
+                  }
+                  onStop={() => void sendPlayback({ type: 'stop' })}
+                  onPrevious={() =>
+                    void sendPlayback({
+                      type: 'seek',
+                      tick: asTick(
+                        Math.max(
+                          0,
+                          (playback?.positionTick ?? 0) -
+                            (timeline === null ? 0 : ticksForBars(timeline, 4)),
+                        ),
+                      ),
+                    })
+                  }
+                  onNext={() =>
+                    void sendPlayback({
+                      type: 'seek',
+                      tick: asTick(
+                        Math.min(
+                          timeline?.totalTicks ?? 0,
+                          (playback?.positionTick ?? 0) +
+                            (timeline === null ? 0 : ticksForBars(timeline, 4)),
+                        ),
+                      ),
+                    })
+                  }
+                  onToggleLoop={() =>
+                    void sendPlayback({
+                      type: 'setLoop',
+                      range:
+                        playback?.loopRange === null && timeline !== null
+                          ? {
+                              startTick: 0 as Tick,
+                              endTick: timeline.totalTicks,
+                            }
+                          : null,
+                    })
+                  }
+                />
+                {candidateState?.status === 'ready' && (
+                  <CandidateStage
+                    title="Candidate ready to review"
+                    details={undefined}
+                    previewingCandidate={false}
+                    candidateAuditionAvailable={false}
+                    candidateAcceptanceAvailable={false}
+                    onReviewCurrent={unavailableCandidateAudition}
+                    onReviewCandidate={unavailableCandidateAudition}
+                    onAccept={() => void resolveCandidate('accept')}
+                    onReject={() => void resolveCandidate('reject')}
+                  />
+                )}
+                <section className="utility-view" aria-label="Project controls">
+                  <h2>{projectName}</h2>
+                  <p>{message}</p>
+                  <div className="project-header__actions">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void selectAndDispatch('saveAs')}
+                    >
+                      Save As
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void dispatch({
+                          type: 'project.recoverCurrent',
+                          requestId: liveRequestId('recover'),
+                        })
+                      }
+                    >
+                      Recover Current
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void dispatch({
+                          type: 'project.close',
+                          requestId: liveRequestId('close'),
+                        })
+                      }
+                    >
+                      Close project
+                    </button>
+                  </div>
+                </section>
+                {timeline !== null && playback !== null ? (
+                  <>
+                    <ArrangementMap
+                      timeline={timeline}
+                      playbackTick={playback.positionTick}
+                      focusedTrackId={focusedTrackId}
+                      mutedTrackIds={mutedTrackIds}
+                      soloTrackIds={soloTrackIds}
+                      onFocusTrack={setFocusedTrackId}
+                      onToggleMute={(trackId) =>
+                        void sendPlayback({
+                          type: 'setMute',
+                          trackId,
+                          muted: !mutedTrackIds.has(trackId),
+                        })
+                      }
+                      onToggleSolo={(trackId) =>
+                        void sendPlayback({
+                          type: 'setSolo',
+                          trackId,
+                          solo: !soloTrackIds.has(trackId),
+                        })
+                      }
+                    />
+                    <ToneConsole
+                      trackId={focusedTrackId}
+                      muted={mutedTrackIds.has(focusedTrackId)}
+                      soloed={soloTrackIds.has(focusedTrackId)}
+                      onToggleMute={(trackId) =>
+                        void sendPlayback({
+                          type: 'setMute',
+                          trackId,
+                          muted: !mutedTrackIds.has(trackId),
+                        })
+                      }
+                      onToggleSolo={(trackId) =>
+                        void sendPlayback({
+                          type: 'setSolo',
+                          trackId,
+                          solo: !soloTrackIds.has(trackId),
+                        })
+                      }
+                    />
+                  </>
+                ) : (
+                  <section
+                    className="utility-view"
+                    aria-label="Timeline empty state"
+                  >
+                    <p>
+                      Open a clean Current to load its six-track playback
+                      timeline.
+                    </p>
+                  </section>
+                )}
+              </>
             )}
           </div>
         )}
@@ -1331,11 +1370,21 @@ const LiveProjectWorkspace = () => {
         <div className="agent-panel__header">
           <h2>MUSE Agent</h2>
         </div>
-        <p className="agent-empty-state">
-          {project === null
-            ? 'Open a project before starting an agent task.'
-            : 'Agent tasks will be available when this project is ready.'}
-        </p>
+        <div className="agent-empty-state">
+          <span className="agent-empty-state__mark" aria-hidden="true">
+            <i />
+          </span>
+          <h3>
+            {project === null
+              ? 'A collaborator for your next piece.'
+              : 'Ready when your Current is ready.'}
+          </h3>
+          <p>
+            {project === null
+              ? 'Open a project, then describe the change you want to hear.'
+              : 'Agent tasks will appear here when this project can accept them.'}
+          </p>
+        </div>
       </aside>
     </div>
   );
