@@ -117,6 +117,34 @@ describe('ServiceSupervisor', () => {
       sequence: 1,
     });
   });
+  it('routes a Current playback result only to its matching Core request', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    const pending = supervisor.readCurrentPlayback();
+    const request = processes.sent.find(
+      (message): message is { type: string; requestId: string } =>
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { type?: string }).type === 'playback.readCurrent',
+    );
+    processes.emit('core', {
+      type: 'playback.failed',
+      protocolVersion: 1,
+      requestId: request?.requestId,
+      code: 'COMPILATION_FAILED',
+      userMessage: 'Current could not be compiled for playback.',
+    });
+    await expect(pending).resolves.toMatchObject({
+      type: 'playback.failed',
+      code: 'COMPILATION_FAILED',
+    });
+  });
   it('keeps an in-flight Core command when the Agent restarts', async () => {
     const processes = adapter();
     const supervisor = (active = createServiceSupervisor(processes));

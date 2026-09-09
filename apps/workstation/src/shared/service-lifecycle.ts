@@ -1,4 +1,8 @@
 import { isProjectCommand, type CoreProjectRequest } from './project-bridge.js';
+import {
+  isCorePlaybackRequest,
+  type CorePlaybackRequest,
+} from './playback-bridge.js';
 
 export const SERVICE_LIFECYCLE_PROTOCOL_VERSION = 1 as const;
 
@@ -6,7 +10,8 @@ export type ServiceKind = 'core' | 'agent';
 export type MainToServiceMessage =
   | Readonly<{ type: 'healthCheck'; protocolVersion: 1; requestId: string }>
   | Readonly<{ type: 'shutdown'; protocolVersion: 1; requestId: string }>
-  | CoreProjectRequest;
+  | CoreProjectRequest
+  | CorePlaybackRequest;
 export type ServiceToMainMessage =
   | Readonly<{ type: 'ready'; protocolVersion: 1; service: ServiceKind }>
   | Readonly<{ type: 'healthResult'; protocolVersion: 1; requestId: string }>
@@ -37,6 +42,8 @@ export const isMainToServiceMessage = (
 ): value is MainToServiceMessage => {
   if (!isRecord(value) || !hasVersion(value)) return false;
   if (value.type === 'projectCommand') return isProjectCommand(value.command);
+  if (value.type === 'playback.readCurrent')
+    return isCorePlaybackRequest(value);
   if (!isRequestId(value.requestId)) return false;
   return value.type === 'healthCheck' || value.type === 'shutdown';
 };

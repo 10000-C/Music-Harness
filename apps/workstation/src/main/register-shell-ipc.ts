@@ -4,6 +4,7 @@ import {
   isExportPathRequest,
   isProjectDirectoryPurpose,
   isProjectCommand,
+  isCorePlaybackResponse,
   shellIpcChannels,
 } from '../shared/shell-contracts.js';
 import { chooseExportPath, chooseProjectDirectory } from './desktop-dialogs.js';
@@ -69,6 +70,14 @@ export const registerShellIpc = (
         code: 'CORE_UNAVAILABLE',
         userMessage: 'Music Core is unavailable. Try again.',
       };
+    }
+  });
+  ipcMain.handle(shellIpcChannels.playback, async () => {
+    try {
+      const result = await supervisor.readCurrentPlayback();
+      return isCorePlaybackResponse(result) ? result : null;
+    } catch {
+      return null;
     }
   });
   ipcMain.handle(

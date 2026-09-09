@@ -19,6 +19,7 @@ it('exposes only the DesktopBridge allowlist and no raw Electron objects', async
     'dispatchProject',
     'getServiceSnapshot',
     'onServiceSnapshot',
+    'readCurrentPlayback',
     'restartService',
   ]);
   expect(exposed).not.toHaveProperty('ipcRenderer');

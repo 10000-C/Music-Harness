@@ -7,6 +7,7 @@ import {
   isProjectDirectoryPurpose,
   isProjectCommand,
   isProjectCommandResult,
+  isCorePlaybackResponse,
   shellIpcChannels,
   type CommandResult,
   type DirectoryDialogResult,
@@ -95,6 +96,10 @@ const bridge = {
           code: 'IPC_UNAVAILABLE',
           userMessage: 'The desktop service is unavailable. Try again.',
         };
+  },
+  async readCurrentPlayback() {
+    const value = await invoke(shellIpcChannels.playback);
+    return isCorePlaybackResponse(value) ? value : null;
   },
 } satisfies DesktopBridge;
 contextBridge.exposeInMainWorld('agentMusic', bridge);
