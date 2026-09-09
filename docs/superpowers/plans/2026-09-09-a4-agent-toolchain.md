@@ -4,7 +4,7 @@
 
 **Goal:** Implement A4 on `feat/a4`: Strands-based OpenAI-compatible Agent execution, Strands MCP client and Session management, Project multi-session lifecycle, Settings, bounded repair/cancel semantics, Core MCP integration adapters, and the minimal Renderer-facing Agent transport contract.
 
-**Architecture:** `apps/agent` owns Settings, Project/Session association, Strands Agent construction and A4 Workflow. It creates a fresh Strands Agent per invocation so the latest model configuration is used while the active `sessionId` restores durable conversation state through Strands `SessionManager` + `FileStorage`. `apps/workstation/src/core/mcp` is a thin transport adapter over the existing A3 Agent/Control ports; it owns loopback MCP hosting, runtime descriptor and `submitGenerationPlan` confirmation handoff, but no A4 Workflow logic. A4 transaction rollback is expressed through a narrow injected host-control port rather than adding an eighth Agent MCP tool.
+**Architecture:** `apps/agent` owns Settings, Project/Session association, Strands Agent construction and A4 Workflow. It creates a fresh Strands Agent per workflow invocation while `DynamicOpenAiChatModel` re-resolves the active model configuration for every Strands model call; the active `sessionId` restores durable conversation state through Strands `SessionManager` + `LocalFileStorage`. `apps/workstation/src/core/mcp` is a thin transport adapter over the existing A3 Agent/Control ports; it owns loopback MCP hosting, runtime descriptor and `submitGenerationPlan` confirmation handoff, but no A4 Workflow logic. A4 transaction rollback is expressed through a narrow injected host-control port rather than adding an eighth Agent MCP tool.
 
 **Tech Stack:** Node.js 24.18.1, pnpm 9.15.9, TypeScript 5.9 strict mode, Vitest 4.1, `@strands-agents/sdk` 1.16.x, OpenAI SDK 6.x peer required by Strands, MCP TypeScript SDK v1.x compatible with Strands, Zod v4.
 
@@ -15,7 +15,7 @@
 - Atomic commits: each task below ends in an independently reviewable commit.
 - P0 exposes exactly seven Agent MCP tools: `getTaskContext`, `getScopedComposition`, `submitGenerationPlan`, `requestScopeExtension`, `replaceScopedMusic`, `updateGlobalMeter`, `finishTask`.
 - A4 must use Strands native OpenAI-compatible model, MCP client, SessionManager/Storage and context management; no custom SSE parser, generic retry loop, transcript engine or compaction engine.
-- Model configuration is read at each model invocation. `maxRepairAttempts` is read immediately before each new repair round.
+- Model configuration is read at each Strands model call. `maxRepairAttempts` is read immediately before each new repair round.
 - Repair never requests Scope Extension. One `ValidationReport → repair → finishTask` cycle counts as one `repairAttempt`.
 - Final non-validation execution failure and user cancel with an Active Task must cancel/rollback that Task. A4 `failed` must not leave an Active Task.
 - One Project may own multiple Agent Sessions, but P0 has exactly one Active Session per Project and no background execution in inactive Sessions.
@@ -84,13 +84,13 @@
 - `SessionRegistry.create(projectId)` creates a UUID session, persists only association metadata, and makes it active.
 - `SessionRegistry.open(projectId, sessionId)` rejects cross-Project IDs and updates the single Active Session.
 - `SessionRegistry.getActive(projectId)` returns the authoritative active session.
-- `createStrandsSession(sessionId, storageRoot)` returns a Strands `SessionManager` backed by Strands `FileStorage`; A4 does not parse Strands snapshots.
+- `createStrandsSession(sessionId, storageRoot)` returns a Strands `SessionManager` backed by Strands `LocalFileStorage`; A4 does not parse Strands snapshots.
 
 - [ ] **Step 1: Write failing registry tests** for two Sessions in one Project, Project isolation, active switching, reload from persisted association JSON, and Save-As/new Project isolation.
 - [ ] **Step 2: Implement minimal atomic `session-index.json` metadata persistence**; do not persist messages/tool results in the index.
 - [ ] **Step 3: Add Strands dependencies to `apps/agent`** (`@strands-agents/sdk`, compatible `openai`, MCP SDK peer, `zod`) using exact pnpm versions resolved on this branch.
-- [ ] **Step 4: Write a failing Strands Session test** that saves a message snapshot and restores it through a new Agent/SessionManager using the same `sessionId` and FileStorage root.
-- [ ] **Step 5: Implement the Strands Session factory with `contextManager: 'auto'` at Agent creation time and shared agent-level FileStorage so session/offloader namespaces persist.**
+- [ ] **Step 4: Write a failing Strands Session test** that saves a message snapshot and restores it through a new Agent/SessionManager using the same `sessionId` and LocalFileStorage root.
+- [ ] **Step 5: Implement the Strands Session factory with `contextManager: 'auto'` at Agent creation time and shared agent-level LocalFileStorage so session/offloader namespaces persist.**
 - [ ] **Step 6: Verify Session tests, package typecheck, and lockfile integrity.**
 - [ ] **Step 7: Commit:** `feat(agent): add project session management`.
 
@@ -133,7 +133,7 @@
 - Runtime descriptor client discovers the descriptor for the requested Project and rejects mismatched/stale descriptors.
 - Each invocation calls `AgentSettingsStore.getActiveModelConfig()` and creates `OpenAIModel({ api: 'chat', ... })` from the latest settings.
 - MCP uses Strands `McpClient` with the descriptor endpoint and instance token header; no custom MCP protocol client exists.
-- Strands `Agent` receives the active SessionManager/FileStorage and `contextManager: 'auto'`.
+- Strands `Agent` receives the active SessionManager/LocalFileStorage and `contextManager: 'auto'`.
 
 - [ ] **Step 1: Write failing descriptor discovery tests** for valid project, project mismatch, dead PID, malformed descriptor, and secret-safe errors.
 - [ ] **Step 2: Implement minimal descriptor reader.**
@@ -179,7 +179,8 @@
 - Update if implementation reality requires clarification only: `docs/superpowers/plans/2026-09-09-a4-agent-toolchain.md`
 
 **Interfaces:**
-- `AgentService.handle(command, emit)` is the single host-facing A4 seam for Session list/create/open/getActive, sendMessage and cancel.
+- `AgentService.handle(command, emit)` is the single business-facing A4 seam for Session list/create/open/getActive, sendMessage and cancel.
+- `AgentProcessEntrypoint` is the process-facing seam for typed ready/health/shutdown/fatal lifecycle plus Agent command/result/event forwarding; B1 owns only the concrete process transport/supervision adapter.
 - Session switching is rejected while execution is active.
 - Agent Service shutdown/crash cleanup calls Workflow shutdown; if a Task is active, rollback is attempted before service termination is considered clean.
 - `AgentEvent` output contains no API key, raw MCP Tool Result, full A4 Workflow state, project file path, Git path or Strands snapshot structure.

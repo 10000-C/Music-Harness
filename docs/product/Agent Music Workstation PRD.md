@@ -1,8 +1,8 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.12 Project Multi-Session Decision\
+**版本：** V1.13 Confirmed Task Bootstrap\
 **状态：** P0 产品范围已确认；A3 Candidate Transaction 决策已冻结；A4 执行、会话与 Project 多 Session 决策已冻结\
-**日期：** 2026-09-08\
+**日期：** 2026-09-09\
 **开发周期：** 10–15 天\
 **团队规模：** 2 人\
 **首发平台：** Windows 10/11\
@@ -20,16 +20,17 @@
 - **P1：** P0 稳定后实现，不阻塞首发。
 - **P2：** 后续能力，不为其提前引入 P0 状态复杂度。
 
-### 1.2 V1.12 A4 执行与会话调整
+### 1.2 V1.13 A4 执行、会话与已确认 Task Bootstrap
 
 - Agent Runtime 使用 Strands；OpenAI-compatible Provider、Agent-side MCP Client、Session 与 Context 管理均优先使用 Strands 已提供能力，不重复实现 Provider/MCP 协议层、Session transcript 或 compaction。
 - 用户级 Agent / Model Settings 归 A4 Agent Toolchain 所有；P0 删除 SQLite，A5 收缩为 Export Preparation。
 - `submitGenerationPlan` 保留为七个 P0 MCP Tool 之一。它是确认前唯一允许使用的计划提交工具，不新增 `awaitingConfirmation` 等额外 Tool；P0 先采用 Tool Call 等待 UI 用户决策后再返回的最简确认语义。
 - Cancel 统一表示取消当前 Agent 操作：正式 Task 尚未创建时只终止 A4 Workflow；正式 Task 已创建时必须同时 `cancelTask` 并回滚当前 Task。
 - `finishTask` validation failure 才进入有限 repair；repair 不允许 Scope Extension，一轮 `ValidationReport → repair → finishTask` 计为一次 `repairAttempt`，每轮开始前读取最新 `maxRepairAttempts`。
-- 模型配置不冻结；每次 Strands model invocation 读取当前 active model configuration。Provider/MCP transient retry 优先交给 Strands，A4 不实现第二层通用 retry loop；最终 execution failure 必须取消并回滚 Active Task。
+- 模型配置不冻结；每次 Strands model call 读取当前 active model configuration。Provider/MCP transient retry 优先交给 Strands，A4 不实现第二层通用 retry loop；最终 execution failure 必须取消并回滚 Active Task。
 - Agent Session 直接由 Strands Session 管理与 Storage 持久化；Renderer 不直接读取其存储格式。一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session；Agent Service 崩溃时不恢复运行中的 Task，已有 Active Task 必须取消并回滚。
 - A4 → Renderer 复用既有 Agent Service → Main/Preload → Renderer typed transport，承载最小 Session lifecycle、用户消息/Cancel、assistant 文本流与执行终态/错误；原始 MCP Tool Result 和 A4 内部 Workflow 状态不作为 Renderer Contract 暴露。
+- 普通局部修改在 UI 确认后由 A3 先创建正式 Task；Renderer/B1 向 A4 的 `sendMessage` 只附带最小 `{taskId, candidateId}` bootstrap。A4 必须首先调用 `getTaskContext({taskId})` 获取 A3 权威的 Scope、baseRevision、scopeRevision 与 execution envelope；Agent transport 不复制这些授权状态。
 
 ### 1.3 V1.9 相对 V1.7 的主要调整
 
@@ -495,7 +496,10 @@ P0 不保证：
 → 输入音乐修改意图
 → 显示轻量内联摘要
 → 一键确认
-→ Agent 通过 MCP 修改 Candidate
+→ A3 创建/复用 Candidate 并创建正式 Task
+→ Renderer/B1 向 A4 sendMessage 附带最小 {taskId, candidateId} bootstrap
+→ A4 调用 getTaskContext({taskId}) 获取权威 Scope / execution envelope
+→ Agent 通过 Task-bound MCP Tool 修改 Candidate
 → finishTask 验证
 → Candidate Ready
 ```
@@ -694,7 +698,7 @@ OpenAI-compatible Chat Completions
 POST /v1/chat/completions
 ```
 
-A4 直接使用 Strands 提供的 OpenAI-compatible Model 能力，并显式运行在 Chat Completions 模式。Strands 负责协议级的 `messages`、`tools / tool_choice`、streaming、Tool Call 处理以及其自身 Provider retry；A4 只负责每次 invocation 读取当前 active model configuration、配置映射、运行生命周期、最终错误归一化与日志脱敏，不重复实现 SSE 拼接、另一套 Provider 协议层或第二层通用 retry loop。
+A4 直接使用 Strands 提供的 OpenAI-compatible Model 能力，并显式运行在 Chat Completions 模式。Strands 负责协议级的 `messages`、`tools / tool_choice`、streaming、Tool Call 处理以及其自身 Provider retry；A4 只负责每次 Strands model call 读取当前 active model configuration、配置映射、运行生命周期、最终错误归一化与日志脱敏，不重复实现 SSE 拼接、另一套 Provider 协议层或第二层通用 retry loop。
 
 Agent-side MCP 连接同样直接使用 Strands 提供的 MCP Client，通过 Music Core runtime descriptor 中的 endpoint 与 Instance Token 连接既有 MCP Server；A4 不重复实现另一套 MCP Client，并优先使用 Strands Client 自身的 transient retry 行为。
 
@@ -920,7 +924,7 @@ P0 发布必须满足：
 45. `taskId` 与 `candidateId` 全局唯一；除 bootstrap 外，Task-bound MCP 调用统一携带完整 execution envelope。
 46. Accept 的业务成功点是新 `main` commit 成功；Reject 的业务成功点是 Candidate 授权失效。两者物理 cleanup 均不反向改变业务结果。
 47. 普通 Candidate mutation 不排队；busy 时返回 `TASK_BUSY`。Cancel / Reject 可以使正在运行的 mutation 授权失效。
-48. A3 `TaskContext` 只保存事务与授权状态；用户意图与有限修复状态属于 A4。模型配置不冻结为 Task/Workflow 快照，每次 Strands model invocation 读取当前 active model configuration。
+48. A3 `TaskContext` 只保存事务与授权状态；用户意图与有限修复状态属于 A4。模型配置不冻结为 Task/Workflow 快照，每次 Strands model call 读取当前 active model configuration。
 49. Scope 决定允许修改的范围，并由 A3 确定性推导当前 P0 `allowedOperations`；不持久化第二份权限状态。
 50. A4 直接使用 Strands 的 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client，不重复实现 Provider 协议层或 MCP Client。
 51. Agent / Model `settings.json` 归 A4 所有；A5 只负责 Export Preparation。
@@ -930,7 +934,7 @@ P0 发布必须满足：
 55. Provider/MCP transient retry 优先交给 Strands；A4 不维护第二层通用 retry loop。Strands 最终 execution failure 若已有 Active Task，必须 `cancelTask` 回滚，`failed` 不得遗留 Active Task。
 56. `repairing` 不允许 Scope Extension；修复只能在当前已批准 Scope 内完成。
 57. 一轮 `ValidationReport → repair → finishTask` 计为一次 `repairAttempt`；每轮 repair 开始前读取最新 `maxRepairAttempts`，达到上限则取消并回滚当前 Task。
-58. 模型配置允许 Workflow 途中修改；每次 Strands model invocation 使用当时最新 active model configuration。
+58. 模型配置允许 Workflow 途中修改；每次 Strands model call 使用当时最新 active model configuration。
 59. P0 Agent Session 直接交由 Strands SessionManager/Storage 管理，不自研 transcript、不使用 SQLite；Renderer 不直接依赖 Strands 的持久化格式。
 60. 一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session；Agent UI 只提供最小的新建/切换能力，不支持多个 Session 后台并行执行，“另存为”后的新项目不继承原项目 Session。
 60. Agent Service 崩溃不恢复运行中的工程 Task；若 A3 存在 Active Task，必须取消并回滚到 `taskBaseCheckpoint`。
