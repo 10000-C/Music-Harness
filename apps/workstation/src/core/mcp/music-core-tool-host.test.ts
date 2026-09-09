@@ -89,6 +89,7 @@ const makeHarness = () => {
   const control: CandidateControlPort = {
     startTask,
     cancelTask: vi.fn(),
+    cancelActiveTaskForAgentLoss: vi.fn(),
     approveScopeExtension: vi.fn(),
     rejectScopeExtension: vi.fn(),
     acceptCandidate: vi.fn(),

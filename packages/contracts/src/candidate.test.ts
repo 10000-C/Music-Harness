@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CANDIDATE_ERROR_CODES,
+  isCandidateCommand,
   isTaskExecutionEnvelope,
   type TaskExecutionEnvelope,
 } from './candidate.js';
@@ -59,5 +60,17 @@ describe('CandidateErrorCode', () => {
         'ORPHAN_CANDIDATE_RESOURCE',
       ]),
     );
+  });
+});
+
+describe('Agent loss reconciliation command', () => {
+  it('accepts a Core control command that identifies only the authoritative Project', () => {
+    expect(
+      isCandidateCommand({
+        type: 'candidate.cancelActiveTaskForAgentLoss',
+        requestId: 'agent-exit-1',
+        projectId: '00000000-0000-4000-8000-000000000002',
+      }),
+    ).toBe(true);
   });
 });

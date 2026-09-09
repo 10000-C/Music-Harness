@@ -121,6 +121,10 @@ export type CandidateCommand =
       readonly taskId: TaskId;
     })
   | (CandidateCommandBase & {
+      readonly type: 'candidate.cancelActiveTaskForAgentLoss';
+      readonly projectId: ProjectId;
+    })
+  | (CandidateCommandBase & {
       readonly type: 'candidate.approveScopeExtension';
       readonly taskId: TaskId;
       readonly requestIdToApprove: ScopeExtensionRequestId;
@@ -219,6 +223,8 @@ export const isCandidateCommand = (
         isUuid(value.candidateId) &&
         isUuid(value.taskId)
       );
+    case 'candidate.cancelActiveTaskForAgentLoss':
+      return isUuid(value.projectId);
     case 'candidate.approveScopeExtension':
       return isUuid(value.taskId) && isUuid(value.requestIdToApprove);
     case 'candidate.rejectScopeExtension':

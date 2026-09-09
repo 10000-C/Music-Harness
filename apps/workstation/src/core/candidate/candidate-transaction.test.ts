@@ -215,6 +215,24 @@ describe('CandidateTransaction lifecycle', () => {
     });
   });
 
+  it('cancels the authoritative Active Task when the Agent process is lost', async () => {
+    const { transaction, repository, workspace } = createHarness();
+    await transaction.startTask({ projectId, scope: wholeProjectScope });
+
+    await expect(
+      (
+        transaction as unknown as {
+          cancelActiveTaskForAgentLoss(project: ProjectId): Promise<unknown>;
+        }
+      ).cancelActiveTaskForAgentLoss(projectId),
+    ).resolves.toBeUndefined();
+
+    expect(repository.resetTo).toHaveBeenCalledWith(workspace, 'C0');
+    await expect(transaction.getTaskContext(taskId)).rejects.toMatchObject({
+      code: 'TASK_NOT_ACTIVE',
+    });
+  });
+
   it('strong Reject destroys authorization even when physical cleanup fails', async () => {
     const { transaction, cleanup } = createHarness({ cleanupFails: true });
     await transaction.startTask({ projectId, scope: wholeProjectScope });

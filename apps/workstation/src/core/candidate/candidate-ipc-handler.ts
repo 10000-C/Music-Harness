@@ -50,6 +50,15 @@ export class CandidateIpcHandler {
             this.candidateChanged(command.requestId, candidate),
           ];
         }
+        case 'candidate.cancelActiveTaskForAgentLoss': {
+          const candidate = await this.control.cancelActiveTaskForAgentLoss(
+            command.projectId,
+          );
+          return [
+            this.taskChanged(command.requestId, undefined),
+            this.candidateChanged(command.requestId, candidate),
+          ];
+        }
         case 'candidate.approveScopeExtension': {
           const task = await this.control.approveScopeExtension({
             taskId: command.taskId,

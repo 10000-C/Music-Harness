@@ -62,6 +62,9 @@ export interface CandidateControlPort {
     readonly candidateId: CandidateId;
     readonly taskId: TaskId;
   }): Promise<CandidateView | undefined>;
+  cancelActiveTaskForAgentLoss(
+    projectId: ProjectId,
+  ): Promise<CandidateView | undefined>;
   approveScopeExtension(input: {
     readonly taskId: TaskId;
     readonly requestId: ScopeExtensionRequestId;
@@ -558,6 +561,30 @@ export class CandidateTransaction
     } catch (error) {
       throw normalizeCandidateError(error, 'Unable to cancel Candidate Task');
     }
+  }
+
+  public async cancelActiveTaskForAgentLoss(
+    projectId: ProjectId,
+  ): Promise<CandidateView | undefined> {
+    const candidate = this.candidate;
+    if (candidate === undefined) {
+      return undefined;
+    }
+    if (candidate.projectId !== projectId) {
+      throw new CandidateError(
+        'TASK_PROJECT_MISMATCH',
+        'Project does not match the active Candidate',
+      );
+    }
+    const task = candidate.activeTask;
+    if (task === undefined) {
+      return this.toCandidateView(candidate);
+    }
+    return this.cancelTask({
+      projectId,
+      candidateId: candidate.candidateId,
+      taskId: task.taskId,
+    });
   }
 
   public async acceptCandidate(input: {
