@@ -29,13 +29,6 @@ export const ProjectHeader = ({
     <div className="project-header__brand">
       <strong>AMW</strong>
       <span title={projectName}>{projectName}</span>
-      <button
-        type="button"
-        disabled
-        title="MIDI import will be available through the desktop file picker"
-      >
-        Import MIDI
-      </button>
     </div>
     <div className="project-header__transport" aria-label="Transport">
       <button
