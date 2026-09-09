@@ -100,6 +100,7 @@ test('runs the isolated SpessaSynth AudioWorklet capability probe', async () => 
         'dispatchProject',
         'getServiceSnapshot',
         'onServiceSnapshot',
+        'readCurrentPlayback',
         'restartService',
       ],
     });

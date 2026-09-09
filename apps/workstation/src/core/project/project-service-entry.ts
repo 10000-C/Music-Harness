@@ -1,4 +1,8 @@
-import { ProjectFoundation, ProjectIpcHandler } from './index.js';
+import {
+  CurrentPlaybackReader,
+  ProjectFoundation,
+  ProjectIpcHandler,
+} from './index.js';
 import {
   type CoreProjectRequest,
   type CoreProjectResponse,
@@ -7,9 +11,12 @@ import {
   isMainToServiceMessage,
   type ServiceKind,
 } from '../../shared/service-lifecycle.js';
+import type { CorePlaybackResponse } from '../../shared/playback-bridge.js';
 
 const service: ServiceKind = 'core';
-const handler = new ProjectIpcHandler(new ProjectFoundation());
+const foundation = new ProjectFoundation();
+const handler = new ProjectIpcHandler(foundation);
+const playback = new CurrentPlaybackReader(foundation);
 let commandQueue = Promise.resolve();
 const utilityParentPort = (
   process as unknown as {
@@ -70,6 +77,27 @@ const handle = async (message: unknown): Promise<void> => {
         requestId: message.requestId,
       });
       process.exit(0);
+      return;
+    } else if (message.type === 'playback.readCurrent') {
+      try {
+        const current = await playback.read();
+        send({
+          type: 'playback.current',
+          protocolVersion: 1,
+          requestId: message.requestId,
+          ...current,
+        } satisfies CorePlaybackResponse);
+      } catch {
+        // Do not send partially compiled or stale authority data across this
+        // boundary. The Renderer can show an actionable fail-safe state.
+        send({
+          type: 'playback.failed',
+          protocolVersion: 1,
+          requestId: message.requestId,
+          code: 'COMPILATION_FAILED',
+          userMessage: 'Current could not be compiled for playback.',
+        } satisfies CorePlaybackResponse);
+      }
       return;
     }
     await enqueue(message.command);

@@ -83,6 +83,7 @@ test('launches the isolated desktop shell with fake services', async () => {
         'dispatchProject',
         'getServiceSnapshot',
         'onServiceSnapshot',
+        'readCurrentPlayback',
         'restartService',
       ],
     });

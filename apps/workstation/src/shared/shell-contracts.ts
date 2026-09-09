@@ -4,6 +4,8 @@ import {
 } from '../shared/service-lifecycle.js';
 import type { ProjectEvent } from '@agent-music/contracts';
 import { isProjectCommand, isProjectEvent } from './project-bridge.js';
+import { isCorePlaybackResponse } from './playback-bridge.js';
+import type { CorePlaybackResponse } from './playback-bridge.js';
 
 export const shellIpcChannels = {
   snapshot: 'shell:snapshot',
@@ -12,6 +14,7 @@ export const shellIpcChannels = {
   directory: 'shell:directory',
   exportPath: 'shell:export',
   project: 'shell:project',
+  playback: 'shell:playback',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';
@@ -104,6 +107,8 @@ export const isExportPathRequest = (
 };
 
 export { isProjectCommand, isProjectEvent };
+export { isCorePlaybackResponse };
+export type { CorePlaybackResponse };
 
 export const isProjectCommandResult = (
   value: unknown,

@@ -23,6 +23,12 @@ import {
 import type { FakeCoreFixtureName } from './core-client/index.js';
 import { fakeCandidateTimeline } from './core-client/fake-core-fixtures.js';
 import { useWorkstationDemo } from './state/use-workstation-demo.js';
+import { createCurrentPlaybackViewModel } from './core-client/current-playback-view-model.js';
+import {
+  type PlaybackRuntime,
+  type PlaybackRuntimeState,
+} from './opendaw-runtime/index.js';
+import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-playback-runtime.js';
 import { CompetitionAgentPanel } from './workspace/agent/competition-agent-panel.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
@@ -906,6 +912,111 @@ const LiveProjectWorkspace = () => {
   );
   const [busy, setBusy] = useState(false);
   const latestRequest = useRef(0);
+  const runtime = useRef<PlaybackRuntime | null>(null);
+  const playbackRequest = useRef(0);
+  const [timeline, setTimeline] = useState<TimelineViewModel | null>(null);
+  const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(
+    null,
+  );
+  const [inspectedTrackId, setInspectedTrackId] =
+    useState<TrackId>('track.keys');
+
+  useEffect(() => {
+    return () => {
+      const active = runtime.current;
+      runtime.current = null;
+      void active?.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (project?.state !== 'ready') {
+      setTimeline(null);
+      setRuntimeState(null);
+      return undefined;
+    }
+    const bridge = window.agentMusic;
+    if (bridge === undefined) {
+      setMessage('The secure desktop bridge is unavailable.');
+      return undefined;
+    }
+    const request = ++playbackRequest.current;
+    void bridge.readCurrentPlayback().then(async (result) => {
+      if (request !== playbackRequest.current) return;
+      if (result === null) {
+        setTimeline(null);
+        setMessage('Current playback is unavailable.');
+        return;
+      }
+      if (result.type === 'playback.failed') {
+        setTimeline(null);
+        setMessage(result.userMessage);
+        return;
+      }
+      if (result.revision !== project.currentRevision) return;
+      const view = createCurrentPlaybackViewModel(
+        result.revision,
+        result.timeline,
+        result.compilation,
+      );
+      if (view === null) {
+        setTimeline(null);
+        setMessage('Current playback data did not pass the Renderer boundary.');
+        return;
+      }
+      try {
+        runtime.current ??= createSpessaSynthPlaybackRuntime();
+        const player = runtime.current;
+        const unsubscribe = player.subscribe(() => {
+          if (request === playbackRequest.current)
+            setRuntimeState(player.getSnapshot());
+        });
+        const source = { kind: 'current' as const, revision: result.revision };
+        const synchronized = await player.syncSource(
+          source,
+          result.compilation,
+        );
+        if (request !== playbackRequest.current) {
+          unsubscribe();
+          return;
+        }
+        if (synchronized.status === 'failed') {
+          unsubscribe();
+          setMessage(synchronized.failure.message);
+          return;
+        }
+        const activated = await player.activateSource(source);
+        if (request !== playbackRequest.current) {
+          unsubscribe();
+          return;
+        }
+        if (activated.status === 'failed') {
+          unsubscribe();
+          setMessage(activated.failure.message);
+          return;
+        }
+        setTimeline(view);
+        setRuntimeState(player.getSnapshot());
+        setMessage('Current is loaded for playback.');
+      } catch {
+        if (request === playbackRequest.current)
+          setMessage('SoundFont or playback engine could not be loaded.');
+      }
+    });
+    return () => {
+      playbackRequest.current += 1;
+    };
+  }, [project?.currentRevision, project?.state]);
+
+  const sendPlayback = useCallback(
+    async (command: Parameters<PlaybackRuntime['send']>[0]) => {
+      const player = runtime.current;
+      if (player === null) return;
+      const outcome = await player.send(command);
+      if (outcome.status === 'failed') setMessage(outcome.failure.message);
+    },
+    [],
+  );
 
   const dispatch = useCallback(async (command: ProjectCommand) => {
     const bridge = window.agentMusic;
@@ -971,10 +1082,20 @@ const LiveProjectWorkspace = () => {
     project === null
       ? 'Choose a project folder to begin'
       : `Current · ${project.currentRevision.slice(0, 8)}`;
-  const emptyTimeline =
-    project === null
-      ? 'Open or create a project to view its tracks.'
-      : 'Track details will appear here when this project has playable music.';
+  const playback = runtimeState;
+  const playable =
+    timeline !== null && playback?.activeSource?.kind === 'current';
+  const mutedTrackIds = new Set(playback?.mutedTrackIds ?? []);
+  const soloTrackIds = new Set(playback?.soloTrackIds ?? []);
+  const bpm = timeline?.tempoMap[0]?.bpm ?? 0;
+  const meterEvent = timeline?.meterMap[0];
+  const keyEvent = timeline?.keyMap[0];
+  const duration =
+    timeline === null ? 0 : secondsAtTick(timeline, timeline.totalTicks);
+  const elapsed =
+    timeline === null || playback === null
+      ? 0
+      : secondsAtTick(timeline, playback.positionTick);
 
   return (
     <div
@@ -988,20 +1109,38 @@ const LiveProjectWorkspace = () => {
         onViewChange={() => undefined}
       />
       <TrackSidebar
-        timeline={null}
-        inspectedTrackId="track.keys"
-        mutedTrackIds={new Set()}
-        soloTrackIds={new Set()}
-        onInspectTrack={() => undefined}
-        onToggleMute={() => undefined}
-        onToggleSolo={() => undefined}
+        timeline={timeline}
+        inspectedTrackId={inspectedTrackId}
+        mutedTrackIds={mutedTrackIds}
+        soloTrackIds={soloTrackIds}
+        onInspectTrack={setInspectedTrackId}
+        onToggleMute={(trackId) =>
+          void sendPlayback({
+            type: 'setMute',
+            trackId,
+            muted: !mutedTrackIds.has(trackId),
+          })
+        }
+        onToggleSolo={(trackId) =>
+          void sendPlayback({
+            type: 'setSolo',
+            trackId,
+            solo: !soloTrackIds.has(trackId),
+          })
+        }
       />
       <main className="workspace-main">
         <ProjectHeader
           projectName={projectName}
-          tempo={0}
-          keyName="Unavailable"
-          meter="—"
+          tempo={bpm}
+          keyName={
+            keyEvent ? `${keyEvent.tonic} ${keyEvent.mode}` : 'Unavailable'
+          }
+          meter={
+            meterEvent
+              ? `${String(meterEvent.numerator)}/${String(meterEvent.denominator)}`
+              : '—'
+          }
           statusLabel={
             project === null
               ? 'Project needed'
@@ -1016,25 +1155,63 @@ const LiveProjectWorkspace = () => {
                 ? 'blank'
                 : 'stable'
           }
-          playing={false}
-          playDisabled
-          onTogglePlayback={() => undefined}
+          playing={playback?.transport === 'playing'}
+          playDisabled={!playable}
+          onTogglePlayback={() =>
+            void sendPlayback({
+              type: playback?.transport === 'playing' ? 'pause' : 'play',
+            })
+          }
           onExport={() => undefined}
         />
         <div className="workspace-content">
           <TransportBar
-            playing={false}
-            elapsedLabel="--:--"
-            durationLabel="--:--"
-            scopeLabel="Timeline unavailable"
-            loopEnabled={false}
-            canLoop={false}
-            disabled
-            onTogglePlayback={() => undefined}
-            onStop={() => undefined}
-            onPrevious={() => undefined}
-            onNext={() => undefined}
-            onToggleLoop={() => undefined}
+            playing={playback?.transport === 'playing'}
+            elapsedLabel={playable ? formatTime(elapsed) : '--:--'}
+            durationLabel={playable ? formatTime(duration) : '--:--'}
+            scopeLabel={timeline === null ? 'Timeline unavailable' : 'Current'}
+            loopEnabled={playback?.loopRange !== null && playback !== null}
+            canLoop={playable}
+            disabled={!playable}
+            onTogglePlayback={() =>
+              void sendPlayback({
+                type: playback?.transport === 'playing' ? 'pause' : 'play',
+              })
+            }
+            onStop={() => void sendPlayback({ type: 'stop' })}
+            onPrevious={() =>
+              void sendPlayback({
+                type: 'seek',
+                tick: asTick(
+                  Math.max(
+                    0,
+                    (playback?.positionTick ?? 0) -
+                      (timeline === null ? 0 : ticksForBars(timeline, 4)),
+                  ),
+                ),
+              })
+            }
+            onNext={() =>
+              void sendPlayback({
+                type: 'seek',
+                tick: asTick(
+                  Math.min(
+                    timeline?.totalTicks ?? 0,
+                    (playback?.positionTick ?? 0) +
+                      (timeline === null ? 0 : ticksForBars(timeline, 4)),
+                  ),
+                ),
+              })
+            }
+            onToggleLoop={() =>
+              void sendPlayback({
+                type: 'setLoop',
+                range:
+                  playback?.loopRange === null && timeline !== null
+                    ? { startTick: 0 as Tick, endTick: timeline.totalTicks }
+                    : null,
+              })
+            }
           />
           <section className="utility-view" aria-label="Project controls">
             <h2>{projectName}</h2>
@@ -1087,9 +1264,72 @@ const LiveProjectWorkspace = () => {
               </button>
             </div>
           </section>
-          <section className="utility-view" aria-label="Timeline empty state">
-            <p>{emptyTimeline}</p>
-          </section>
+          {timeline !== null && playback !== null ? (
+            <>
+              <Timeline
+                timeline={timeline}
+                comparisonTimeline={null}
+                candidateMode={false}
+                playbackTick={playback.positionTick}
+                selectedTrackIds={[inspectedTrackId]}
+                timeRange={null}
+                loopRange={playback.loopRange}
+                zoom={4}
+                startTick={0 as Tick}
+                mutedTrackIds={mutedTrackIds}
+                soloTrackIds={soloTrackIds}
+                onPlaybackTickChange={(tick) =>
+                  void sendPlayback({ type: 'seek', tick })
+                }
+                onTrackSelectionChange={(trackIds) => {
+                  setInspectedTrackId(trackIds.at(-1) ?? inspectedTrackId);
+                }}
+                onTimeRangeChange={() => undefined}
+                onZoomChange={() => undefined}
+                onStartTickChange={() => undefined}
+                onToggleMute={(trackId) =>
+                  void sendPlayback({
+                    type: 'setMute',
+                    trackId,
+                    muted: !mutedTrackIds.has(trackId),
+                  })
+                }
+                onToggleSolo={(trackId) =>
+                  void sendPlayback({
+                    type: 'setSolo',
+                    trackId,
+                    solo: !soloTrackIds.has(trackId),
+                  })
+                }
+              />
+              <TrackInspector
+                trackId={inspectedTrackId}
+                candidateReady={false}
+                muted={mutedTrackIds.has(inspectedTrackId)}
+                soloed={soloTrackIds.has(inspectedTrackId)}
+                onToggleMute={(trackId) =>
+                  void sendPlayback({
+                    type: 'setMute',
+                    trackId,
+                    muted: !mutedTrackIds.has(trackId),
+                  })
+                }
+                onToggleSolo={(trackId) =>
+                  void sendPlayback({
+                    type: 'setSolo',
+                    trackId,
+                    solo: !soloTrackIds.has(trackId),
+                  })
+                }
+              />
+            </>
+          ) : (
+            <section className="utility-view" aria-label="Timeline empty state">
+              <p>
+                Open a clean Current to load its six-track playback timeline.
+              </p>
+            </section>
+          )}
         </div>
       </main>
       <aside className="agent-panel" aria-label="Agent panel">
