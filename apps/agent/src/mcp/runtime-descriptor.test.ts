@@ -41,7 +41,9 @@ describe('RuntimeDescriptorDiscovery', () => {
     );
 
     await expect(
-      new RuntimeDescriptorDiscovery(runtimeDirectory).read(projectId),
+      new RuntimeDescriptorDiscovery(runtimeDirectory, () => true).read(
+        projectId,
+      ),
     ).resolves.toEqual(descriptor);
   });
 
@@ -53,6 +55,30 @@ describe('RuntimeDescriptorDiscovery', () => {
     ).rejects.toMatchObject({
       code: 'RUNTIME_DESCRIPTOR_NOT_FOUND',
       message: 'Music Core runtime descriptor is not available',
+    });
+  });
+
+  it('rejects a descriptor whose Core process is no longer alive', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const descriptor = {
+      projectId,
+      endpoint: 'http://127.0.0.1:43127/mcp',
+      instanceToken: 'test-token',
+      pid: 1234,
+    };
+    await writeFile(
+      join(runtimeDirectory, `${projectId}.json`),
+      JSON.stringify(descriptor),
+      'utf8',
+    );
+
+    await expect(
+      new RuntimeDescriptorDiscovery(runtimeDirectory, () => false).read(
+        projectId,
+      ),
+    ).rejects.toMatchObject({
+      code: 'RUNTIME_DESCRIPTOR_INVALID',
+      message: 'Music Core runtime descriptor is stale',
     });
   });
 

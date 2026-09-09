@@ -25,8 +25,22 @@ export class RuntimeDescriptorError extends Error {
 const isFileNotFound = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && error.code === 'ENOENT';
 
+const defaultIsProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export class RuntimeDescriptorDiscovery {
-  public constructor(private readonly runtimeDirectory: string) {}
+  public constructor(
+    private readonly runtimeDirectory: string,
+    private readonly isProcessAlive: (
+      pid: number,
+    ) => boolean = defaultIsProcessAlive,
+  ) {}
 
   public async read(projectId: ProjectId): Promise<McpRuntimeDescriptor> {
     try {
@@ -39,6 +53,12 @@ export class RuntimeDescriptorDiscovery {
         throw new RuntimeDescriptorError(
           'RUNTIME_DESCRIPTOR_INVALID',
           'Music Core runtime descriptor is invalid',
+        );
+      }
+      if (!this.isProcessAlive(value.pid)) {
+        throw new RuntimeDescriptorError(
+          'RUNTIME_DESCRIPTOR_INVALID',
+          'Music Core runtime descriptor is stale',
         );
       }
       return value;
