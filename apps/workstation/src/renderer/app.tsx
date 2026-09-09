@@ -1134,6 +1134,7 @@ const LiveProjectWorkspace = () => {
               details={undefined}
               previewingCandidate={false}
               candidateAuditionAvailable={false}
+              candidateAcceptanceAvailable={false}
               onReviewCurrent={() => undefined}
               onReviewCandidate={() => undefined}
               onAccept={() => void resolveCandidate('accept')}

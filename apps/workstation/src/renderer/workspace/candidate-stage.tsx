@@ -5,6 +5,7 @@ interface CandidateStageProps {
   readonly details: CandidateReviewDetails | undefined;
   readonly previewingCandidate: boolean;
   readonly candidateAuditionAvailable?: boolean;
+  readonly candidateAcceptanceAvailable?: boolean;
   readonly onReviewCurrent: () => void;
   readonly onReviewCandidate: () => void;
   readonly onAccept: () => void;
@@ -16,6 +17,7 @@ export const CandidateStage = ({
   details,
   previewingCandidate,
   candidateAuditionAvailable = true,
+  candidateAcceptanceAvailable = true,
   onReviewCurrent,
   onReviewCandidate,
   onAccept,
@@ -62,8 +64,19 @@ export const CandidateStage = ({
       <button type="button" onClick={onReject}>
         Discard
       </button>
-      <button type="button" onClick={onAccept}>
-        Apply to Current
+      <button
+        type="button"
+        disabled={!candidateAcceptanceAvailable}
+        title={
+          candidateAcceptanceAvailable
+            ? undefined
+            : 'Candidate must be auditioned before it can be applied.'
+        }
+        onClick={onAccept}
+      >
+        {candidateAcceptanceAvailable
+          ? 'Apply to Current'
+          : 'Apply unavailable until audition'}
       </button>
     </div>
   </section>
