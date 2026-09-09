@@ -1,6 +1,6 @@
 # Agent Music Workstation P0 十天双人模块化开发计划
 
-**版本：** 1.8
+**版本：** 1.9
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -21,11 +21,11 @@
 
 开发必须遵循：
 
-- `docs/product/Agent Music Workstation PRD.md` V1.13；
-- `docs/architecture/Agent Music Workstation System Architecture.md` V1.11；
+- `docs/product/Agent Music Workstation PRD.md` V1.14；
+- `docs/architecture/Agent Music Workstation System Architecture.md` V1.12；
 - `docs/architecture/spike.md` 中 Spike-001～010 的技术结论；Spike-010 的 Velocity 候选已按 ADR-034 纳入 P0。
 
-TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为结论固化为正式模块和回归测试；其中 TG-008 的自研 Provider Adapter 实现约束已由 Architecture V1.11 ADR-044 替代，A4 应以 Strands 原生 Chat Completions / MCP Client 集成为正式实现，并复用 TG-008 的 Tool Call、流式、取消和错误行为作为回归标准。
+TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为结论固化为正式模块和回归测试；其中 TG-008 的自研 Provider Adapter 实现约束已由 Architecture V1.12 ADR-044 替代，A4 应以 Strands 原生 Chat Completions / MCP Client 集成为正式实现，并复用 TG-008 的 Tool Call、流式、取消和错误行为作为回归标准。
 
 本计划只定义：
 
@@ -176,7 +176,7 @@ A 负责：
 - Agent / Model Settings 和 API Key 文件；
 - Strands SessionManager/Storage 的 Project 多 Session 集成：一个 Project 可关联多个 Session，A4 负责 list/create/open/getActive 与唯一 Active Session 选择；P0 不支持多 Session 后台并行 execution，不自研 transcript/compaction，不使用 SQLite；
 - Session lifecycle + assistant text stream + execution terminal event transport；原始 MCP Tool Result、Strands Storage 和 A4 Workflow state 不进入 Renderer transport；
-- Agent Service crash 时对 Active Task 触发 cancel + rollback，Session 只恢复对话；
+- Agent Service 受控 fatal/shutdown 时由 A4 对 Active Task 触发 cancel + rollback；非受控子进程退出由 B1 supervisor 通知 Core/A3 执行 Project-only Active Task reconciliation；Session 只恢复对话；
 - Agent 结构化日志和脱敏。
 
 ### 3.3 A 不负责
@@ -199,7 +199,7 @@ B 负责：
 - Electron Main、BrowserWindow 和应用生命周期；
 - `nodeIntegration=false`、`contextIsolation=true` 和 Preload allowlist；
 - 启动、监督和关闭 Core Utility Process 与 Agent Process；
-- 进程 health、fatal error 和 restart 行为；通过共享 Agent Process Contract 转发 `ready` / `health` / `shutdown` / `fatal`，不解释 A4 业务状态；
+- 进程 health、fatal error 和 restart 行为；通过共享 Agent Process Contract 转发 `ready` / `health` / `shutdown` / `fatal`，不解释 A4 业务状态；Agent 子进程非受控退出时向 Core 发送 `candidate.cancelActiveTaskForAgentLoss(projectId)`；
 - A4 Agent Service ↔ Renderer 的 typed Agent transport bridge；Main/Preload 只转发最小 Session lifecycle、用户消息/Cancel、assistant text delta 与 execution terminal event，不拥有 Session/Agent Workflow 状态；
 - 项目目录和导出路径选择；
 - openDAW 资源路径；
@@ -674,7 +674,7 @@ A4 Strands Agent
 - Agent 经 MCP 生成可试听 Candidate；
 - `finishTask` validation failure 才进入 repair；repair 不允许 Scope Extension，一轮 validation→repair→finishTask 计一次 `repairAttempt`，轮次开始前读取最新 `maxRepairAttempts`；
 - 模型配置在每次 Strands model call 读取最新值；Strands 最终 provider/MCP execution failure 必须回滚 Active Task；
-- Agent Service crash 若存在 Active Task 必须 cancel + rollback；重启后可恢复 Strands Session 对话但不恢复未完成 Task；
+- Agent Service 受控 fatal/shutdown 若存在 Active Task 由 A4 cancel + rollback；Agent 子进程突然退出由 B1 → Core/A3 `candidate.cancelActiveTaskForAgentLoss(projectId)` 回滚权威 Active Task；重启后可恢复 Strands Session 对话但不恢复未完成 Task；
 - `finishTask` 成功形成 checkpoint；
 - Current SHA 保持不变；
 - 错误 Token、过期 `scopeRevision` 和越界写入均被拒绝。
@@ -745,7 +745,7 @@ git status --short
 
 ## 13. Day 10 Definition of Done
 
-- [ ] PRD V1.13 P0 验收逐项记录。
+- [ ] PRD V1.14 P0 验收逐项记录。
 - [ ] TG-001～TG-010 正式回归可重复运行。
 - [ ] Windows 应用可启动、创建项目、关闭和重开。
 - [ ] 首次生成与局部修改两条 E2E 通过。

@@ -1,6 +1,6 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.13 Confirmed Task Bootstrap\
+**版本：** V1.14 Agent Crash Reconciliation\
 **状态：** P0 产品范围已确认；A3 Candidate Transaction 决策已冻结；A4 执行、会话与 Project 多 Session 决策已冻结\
 **日期：** 2026-09-09\
 **开发周期：** 10–15 天\
@@ -20,7 +20,7 @@
 - **P1：** P0 稳定后实现，不阻塞首发。
 - **P2：** 后续能力，不为其提前引入 P0 状态复杂度。
 
-### 1.2 V1.13 A4 执行、会话与已确认 Task Bootstrap
+### 1.2 V1.14 A4 执行、会话、Task Bootstrap 与 Crash Reconciliation
 
 - Agent Runtime 使用 Strands；OpenAI-compatible Provider、Agent-side MCP Client、Session 与 Context 管理均优先使用 Strands 已提供能力，不重复实现 Provider/MCP 协议层、Session transcript 或 compaction。
 - 用户级 Agent / Model Settings 归 A4 Agent Toolchain 所有；P0 删除 SQLite，A5 收缩为 Export Preparation。
@@ -28,7 +28,7 @@
 - Cancel 统一表示取消当前 Agent 操作：正式 Task 尚未创建时只终止 A4 Workflow；正式 Task 已创建时必须同时 `cancelTask` 并回滚当前 Task。
 - `finishTask` validation failure 才进入有限 repair；repair 不允许 Scope Extension，一轮 `ValidationReport → repair → finishTask` 计为一次 `repairAttempt`，每轮开始前读取最新 `maxRepairAttempts`。
 - 模型配置不冻结；每次 Strands model call 读取当前 active model configuration。Provider/MCP transient retry 优先交给 Strands，A4 不实现第二层通用 retry loop；最终 execution failure 必须取消并回滚 Active Task。
-- Agent Session 直接由 Strands Session 管理与 Storage 持久化；Renderer 不直接读取其存储格式。一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session；Agent Service 崩溃时不恢复运行中的 Task，已有 Active Task 必须取消并回滚。
+- Agent Session 直接由 Strands Session 管理与 Storage 持久化；Renderer 不直接读取其存储格式。一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session。受控 `fatal` / `shutdown` 由 A4 在进程仍存活时先取消并回滚 Active Task；若 Agent 子进程突然退出，B1 Process Supervisor 必须通知 Core，由 A3 根据 Project 权威状态取消并回滚 Active Task。P0 不恢复崩溃时运行中的 Task。
 - A4 → Renderer 复用既有 Agent Service → Main/Preload → Renderer typed transport，承载最小 Session lifecycle、用户消息/Cancel、assistant 文本流与执行终态/错误；原始 MCP Tool Result 和 A4 内部 Workflow 状态不作为 Renderer Contract 暴露。
 - 普通局部修改在 UI 确认后由 A3 先创建正式 Task；Renderer/B1 向 A4 的 `sendMessage` 只附带最小 `{taskId, candidateId}` bootstrap。A4 必须首先调用 `getTaskContext({taskId})` 获取 A3 权威的 Scope、baseRevision、scopeRevision 与 execution envelope；Agent transport 不复制这些授权状态。
 
@@ -658,7 +658,7 @@ P0 不引入应用级 SQLite。Agent 会话、消息、Tool Call / Tool Result �
 - P0 Agent 面板提供最小的“新建 Session / 切换已有 Session”能力，不引入 rename、search、pin、folder 等复杂会话管理；
 - 具体 Session 文件格式和内部目录结构由 Strands Storage 管理，不作为产品 Contract；
 - Renderer 不直接读取或解析 Strands Session 文件，只通过 A4 的会话接口列出项目 Session、创建/打开 Session、读取 Active Session，并消费历史消息和实时文本；
-- Session 可以在 Agent Service 重启后恢复对话上下文，但 P0 不恢复崩溃时仍在运行的 A3 Task/Candidate execution；
+- Session 可以在 Agent Service 重启后恢复对话上下文，但 P0 不恢复崩溃时仍在运行的 A3 Task/Candidate execution；受控退出由 A4 cleanup，非受控进程死亡由 B1/Core/A3 reconciliation 保证 Active Task 回滚；
 - 复制或“另存为”项目不会自动复制原项目对应的 Agent Session；新 `projectId` 使用自己的 Session 集合。
 
 ### 11.4 全局模型配置
@@ -937,4 +937,4 @@ P0 发布必须满足：
 58. 模型配置允许 Workflow 途中修改；每次 Strands model call 使用当时最新 active model configuration。
 59. P0 Agent Session 直接交由 Strands SessionManager/Storage 管理，不自研 transcript、不使用 SQLite；Renderer 不直接依赖 Strands 的持久化格式。
 60. 一个 Project 可以关联多个 Agent Session，但 P0 同时只有一个 Active Session；Agent UI 只提供最小的新建/切换能力，不支持多个 Session 后台并行执行，“另存为”后的新项目不继承原项目 Session。
-60. Agent Service 崩溃不恢复运行中的工程 Task；若 A3 存在 Active Task，必须取消并回滚到 `taskBaseCheckpoint`。
+61. Agent Service 崩溃不恢复运行中的工程 Task：受控 `fatal` / `shutdown` 由 A4 调用 Workflow cleanup；非受控 Agent 子进程退出由 B1 通知 Core，A3 通过 Project-only reconciliation 控制命令定位并取消权威 Active Task，回滚到 `taskBaseCheckpoint`。

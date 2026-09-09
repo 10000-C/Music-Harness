@@ -40,9 +40,9 @@
 - Produces branded `AgentSessionId` and `AgentExecutionId` values at shared IPC boundaries.
 - Produces `AgentSessionSummary`, `AgentCommand`, `AgentCommandResult`, and `AgentEvent` discriminated unions.
 - Produces `McpRuntimeDescriptor` and runtime validators.
-- Contract validators accept only UUID project/session/execution IDs, non-empty endpoint/token fields, and known command/event variants.
+- Contract validators accept only UUID project/session/execution IDs, non-empty endpoint/token fields, known command/event variants, and the exact declared keys for each variant/nested payload; undeclared fields are rejected.
 
-- [ ] **Step 1: Add failing contract tests** for valid/invalid runtime descriptors, Project session commands, message/cancel commands, text delta, and completed/failed/cancelled terminal events.
+- [ ] **Step 1: Add failing contract tests** for valid/invalid runtime descriptors, Project session commands, message/cancel commands, text delta, completed/failed/cancelled terminal events, and otherwise-valid variants containing forbidden extra fields.
 - [ ] **Step 2: Run the two contract test files** and verify they fail because the new modules are missing.
 - [ ] **Step 3: Implement the minimal branded types, discriminated unions, and validators** without introducing transport implementation.
 - [ ] **Step 4: Add `apps/agent/vitest.config.ts` and make its tsconfig include `src/**/*.ts`** so A4 tests participate in root `pnpm test` / `pnpm typecheck`.
@@ -107,11 +107,11 @@
 
 **Interfaces:**
 - `CoreMcpServer.start(projectId)` binds only `127.0.0.1` on an ephemeral port and writes `{projectId, endpoint, instanceToken, pid}` to the injected runtime descriptor store.
-- `CoreMcpServer.stop()` closes HTTP/MCP resources and removes the descriptor.
+- `CoreMcpServer.stop()` closes HTTP/MCP resources and removes the descriptor; descriptor publish/remove failures are exception-safe and cannot leave a logically failed server bound.
 - `GenerationPlanConfirmationPort.request(input)` waits for product approval and returns an approved `TaskScope` or rejection/cancellation; approval then calls existing `CandidateControlPort.startTask`.
 - All Task-bound tools delegate to `CandidateAgentPort`; no Candidate authorization logic is duplicated in the MCP layer.
 
-- [ ] **Step 1: Write failing runtime descriptor tests** for restrictive permissions, stale-PID cleanup, write/remove lifecycle, and project isolation.
+- [ ] **Step 1: Write failing runtime descriptor tests** for restrictive permissions, stale-PID cleanup, write/remove lifecycle, project isolation, descriptor publish failure cleanup, and descriptor remove failure cleanup.
 - [ ] **Step 2: Implement descriptor storage and token generation.**
 - [ ] **Step 3: Write a failing MCP host test** asserting `tools/list` returns exactly the seven P0 tools and missing/wrong bearer token is rejected.
 - [ ] **Step 4: Implement loopback Streamable HTTP using MCP SDK v1.x and Zod tool schemas.**
@@ -154,13 +154,14 @@
 **Interfaces:**
 - `AgentWorkflow.sendMessage({projectId, sessionId, text}, emit)` accepts only the active Session and one concurrent execution.
 - `emit` receives assistant text deltas and one terminal event only; raw Strands Tool events/results and internal Workflow state are not emitted.
+- For an already-confirmed local Task, `AgentWorkflow` mechanically resolves `getTaskContext({taskId})` through a dedicated Strands MCP bootstrap port before constructing the next model runtime; it does not rely on the LLM to decide whether to bootstrap.
 - `AgentWorkflow.cancelCurrentExecution(projectId)` cancels the active Strands Agent; if an A3 Task has been bootstrapped, it calls injected `TaskRollbackPort.cancelTask`.
 - `TaskRollbackPort` is a narrow host/control seam for A3 rollback and is not an Agent MCP tool.
 - Validation failure starts bounded repair; `requestScopeExtension` is unavailable in repair mode; each full repair loop increments once; latest `maxRepairAttempts` is read at the next-round boundary.
 
 - [ ] **Step 1: Write failing streaming tests** proving only text deltas and a terminal event escape A4 even when Strands emits tool events.
 - [ ] **Step 2: Implement minimal stream event projection using Strands `modelStreamUpdateEvent → modelContentBlockDeltaEvent → textDelta`.**
-- [ ] **Step 3: Write failing cancellation tests** for planning/pre-Task cancellation and Active-Task cancellation/rollback.
+- [ ] **Step 3: Write failing tests** for mechanical confirmed-Task bootstrap before the model runtime plus planning/pre-Task cancellation and Active-Task cancellation/rollback.
 - [ ] **Step 4: Implement cancellation with a single active Abort/Agent handle and injected rollback port.**
 - [ ] **Step 5: Write failing final-error tests** proving provider/MCP final errors roll back Active Task and never start repair.
 - [ ] **Step 6: Write failing repair tests** proving only validation failure enters repair, Scope Extension cannot be used during repair, repair count increments per full cycle, and a dynamically lowered `maxRepairAttempts` stops before the next round and rolls back.
@@ -182,12 +183,12 @@
 - `AgentService.handle(command, emit)` is the single business-facing A4 seam for Session list/create/open/getActive, sendMessage and cancel.
 - `AgentProcessEntrypoint` is the process-facing seam for typed ready/health/shutdown/fatal lifecycle plus Agent command/result/event forwarding; B1 owns only the concrete process transport/supervision adapter.
 - Session switching is rejected while execution is active.
-- Agent Service shutdown/crash cleanup calls Workflow shutdown; if a Task is active, rollback is attempted before service termination is considered clean.
+- Controlled Agent Service shutdown/fatal cleanup calls Workflow shutdown; if a Task is active, rollback is attempted before service termination is considered clean. Abrupt Agent child-process death cannot be repaired by the dead A4 process: B1 supervisor must notify Core with Project-only `candidate.cancelActiveTaskForAgentLoss`, and A3 uses its authoritative Active Task IDs to execute the existing rollback path.
 - `AgentEvent` output contains no API key, raw MCP Tool Result, full A4 Workflow state, project file path, Git path or Strands snapshot structure.
 
 - [ ] **Step 1: Write failing service tests** for multi-session command routing, active-session enforcement, switch-while-running rejection, text/terminal forwarding and cancel.
 - [ ] **Step 2: Implement the command handler as composition only; keep Settings/Session/Runtime/Workflow responsibilities in their modules.**
-- [ ] **Step 3: Add a crash/shutdown test** proving an Active Task uses the rollback port and that Session conversation data remains restorable afterward.
+- [ ] **Step 3: Add controlled fatal/shutdown tests** proving A4 cleanup uses the rollback port and Session conversation remains restorable; add a Core/A3 abrupt-agent-loss test proving Project-only reconciliation cancels the authoritative Active Task.
 - [ ] **Step 4: Run focused A4 tests.**
 - [ ] **Step 5: Run full `pnpm check`, `git diff --check`, and secret scan.**
 - [ ] **Step 6: Run a code review against `dev` for coding standards and PRD/Architecture coverage; fix only A4-scope findings and re-run verification.**
@@ -195,7 +196,7 @@
 
 ## Plan Self-Review
 
-- Spec coverage: Settings ownership, Strands Provider/MCP/Session, Project multi-session, dynamic model config, dynamic repair cap, long-held generation-plan confirmation, no repair Scope Extension, unified cancel/final-failure rollback, crash rollback, and minimal Renderer transport all map to explicit tasks.
+- Spec coverage: Settings ownership, Strands Provider/MCP/Session, Project multi-session, dynamic model config, dynamic repair cap, long-held generation-plan confirmation, mechanical confirmed-Task bootstrap, no repair Scope Extension, unified cancel/final-failure rollback, controlled-fatal cleanup, abrupt-process Core reconciliation, and strict minimal Renderer transport all map to explicit tasks.
 - No placeholders: every task has concrete file boundaries, public seams, red/green verification and a commit boundary.
 - Type consistency: shared IDs/commands/events originate in `packages/contracts`; A4 internal ports remain in `apps/agent`; A3 transaction types remain owned by existing Core/contracts and are not duplicated.
 - Scope control: B1/B2/B4 implementation is not included; A4 only defines the shared transport data contract they will consume later.
