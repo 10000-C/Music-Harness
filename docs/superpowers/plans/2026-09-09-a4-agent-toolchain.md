@@ -194,6 +194,17 @@
 - [ ] **Step 6: Run a code review against `dev` for coding standards and PRD/Architecture coverage; fix only A4-scope findings and re-run verification.**
 - [ ] **Step 7: Commit:** `feat(agent): expose a4 agent service`.
 
+## Integration Verification Layers
+
+A4 acceptance is intentionally layered so a green lower layer is never treated as proof that a higher product path is reachable:
+
+- **A — MCP Server / Core capability:** independent of Strands or any specific Agent. Use a standard MCP client against the loopback Streamable HTTP server to verify the seven P0 tools are callable, authorization/error behavior is correct, and successful mutations are reflected in the real Candidate files/Git facts. One-off/manual probes are acceptable for broad fact inspection; regressions found by those probes should become focused automated tests.
+- **B — Strands Agent:** use a local fake OpenAI-compatible endpoint plus the real Strands Agent and real MCP server. Verify a real model `tool_call` reaches MCP, produces the SDK's real `afterToolCallEvent`, and the Tool Result appears in the next model request. No A4 Workflow state machine is involved.
+- **C — Agent + Workflow + MCP:** use production `AgentWorkflow`, `StrandsAgentRuntimeFactory`, Strands MCP client and real MCP HTTP server with controlled Core tool outcomes. Verify first-generation tool loops, confirmed-Task mechanical bootstrap before the first model call, validation→repair, repair tool filtering, cancellation/failure semantics, and Renderer-safe terminal projection using real SDK events rather than hand-built event objects.
+- **D — Full project acceptance:** connect the C-layer path to real `MusicCoreToolHost`, `CandidateTransaction`, `CompositionPipeline`, `CandidateGitRepository`, project files and Git worktrees. Assert final filesystem/Git authority: Candidate content/checkpoints change as expected, Current/main remains unchanged until Accept, and failure rollback restores the exact prior Task checkpoint.
+
+A/B/C/D answer different questions. `tools/list` success, Strands MCP connectivity, or unit-level Workflow event parsing must not be used as substitutes for D-layer product-path reachability.
+
 ## Plan Self-Review
 
 - Spec coverage: Settings ownership, Strands Provider/MCP/Session, Project multi-session, dynamic model config, dynamic repair cap, long-held generation-plan confirmation, mechanical confirmed-Task bootstrap, no repair Scope Extension, unified cancel/final-failure rollback, controlled-fatal cleanup, abrupt-process Core reconciliation, and strict minimal Renderer transport all map to explicit tasks.
