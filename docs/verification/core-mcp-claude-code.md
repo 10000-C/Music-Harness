@@ -2,7 +2,7 @@
 
 This guide starts the real Music Core MCP Server as a standalone local development process and connects Claude Code to it with the standard Streamable HTTP MCP transport.
 
-This is a development/interoperability harness. It does not change the product MCP contract. The Music Core still exposes exactly seven P0 Agent-facing tools.
+This is a development/interoperability harness. The formal desktop product runtime defined by Architecture V1.13 uses one long-lived Core/MCP across Project switches; this CLI intentionally binds one standalone server to one Project for external-client verification. It does not change the product MCP contract. The Music Core still exposes exactly seven P0 Agent-facing tools.
 
 ## Prerequisites
 
@@ -102,7 +102,7 @@ There is intentionally no eighth cancel/approval tool.
 
 ## 6. Generation Plan confirmation
 
-`submitGenerationPlan` remains a long-held MCP Tool Call. When Claude Code calls it, the MCP server terminal displays the proposed plan and Scope:
+`submitGenerationPlan` remains a long-held MCP Tool Call. Claude Code does **not** provide a Project UUID; the MCP server binds the Project opened by `core:mcp`. When Claude Code calls it, the MCP server terminal displays the proposed plan and Scope:
 
 ```text
 Generation plan

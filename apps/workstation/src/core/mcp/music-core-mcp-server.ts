@@ -1,4 +1,4 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import {
   chmod,
   mkdir,
@@ -101,7 +101,11 @@ const registerJsonTool = (
   );
 };
 
-const registerTools = (server: McpServer, host: MusicCoreToolInvoker): void => {
+const registerTools = (
+  server: McpServer,
+  host: MusicCoreToolInvoker,
+  projectId: ProjectId,
+): void => {
   registerJsonTool(
     server,
     host,
@@ -116,16 +120,31 @@ const registerTools = (server: McpServer, host: MusicCoreToolInvoker): void => {
     'Read Canonical composition content inside the authorized Scope.',
     envelopeSchema,
   );
-  registerJsonTool(
-    server,
-    host,
+  const generationPlanSchema = z.object({
+    summary: z.string().min(1),
+    scope: scopeSchema,
+  });
+  server.registerTool(
     'submitGenerationPlan',
-    'Submit the initial generation plan and wait for user confirmation.',
-    z.object({
-      projectId: z.uuid(),
-      summary: z.string().min(1),
-      scope: scopeSchema,
-    }),
+    {
+      description:
+        'Submit the initial generation plan for the MCP server current Project and wait for user confirmation. The Project is bound by Core; do not provide a projectId.',
+      inputSchema: generationPlanSchema,
+    },
+    async (input, extra) => {
+      const parsedInput = generationPlanSchema.parse(input);
+      try {
+        return toolResult(
+          await host.call(
+            'submitGenerationPlan',
+            { projectId, ...parsedInput },
+            { signal: extra.signal },
+          ),
+        );
+      } catch (error) {
+        return toolResult(candidateErrorPayload(error), true);
+      }
+    },
   );
   registerJsonTool(
     server,
@@ -244,6 +263,11 @@ interface MusicCoreMcpHttpServerOptions {
   readonly descriptorStore?: RuntimeDescriptorStorePort;
 }
 
+interface McpHttpSession {
+  readonly mcpServer: McpServer;
+  readonly transport: StreamableHTTPServerTransport;
+}
+
 const tokenMatches = (
   authorization: string | undefined,
   token: string,
@@ -264,6 +288,7 @@ export class MusicCoreMcpHttpServer {
   private readonly instanceToken: string;
   private server: ReturnType<typeof createServer> | undefined;
   private descriptor: McpRuntimeDescriptor | undefined;
+  private readonly sessions = new Map<string, McpHttpSession>();
 
   public constructor(private readonly options: MusicCoreMcpHttpServerOptions) {
     this.descriptorStore =
@@ -332,28 +357,33 @@ export class MusicCoreMcpHttpServer {
       removalError = error;
     }
 
+    const closeErrors: unknown[] = [];
+    try {
+      await this.closeMcpSessions();
+    } catch (error) {
+      closeErrors.push(error);
+    }
     try {
       await this.closeServer();
-    } catch (closeError) {
-      if (removalError !== undefined) {
-        throw new AggregateError(
-          [removalError, closeError],
-          'Music Core MCP Server failed to remove its runtime descriptor and close',
-          { cause: closeError },
-        );
-      }
-      throw closeError;
+    } catch (error) {
+      closeErrors.push(error);
     }
 
-    if (removalError !== undefined) {
-      if (removalError instanceof Error) {
-        throw removalError;
-      }
-      throw new Error(
-        'Music Core MCP Server failed to remove its runtime descriptor',
-        {
-          cause: removalError,
-        },
+    const errors = [
+      ...(removalError === undefined ? [] : [removalError]),
+      ...closeErrors,
+    ];
+    if (errors.length === 1) {
+      throw errors[0] instanceof Error
+        ? errors[0]
+        : new Error('Music Core MCP Server cleanup failed', {
+            cause: errors[0],
+          });
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(
+        errors,
+        'Music Core MCP Server failed to remove its runtime descriptor and close',
       );
     }
   }
@@ -370,26 +400,89 @@ export class MusicCoreMcpHttpServer {
       response.writeHead(401).end();
       return;
     }
-    if (request.method !== 'POST') {
+    if (
+      request.method !== 'POST' &&
+      request.method !== 'GET' &&
+      request.method !== 'DELETE'
+    ) {
       response.writeHead(405).end();
       return;
     }
 
+    const sessionHeader = request.headers['mcp-session-id'];
+    const sessionId = Array.isArray(sessionHeader)
+      ? sessionHeader[0]
+      : sessionHeader;
+    if (sessionId !== undefined) {
+      const session = this.sessions.get(sessionId);
+      if (session === undefined) {
+        response.writeHead(404).end();
+        return;
+      }
+      await session.transport.handleRequest(request, response);
+      return;
+    }
+
+    if (request.method !== 'POST') {
+      response.writeHead(400).end();
+      return;
+    }
+
+    const session = await this.createMcpSession();
+    try {
+      await session.transport.handleRequest(request, response);
+    } finally {
+      if (session.transport.sessionId === undefined) {
+        await session.mcpServer.close();
+      }
+    }
+  }
+
+  private async createMcpSession(): Promise<McpHttpSession> {
     const mcpServer = new McpServer({
       name: 'agent-music-workstation-core',
       version: '1.0.0',
     });
-    registerTools(mcpServer, this.options.toolHost);
+    registerTools(mcpServer, this.options.toolHost, this.options.projectId);
+
     const transport = new StreamableHTTPServerTransport({
       enableJsonResponse: true,
+      sessionIdGenerator: randomUUID,
+      onsessioninitialized: (sessionId) => {
+        this.sessions.set(sessionId, { mcpServer, transport });
+      },
+      onsessionclosed: (sessionId) => {
+        if (this.sessions.get(sessionId)?.transport === transport) {
+          this.sessions.delete(sessionId);
+        }
+      },
     });
+    const session = { mcpServer, transport };
+    await mcpServer.connect(transport);
+    return session;
+  }
 
-    try {
-      await mcpServer.connect(transport);
-      await transport.handleRequest(request, response);
-    } finally {
-      await transport.close();
-      await mcpServer.close();
+  private async closeMcpSessions(): Promise<void> {
+    const sessions = [...new Set(this.sessions.values())];
+    this.sessions.clear();
+    const results = await Promise.allSettled(
+      sessions.map((session) => session.mcpServer.close()),
+    );
+    const errors: unknown[] = [];
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        errors.push(result.reason as unknown);
+      }
+    }
+    if (errors.length === 1) {
+      throw errors[0] instanceof Error
+        ? errors[0]
+        : new Error('Music Core MCP session cleanup failed', {
+            cause: errors[0],
+          });
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, 'Music Core MCP session cleanup failed');
     }
   }
 
@@ -407,6 +500,7 @@ export class MusicCoreMcpHttpServer {
         }
         resolve();
       });
+      server.closeAllConnections();
     });
   }
 }

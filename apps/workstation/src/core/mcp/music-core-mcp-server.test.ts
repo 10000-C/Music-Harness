@@ -213,6 +213,60 @@ describe('MusicCoreMcpHttpServer', () => {
     await client.close();
   });
 
+  it('propagates MCP request timeout cancellation to the active Tool Call signal', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    let wasAborted = false;
+    const server = new MusicCoreMcpHttpServer({
+      projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: (_name, _input, options) =>
+          new Promise((resolve) => {
+            const fallback = setTimeout(() => {
+              resolve({ aborted: false });
+            }, 300);
+            options?.signal?.addEventListener(
+              'abort',
+              () => {
+                wasAborted = true;
+                clearTimeout(fallback);
+                resolve({ aborted: true });
+              },
+              { once: true },
+            );
+          }),
+      },
+      createToken: () => 'timeout-cancellation-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const client = await connectMcpTestClient(
+      descriptor.endpoint,
+      descriptor.instanceToken,
+    );
+
+    const timedOut = client
+      .callTool(
+        { name: 'getTaskContext', arguments: { taskId } },
+        { timeout: 50 },
+      )
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    const timeoutError = await timedOut;
+    expect(timeoutError).toBeInstanceOf(Error);
+    if (!(timeoutError instanceof Error)) {
+      throw new Error('Expected MCP timeout error');
+    }
+    expect(timeoutError.message).toContain('Request timed out');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(wasAborted).toBe(true);
+
+    await client.close();
+  });
+
   it('serves exactly seven tools over real Streamable HTTP and delegates calls', async () => {
     const { call, descriptor } = await makeServer();
     const client = await connectMcpTestClient(

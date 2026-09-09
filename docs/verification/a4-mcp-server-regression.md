@@ -109,13 +109,14 @@ Pass conditions:
 
 ### A-02 — `submitGenerationPlan` is long-held before confirmation
 
+Agent-facing input must not require `projectId`; the MCP Host binds the currently opened Project. A timeout/cancelled client request must abort the corresponding server Tool Call rather than leaving an orphaned confirmation.
+
 Call:
 
 ```json
 {
   "name": "submitGenerationPlan",
   "arguments": {
-    "projectId": "<projectId>",
     "summary": "Generate a one-bar drum phrase.",
     "scope": {
       "type": "wholeProject",

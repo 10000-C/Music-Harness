@@ -274,7 +274,6 @@ describe('AgentWorkflow full project acceptance', { concurrent: false }, () => {
         toolCall: {
           name: 'submitGenerationPlan',
           arguments: {
-            projectId: opened.projectId,
             summary: 'Create a one-bar drum note.',
             scope: { type: 'wholeProject', trackIds: TRACK_IDS },
           },

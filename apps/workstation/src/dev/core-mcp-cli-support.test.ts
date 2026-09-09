@@ -154,10 +154,26 @@ describe('parseCoreMcpCliOptions', () => {
 describe('TerminalGenerationPlanConfirmation', () => {
   it('maps yes to approval and other input to rejection', async () => {
     const approving = makeTerminal('yes');
+    const approvingShort = makeTerminal('y');
+    const approvingBracketedPaste = makeTerminal('\u001B[200~y\u001B[201~');
     const rejecting = makeTerminal('no');
 
     await expect(
       new TerminalGenerationPlanConfirmation(approving).request({
+        projectId,
+        summary: 'Generate drums',
+        scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+      }),
+    ).resolves.toBe('approved');
+    await expect(
+      new TerminalGenerationPlanConfirmation(approvingShort).request({
+        projectId,
+        summary: 'Generate drums',
+        scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+      }),
+    ).resolves.toBe('approved');
+    await expect(
+      new TerminalGenerationPlanConfirmation(approvingBracketedPaste).request({
         projectId,
         summary: 'Generate drums',
         scope: { type: 'wholeProject', trackIds: ['track.drums'] },
@@ -172,6 +188,58 @@ describe('TerminalGenerationPlanConfirmation', () => {
     ).resolves.toBe('rejected');
   });
 
+  it('cancels an orphaned pending prompt before asking a retried generation plan', async () => {
+    interface PendingQuestion {
+      readonly prompt: string;
+      resolve(answer: string): void;
+      reject(error: unknown): void;
+    }
+    const pending: PendingQuestion[] = [];
+    const terminal: CoreMcpCliTerminalPort = {
+      question: vi.fn(
+        (prompt: string, signal?: AbortSignal) =>
+          new Promise<string>((resolve, reject) => {
+            const current: PendingQuestion = { prompt, resolve, reject };
+            pending.push(current);
+            signal?.addEventListener(
+              'abort',
+              () => {
+                reject(new DOMException('Aborted', 'AbortError'));
+              },
+              { once: true },
+            );
+          }),
+      ),
+      write: vi.fn(),
+      close: vi.fn(),
+    };
+    const confirmation = new TerminalGenerationPlanConfirmation(terminal);
+    const first = confirmation.request({
+      projectId,
+      summary: 'First plan',
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    await vi.waitFor(() => {
+      expect(pending).toHaveLength(1);
+    });
+
+    const second = confirmation.request({
+      projectId,
+      summary: 'Second plan',
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    await expect(first).resolves.toBe('cancelled');
+    await vi.waitFor(() => {
+      expect(pending).toHaveLength(2);
+    });
+    const secondQuestion = pending[1];
+    if (secondQuestion === undefined) {
+      throw new Error('Expected retried generation-plan question');
+    }
+    secondQuestion.resolve('y');
+
+    await expect(second).resolves.toBe('approved');
+  });
   it('returns cancelled when the request signal aborts', async () => {
     const controller = new AbortController();
     controller.abort();

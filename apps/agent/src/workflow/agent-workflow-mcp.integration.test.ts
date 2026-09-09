@@ -219,7 +219,6 @@ describe('AgentWorkflow + real Strands + MCP', () => {
         toolCall: {
           name: 'submitGenerationPlan',
           arguments: {
-            projectId,
             summary: 'Generate one bar.',
             scope: { type: 'wholeProject', trackIds: TRACK_IDS },
           },

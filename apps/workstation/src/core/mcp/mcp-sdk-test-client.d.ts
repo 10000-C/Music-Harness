@@ -1,5 +1,9 @@
 export interface TestMcpTool {
   readonly name: string;
+  readonly inputSchema?: {
+    readonly properties?: Readonly<Record<string, unknown>>;
+    readonly required?: readonly string[];
+  };
 }
 
 export interface TestMcpTextContent {
@@ -9,10 +13,13 @@ export interface TestMcpTextContent {
 
 export interface TestMcpClient {
   listTools(): Promise<{ readonly tools: readonly TestMcpTool[] }>;
-  callTool(input: {
-    readonly name: string;
-    readonly arguments?: Readonly<Record<string, unknown>>;
-  }): Promise<{
+  callTool(
+    input: {
+      readonly name: string;
+      readonly arguments?: Readonly<Record<string, unknown>>;
+    },
+    options?: { readonly timeout?: number },
+  ): Promise<{
     readonly content: readonly TestMcpTextContent[];
     readonly isError?: boolean;
   }>;

@@ -9,7 +9,13 @@ export interface McpTextResult {
 }
 
 export declare class StreamableHTTPServerTransport {
-  public constructor(options?: { readonly enableJsonResponse?: boolean });
+  public constructor(options?: {
+    readonly enableJsonResponse?: boolean;
+    readonly sessionIdGenerator?: () => string;
+    readonly onsessioninitialized?: (sessionId: string) => void | Promise<void>;
+    readonly onsessionclosed?: (sessionId: string) => void | Promise<void>;
+  });
+  public readonly sessionId: string | undefined;
   public handleRequest(
     request: IncomingMessage,
     response: ServerResponse,

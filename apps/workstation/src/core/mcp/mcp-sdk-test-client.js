@@ -13,7 +13,7 @@ export const connectMcpTestClient = async (endpoint, instanceToken) => {
   await client.connect(transport);
   return {
     listTools: () => client.listTools(),
-    callTool: (params) => client.callTool(params),
+    callTool: (params, options) => client.callTool(params, undefined, options),
     close: () => client.close(),
   };
 };

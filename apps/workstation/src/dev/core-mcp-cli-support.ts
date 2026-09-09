@@ -100,12 +100,24 @@ export const parseCoreMcpCliOptions = (
 const isSignalAborted = (signal: AbortSignal | undefined): boolean =>
   signal?.aborted === true;
 
+const BRACKETED_PASTE_START = '\u001B[200~';
+const BRACKETED_PASTE_END = '\u001B[201~';
+
+const normalizeTerminalAnswer = (answer: string): string =>
+  answer
+    .replaceAll(BRACKETED_PASTE_START, '')
+    .replaceAll(BRACKETED_PASTE_END, '')
+    .trim()
+    .toLowerCase();
+
 const isApproved = (answer: string): boolean => {
-  const normalized = answer.trim().toLowerCase();
+  const normalized = normalizeTerminalAnswer(answer);
   return normalized === 'y' || normalized === 'yes';
 };
 
 export class TerminalGenerationPlanConfirmation implements GenerationPlanConfirmationPort {
+  private activeQuestionAbort: AbortController | undefined;
+
   public constructor(private readonly terminal: CoreMcpCliTerminalPort) {}
 
   public async request(
@@ -115,6 +127,14 @@ export class TerminalGenerationPlanConfirmation implements GenerationPlanConfirm
       return 'cancelled';
     }
 
+    this.activeQuestionAbort?.abort();
+    const questionAbort = new AbortController();
+    this.activeQuestionAbort = questionAbort;
+    const questionSignal =
+      input.signal === undefined
+        ? questionAbort.signal
+        : AbortSignal.any([input.signal, questionAbort.signal]);
+
     this.terminal.write(
       `\nGeneration plan\nSummary: ${input.summary}\nScope: ${JSON.stringify(input.scope)}\n`,
     );
@@ -122,17 +142,25 @@ export class TerminalGenerationPlanConfirmation implements GenerationPlanConfirm
     try {
       const answer = await this.terminal.question(
         'Approve? [y/N] ',
-        input.signal,
+        questionSignal,
       );
-      if (isSignalAborted(input.signal)) {
+      if (isSignalAborted(questionSignal)) {
+        this.terminal.write('Decision: cancelled\n');
         return 'cancelled';
       }
-      return isApproved(answer) ? 'approved' : 'rejected';
+      const decision = isApproved(answer) ? 'approved' : 'rejected';
+      this.terminal.write(`Decision: ${decision}\n`);
+      return decision;
     } catch (error) {
-      if (isSignalAborted(input.signal)) {
+      if (isSignalAborted(questionSignal)) {
+        this.terminal.write('Decision: cancelled\n');
         return 'cancelled';
       }
       throw error;
+    } finally {
+      if (this.activeQuestionAbort === questionAbort) {
+        this.activeQuestionAbort = undefined;
+      }
     }
   }
 }

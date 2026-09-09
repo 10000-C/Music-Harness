@@ -19,14 +19,15 @@ const runtimes: CoreMcpCliRuntime[] = [];
 const makeTerminal = () => {
   const writes: string[] = [];
   const close = vi.fn();
+  const question = vi.fn().mockResolvedValue('n');
   const terminal: CoreMcpCliTerminalPort = {
-    question: vi.fn().mockResolvedValue('n'),
+    question,
     write: (text) => {
       writes.push(text);
     },
     close,
   };
-  return { terminal, writes, close };
+  return { terminal, writes, close, question };
 };
 
 afterEach(async () => {
@@ -58,6 +59,16 @@ describe('runCoreMcpCli', { concurrent: false }, () => {
     try {
       const listed = await client.listTools();
       expect(listed.tools.map((tool) => tool.name)).toEqual(P0_MCP_TOOL_NAMES);
+      const generationPlanTool = listed.tools.find(
+        (tool) => tool.name === 'submitGenerationPlan',
+      );
+      expect(generationPlanTool?.inputSchema?.properties).not.toHaveProperty(
+        'projectId',
+      );
+      expect(generationPlanTool?.inputSchema?.required).toEqual([
+        'summary',
+        'scope',
+      ]);
       expect(runtime.descriptor.projectId).toBe(created.projectId);
       expect(writes.join('')).toContain('Music Core MCP ready');
       expect(writes.join('')).toContain(runtime.descriptor.endpoint);
@@ -85,6 +96,147 @@ describe('runCoreMcpCli', { concurrent: false }, () => {
     });
     await reopened.closeProject();
   });
+  it('binds submitGenerationPlan to the opened Project and approves terminal y over real MCP', async () => {
+    const parent = await createTemporaryDirectory('core-mcp-cli-plan-');
+    parents.push(parent);
+    const projectPath = join(parent, 'plan-project');
+    const foundation = new ProjectFoundation();
+    const created = await foundation.createProject(projectPath);
+    await foundation.closeProject();
+    const runtimeDirectory = join(parent, 'runtime');
+    const { terminal, question } = makeTerminal();
+    question.mockResolvedValue('y');
+
+    const runtime = await runCoreMcpCli(
+      { projectPath, runtimeDirectory },
+      terminal,
+    );
+    runtimes.push(runtime);
+    const client = await connectMcpTestClient(
+      runtime.descriptor.endpoint,
+      runtime.descriptor.instanceToken,
+    );
+
+    try {
+      const result = await client.callTool({
+        name: 'submitGenerationPlan',
+        arguments: {
+          summary: 'Generate all six tracks.',
+          scope: {
+            type: 'wholeProject',
+            trackIds: [
+              'track.drums',
+              'track.bass',
+              'track.guitar',
+              'track.keys',
+              'track.strings',
+              'track.winds',
+            ],
+          },
+        },
+      });
+      const content = result.content[0];
+      expect(content).toBeDefined();
+      const payload = JSON.parse(content?.text ?? '{}') as {
+        readonly approved?: boolean;
+        readonly task?: { readonly projectId?: string };
+      };
+      expect(payload.approved).toBe(true);
+      expect(payload.task?.projectId).toBe(created.projectId);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('cancels a timed-out generation-plan prompt before approving a retry', async () => {
+    const parent = await createTemporaryDirectory(
+      'core-mcp-cli-timeout-retry-',
+    );
+    parents.push(parent);
+    const projectPath = join(parent, 'timeout-retry-project');
+    const foundation = new ProjectFoundation();
+    const created = await foundation.createProject(projectPath);
+    await foundation.closeProject();
+    let questionCount = 0;
+    const writes: string[] = [];
+    const terminal: CoreMcpCliTerminalPort = {
+      question: vi.fn((_prompt: string, signal?: AbortSignal) => {
+        questionCount += 1;
+        if (questionCount === 1) {
+          return new Promise<string>((_resolve, reject) => {
+            signal?.addEventListener(
+              'abort',
+              () => {
+                reject(new DOMException('Aborted', 'AbortError'));
+              },
+              { once: true },
+            );
+          });
+        }
+        return Promise.resolve('y');
+      }),
+      write: (text) => {
+        writes.push(text);
+      },
+      close: vi.fn(),
+    };
+    const runtime = await runCoreMcpCli(
+      { projectPath, runtimeDirectory: join(parent, 'runtime') },
+      terminal,
+    );
+    runtimes.push(runtime);
+    const client = await connectMcpTestClient(
+      runtime.descriptor.endpoint,
+      runtime.descriptor.instanceToken,
+    );
+    const request = {
+      name: 'submitGenerationPlan',
+      arguments: {
+        summary: 'Generate all six tracks.',
+        scope: {
+          type: 'wholeProject',
+          trackIds: [
+            'track.drums',
+            'track.bass',
+            'track.guitar',
+            'track.keys',
+            'track.strings',
+            'track.winds',
+          ],
+        },
+      },
+    } as const;
+
+    try {
+      const timedOut = client.callTool(request, { timeout: 50 }).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      await vi.waitFor(() => {
+        expect(questionCount).toBe(1);
+      });
+      const timeoutError = await timedOut;
+      expect(timeoutError).toBeInstanceOf(Error);
+      if (!(timeoutError instanceof Error)) {
+        throw new Error('Expected MCP timeout error');
+      }
+      expect(timeoutError.message).toContain('Request timed out');
+
+      const retried = await client.callTool(request, { timeout: 1_000 });
+      const payload = JSON.parse(retried.content[0]?.text ?? '{}') as {
+        readonly approved?: boolean;
+        readonly task?: { readonly projectId?: string };
+      };
+      expect(payload.approved).toBe(true);
+      expect(payload.task?.projectId).toBe(created.projectId);
+      expect(questionCount).toBe(2);
+      expect(writes.join('')).toContain('Decision: cancelled');
+      expect(writes.join('')).toContain('Decision: approved');
+    } finally {
+      await client.close();
+    }
+  });
+
   it('refuses a recovery-required Current and releases the Project lock', async () => {
     const parent = await createTemporaryDirectory('core-mcp-cli-dirty-');
     parents.push(parent);

@@ -6,7 +6,7 @@ Provide a development-only CLI that opens an existing Agent Music project, start
 
 ## Scope
 
-The CLI is a local interoperability harness. It does not change the product protocol, add Agent-facing tools, or move authorization decisions into MCP.
+The CLI is a local interoperability harness. It intentionally binds a standalone MCP server to one Project. Architecture V1.13 defines a different formal desktop product composition root: one long-lived Core/MCP with `0..1` Active Project across Project switches. It does not change the product protocol, add Agent-facing tools, or move authorization decisions into MCP.
 
 The seven P0 MCP tools remain exactly:
 
@@ -67,7 +67,7 @@ Scope: ...
 Approve? [y/N]
 ```
 
-`y`/`yes` approves. Any other answer rejects. An aborted MCP call returns the existing cancelled behavior.
+`y`/`yes` approves. Any other answer rejects. An aborted MCP call returns the existing cancelled behavior. A new generation-plan request cancels any older pending terminal question before opening the new prompt; MCP request timeout/cancellation must reach the original Tool Call through the stateful MCP session transport.
 
 ### Scope Extension
 
