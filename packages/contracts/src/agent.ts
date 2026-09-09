@@ -156,6 +156,18 @@ const UUID_PATTERN =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const hasOnlyAllowedKeys = (
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean => {
+  const allowed = new Set([...required, ...optional]);
+  return (
+    required.every((key) => Object.hasOwn(value, key)) &&
+    Object.keys(value).every((key) => allowed.has(key))
+  );
+};
+
 const isUuid = (value: unknown): value is string =>
   typeof value === 'string' && UUID_PATTERN.test(value);
 
@@ -164,6 +176,7 @@ const isNonEmptyString = (value: unknown): value is string =>
 
 const isSessionSummary = (value: unknown): value is AgentSessionSummary =>
   isRecord(value) &&
+  hasOnlyAllowedKeys(value, ['sessionId', 'projectId', 'createdAt']) &&
   isUuid(value.sessionId) &&
   isUuid(value.projectId) &&
   isNonEmptyString(value.createdAt);
@@ -172,6 +185,7 @@ const isConversationMessage = (
   value: unknown,
 ): value is AgentConversationMessage =>
   isRecord(value) &&
+  hasOnlyAllowedKeys(value, ['role', 'text']) &&
   (value.role === 'user' || value.role === 'assistant') &&
   typeof value.text === 'string';
 
@@ -197,14 +211,27 @@ export const isAgentCommand = (value: unknown): value is AgentCommand => {
     case 'agent.session.create':
     case 'agent.session.getActive':
     case 'agent.execution.cancel':
-      return true;
+      return hasOnlyAllowedKeys(value, ['type', 'requestId', 'projectId']);
     case 'agent.session.open':
-      return isUuid(value.sessionId);
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'requestId',
+          'projectId',
+          'sessionId',
+        ]) && isUuid(value.sessionId)
+      );
     case 'agent.message.send':
       return (
+        hasOnlyAllowedKeys(
+          value,
+          ['type', 'requestId', 'projectId', 'sessionId', 'text'],
+          ['task'],
+        ) &&
         isUuid(value.sessionId) &&
         (value.task === undefined ||
           (isRecord(value.task) &&
+            hasOnlyAllowedKeys(value.task, ['taskId', 'candidateId']) &&
             isUuid(value.task.taskId) &&
             isUuid(value.task.candidateId))) &&
         isNonEmptyString(value.text)
@@ -224,26 +251,45 @@ export const isAgentCommandResult = (
   switch (value.type) {
     case 'agent.session.listed':
       return (
-        Array.isArray(value.sessions) && value.sessions.every(isSessionSummary)
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'sessions']) &&
+        Array.isArray(value.sessions) &&
+        value.sessions.every(isSessionSummary)
       );
     case 'agent.session.created':
-      return isSessionSummary(value.session);
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'session']) &&
+        isSessionSummary(value.session)
+      );
     case 'agent.session.opened':
       return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'requestId',
+          'session',
+          'messages',
+        ]) &&
         isSessionSummary(value.session) &&
         isConversationMessages(value.messages)
       );
     case 'agent.session.active':
       return (
+        hasOnlyAllowedKeys(
+          value,
+          ['type', 'requestId'],
+          ['session', 'messages'],
+        ) &&
         (value.session === undefined || isSessionSummary(value.session)) &&
         (value.messages === undefined ||
           isConversationMessages(value.messages)) &&
         !(value.session === undefined && value.messages !== undefined)
       );
     case 'agent.message.accepted':
-      return isUuid(value.executionId);
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'executionId']) &&
+        isUuid(value.executionId)
+      );
     case 'agent.execution.cancelAccepted':
-      return true;
+      return hasOnlyAllowedKeys(value, ['type', 'requestId']);
     default:
       return false;
   }
@@ -261,12 +307,36 @@ export const isAgentEvent = (value: unknown): value is AgentEvent => {
 
   switch (value.type) {
     case 'agent.textDelta':
-      return typeof value.text === 'string';
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'projectId',
+          'sessionId',
+          'executionId',
+          'text',
+        ]) && typeof value.text === 'string'
+      );
     case 'agent.executionCompleted':
     case 'agent.executionCancelled':
-      return true;
+      return hasOnlyAllowedKeys(value, [
+        'type',
+        'projectId',
+        'sessionId',
+        'executionId',
+      ]);
     case 'agent.executionFailed':
-      return isNonEmptyString(value.code) && isNonEmptyString(value.message);
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'projectId',
+          'sessionId',
+          'executionId',
+          'code',
+          'message',
+        ]) &&
+        isNonEmptyString(value.code) &&
+        isNonEmptyString(value.message)
+      );
     default:
       return false;
   }
@@ -276,6 +346,7 @@ export const isAgentProcessCommand = (
   value: unknown,
 ): value is AgentProcessCommand =>
   isRecord(value) &&
+  hasOnlyAllowedKeys(value, ['type', 'requestId']) &&
   (value.type === 'agent.process.health' ||
     value.type === 'agent.process.shutdown') &&
   isNonEmptyString(value.requestId);
@@ -289,22 +360,36 @@ export const isAgentProcessEvent = (
 
   switch (value.type) {
     case 'agent.process.ready':
-      return true;
+      return hasOnlyAllowedKeys(value, ['type']);
     case 'agent.process.healthy':
     case 'agent.process.stopped':
-      return isNonEmptyString(value.requestId);
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId']) &&
+        isNonEmptyString(value.requestId)
+      );
     case 'agent.process.commandResult':
-      return isAgentCommandResult(value.result);
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'result']) &&
+        isAgentCommandResult(value.result)
+      );
     case 'agent.process.agentEvent':
-      return isAgentEvent(value.event);
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'event']) &&
+        isAgentEvent(value.event)
+      );
     case 'agent.process.commandFailed':
       return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'code', 'message']) &&
         isNonEmptyString(value.requestId) &&
         isNonEmptyString(value.code) &&
         isNonEmptyString(value.message)
       );
     case 'agent.process.fatal':
-      return isNonEmptyString(value.code) && isNonEmptyString(value.message);
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'code', 'message']) &&
+        isNonEmptyString(value.code) &&
+        isNonEmptyString(value.message)
+      );
     default:
       return false;
   }

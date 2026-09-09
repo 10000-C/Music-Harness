@@ -203,6 +203,47 @@ describe('Agent event contract', () => {
     });
   });
 
+  it('rejects forbidden extra fields on otherwise valid transport variants', () => {
+    expect(
+      isAgentEvent({
+        type: 'agent.textDelta',
+        projectId,
+        sessionId,
+        executionId,
+        text: 'ok',
+        rawToolResult: { private: true },
+      }),
+    ).toBe(false);
+    expect(
+      isAgentCommand({
+        type: 'agent.message.send',
+        requestId: 'request-extra-scope',
+        projectId,
+        sessionId,
+        text: 'Make the scoped edit.',
+        scope: { type: 'wholeProject' },
+      }),
+    ).toBe(false);
+    expect(
+      isAgentCommandResult({
+        type: 'agent.session.opened',
+        requestId: 'request-extra-snapshot',
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-09T00:00:00.000Z',
+        },
+        messages: [
+          {
+            role: 'assistant',
+            text: 'ok',
+            snapshot: { internal: true },
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
   it('rejects raw tool-result shaped events and malformed text events', () => {
     expect(
       isAgentEvent({
