@@ -24,6 +24,10 @@ import {
   chooseProjectDirectory,
 } from '../src/main/desktop-dialogs.js';
 import type { ServiceSupervisor } from '../src/main/service-supervisor/index.js';
+import {
+  compileComposition,
+  createInitialCanonicalAbc,
+} from '../src/core/composition/index.js';
 
 const window = {
   isDestroyed: vi.fn(() => false),
@@ -38,6 +42,7 @@ const supervisor = {
     requestId: 'project-test',
     sequence: 1,
   })),
+  readCurrentPlayback: vi.fn(),
   shutdown: vi.fn(async () => undefined),
   subscribe: vi.fn((listener: (snapshot: unknown) => void) => {
     snapshotListener = listener;
@@ -64,6 +69,7 @@ describe('shell Main IPC and dialogs', () => {
       [
         channels.directory,
         channels.exportPath,
+        channels.playback,
         channels.project,
         channels.restart,
         channels.snapshot,
@@ -99,6 +105,33 @@ describe('shell Main IPC and dialogs', () => {
       event: { type: 'project.closed', requestId: 'project-test', sequence: 1 },
     });
     expect(supervisor.dispatchProject).toHaveBeenCalledWith(command);
+  });
+
+  it('forwards a validated Current playback bundle and fails closed otherwise', async () => {
+    const compiled = compileComposition(createInitialCanonicalAbc());
+    const bundle = {
+      type: 'playback.current' as const,
+      protocolVersion: 1 as const,
+      requestId: 'playback-test',
+      revision: 'revision-1',
+      compilation: compiled.playback,
+      timeline: compiled.timelineViewModel,
+    };
+    vi.mocked(supervisor.readCurrentPlayback).mockResolvedValueOnce(bundle);
+    await expect(invoke(channels.playback)).resolves.toEqual(bundle);
+
+    vi.mocked(supervisor.readCurrentPlayback).mockResolvedValueOnce({
+      type: 'playback.current',
+      protocolVersion: 1,
+      requestId: 'broken',
+      revision: 'revision-2',
+    } as never);
+    await expect(invoke(channels.playback)).resolves.toBeNull();
+
+    vi.mocked(supervisor.readCurrentPlayback).mockRejectedValueOnce(
+      new Error('internal Core error'),
+    );
+    await expect(invoke(channels.playback)).resolves.toBeNull();
   });
 
   it('rejects invalid dialog arguments without opening a native dialog', async () => {

@@ -50,6 +50,38 @@ const deferred = (): {
 };
 
 describe('PlaybackRuntime public interface', () => {
+  it('stops at the natural end but keeps an active loop playing', async () => {
+    let emitPosition = (_tick: Tick): void => undefined;
+    const runtime = createInMemoryPlaybackRuntime({
+      onObservePosition: (emit) => {
+        emitPosition = emit;
+      },
+    });
+    const current = source('current', 'current.end');
+    await runtime.syncSource(current, compilation(1));
+    await runtime.activateSource(current);
+    await runtime.send({ type: 'play' });
+    emitPosition(tick(3840));
+    await Promise.resolve();
+    expect(runtime.getSnapshot()).toMatchObject({
+      transport: 'stopped',
+      positionTick: 3840,
+    });
+
+    await runtime.send({ type: 'seek', tick: tick(100) });
+    await runtime.send({
+      type: 'setLoop',
+      range: { startTick: tick(0), endTick: tick(3840) },
+    });
+    await runtime.send({ type: 'play' });
+    emitPosition(tick(3840));
+    expect(runtime.getSnapshot()).toMatchObject({
+      transport: 'playing',
+      positionTick: 3840,
+    });
+    await runtime.dispose();
+  });
+
   it('keeps one cache per source while sync leaves the active runtime playing', async () => {
     const runtime = createInMemoryPlaybackRuntime();
     const current1 = source('current', 'current.1');

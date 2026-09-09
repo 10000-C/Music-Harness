@@ -12,6 +12,7 @@ import {
   type ServiceKind,
 } from '../../shared/service-lifecycle.js';
 import type { CorePlaybackResponse } from '../../shared/playback-bridge.js';
+import { currentPlaybackFailure } from './current-playback-response.js';
 
 const service: ServiceKind = 'core';
 const foundation = new ProjectFoundation();
@@ -87,16 +88,10 @@ const handle = async (message: unknown): Promise<void> => {
           requestId: message.requestId,
           ...current,
         } satisfies CorePlaybackResponse);
-      } catch {
+      } catch (error: unknown) {
         // Do not send partially compiled or stale authority data across this
         // boundary. The Renderer can show an actionable fail-safe state.
-        send({
-          type: 'playback.failed',
-          protocolVersion: 1,
-          requestId: message.requestId,
-          code: 'COMPILATION_FAILED',
-          userMessage: 'Current could not be compiled for playback.',
-        } satisfies CorePlaybackResponse);
+        send(currentPlaybackFailure(message.requestId, error));
       }
       return;
     }

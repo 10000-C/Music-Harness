@@ -186,6 +186,30 @@ class PlaybackRuntimeCoordinator<Snapshot> implements PlaybackRuntime {
       }
 
       const positionTick = clampTick(tick, this.#activeEntry.totalTicks);
+      if (this.#state.transport === 'stopped') return;
+      if (
+        positionTick === this.#activeEntry.totalTicks &&
+        this.#state.loopRange === null &&
+        this.#state.transport === 'playing'
+      ) {
+        this.#publish({
+          ...this.#state,
+          transport: 'stopped',
+          positionTick,
+        });
+        void this.#enqueue(async () => {
+          try {
+            await this.#engine.pause();
+            return APPLIED;
+          } catch {
+            return this.#recordFailure(
+              'engine-command-failed',
+              'The playback engine could not pause at the end of Current.',
+            );
+          }
+        });
+        return;
+      }
       if (positionTick !== this.#state.positionTick) {
         this.#publish({ ...this.#state, positionTick });
       }
@@ -674,6 +698,7 @@ export interface InMemoryPlaybackRuntimeOptions {
   readonly failLoadAfterApply?: (compilation: PlaybackCompilation) => boolean;
   readonly beforePlay?: () => void | Promise<void>;
   readonly beforeDispose?: () => void | Promise<void>;
+  readonly onObservePosition?: (emit: (tick: Tick) => void) => void;
 }
 
 interface InMemoryEngineSnapshot {
@@ -783,6 +808,9 @@ class InMemoryEngine implements PlaybackRuntimeEnginePort<InMemoryEngineSnapshot
 
   observePosition(listener: (tick: Tick) => void): Unsubscribe {
     this.#positionListeners.add(listener);
+    this.#options.onObservePosition?.((tick) => {
+      for (const callback of [...this.#positionListeners]) callback(tick);
+    });
     return () => {
       this.#positionListeners.delete(listener);
     };
