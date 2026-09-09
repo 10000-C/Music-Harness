@@ -68,6 +68,7 @@ export class AgentProcessEntrypoint {
       return;
     }
 
+    await this.cleanupBeforeFatal();
     this.emit({
       type: 'agent.process.fatal',
       code: 'AGENT_PROCESS_PROTOCOL_ERROR',
@@ -101,6 +102,19 @@ export class AgentProcessEntrypoint {
           ? error.message
           : 'Agent command failed',
       });
+    }
+  }
+
+  private async cleanupBeforeFatal(): Promise<void> {
+    try {
+      await this.service.shutdown();
+    } catch {
+      this.emit({
+        type: 'agent.process.fatal',
+        code: 'AGENT_PROCESS_CLEANUP_FAILED',
+        message: 'Agent process cleanup failed',
+      });
+      throw new Error('Agent process cleanup failed');
     }
   }
 

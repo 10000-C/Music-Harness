@@ -115,6 +115,23 @@ describe('AgentProcessEntrypoint', () => {
     });
   });
 
+  it('runs Agent cleanup before publishing a controlled protocol fatal', async () => {
+    const harness = makeHarness();
+
+    await expect(
+      harness.entrypoint.handle({ type: 'agent.process.invalid' }),
+    ).rejects.toThrow('Agent process protocol error');
+
+    expect(harness.shutdown).toHaveBeenCalledOnce();
+    expect(harness.events).toEqual([
+      {
+        type: 'agent.process.fatal',
+        code: 'AGENT_PROCESS_PROTOCOL_ERROR',
+        message: 'Agent process received an invalid message',
+      },
+    ]);
+  });
+
   it('returns safe structured command failures', async () => {
     const harness = makeHarness();
     harness.handle.mockRejectedValue(
