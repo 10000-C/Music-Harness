@@ -32,7 +32,7 @@ export const CandidateStage = ({
         {details === undefined
           ? candidateAuditionAvailable
             ? 'Review this variation in the arrangement before it changes Current.'
-            : 'Candidate state is ready to apply. Audition will appear when Core provides a playback bundle.'
+            : 'Candidate is safely staged. Audition will appear when Core provides a playback bundle.'
           : `${String(details.changes.length)} musical adjustments, ready to audition.`}
       </p>
     </div>

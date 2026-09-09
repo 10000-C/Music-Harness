@@ -73,8 +73,12 @@ export const CompetitionAgentPanel = ({
         <textarea
           rows={3}
           value={prompt}
+          name="composer-message"
+          autoComplete="off"
           placeholder="Describe the sound you are after…"
-          onChange={(event) => onPromptChange(event.currentTarget.value)}
+          onChange={(event) => {
+            onPromptChange(event.currentTarget.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
               event.preventDefault();
@@ -90,7 +94,7 @@ export const CompetitionAgentPanel = ({
         >
           <PaperPlaneTiltIcon size={16} weight="fill" />
         </button>
-        <small>⌘↵ to prepare a safe variation</small>
+        <small>Ctrl/⌘ ↵ to prepare a safe variation</small>
       </label>
     </aside>
   );

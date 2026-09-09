@@ -641,6 +641,9 @@ const DemoApp = () => {
 
   return (
     <div className="workstation-shell" data-fixture={fixture}>
+      <a className="skip-link" href="#workspace-main">
+        Skip to workspace
+      </a>
       <ProjectSidebar
         activeView={activeView}
         projectName={projectName}
@@ -648,7 +651,7 @@ const DemoApp = () => {
         onViewChange={setActiveView}
       />
 
-      <main className="workspace-main">
+      <main className="workspace-main" id="workspace-main">
         <ProjectHeader
           projectName={projectName}
           tempo={bpm}
@@ -722,10 +725,18 @@ const DemoApp = () => {
                     : undefined
                 }
                 previewingCandidate={previewingCandidate}
-                onReviewCurrent={reviewCurrent}
-                onReviewCandidate={reviewCandidate}
-                onAccept={() => resolveCandidate('accept')}
-                onReject={() => resolveCandidate('reject')}
+                onReviewCurrent={() => {
+                  reviewCurrent();
+                }}
+                onReviewCandidate={() => {
+                  reviewCandidate();
+                }}
+                onAccept={() => {
+                  resolveCandidate('accept');
+                }}
+                onReject={() => {
+                  resolveCandidate('reject');
+                }}
               />
             )}
             <ArrangementMap
@@ -800,6 +811,10 @@ const DemoApp = () => {
 
 const liveRequestId = (action: string): string =>
   `project-${action}-${crypto.randomUUID()}`;
+
+const unavailableCandidateAudition = (): void => {
+  // A Candidate playback bundle has not crossed the trusted Core boundary.
+};
 
 const displayName = (projectPath: string): string =>
   projectPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? projectPath;
@@ -1081,13 +1096,17 @@ const LiveProjectWorkspace = () => {
       className="workstation-shell live-project-workspace"
       aria-live="polite"
     >
+      <a className="skip-link" href="#workspace-main">
+        Skip to workspace
+      </a>
       <ProjectSidebar
         activeView={activeView}
         projectName={projectName}
         currentLabel={currentLabel}
         onViewChange={setActiveView}
+        availableViews={['studio', 'export']}
       />
-      <main className="workspace-main">
+      <main className="workspace-main" id="workspace-main">
         <ProjectHeader
           projectName={projectName}
           tempo={bpm}
@@ -1120,7 +1139,9 @@ const LiveProjectWorkspace = () => {
               type: playback?.transport === 'playing' ? 'pause' : 'play',
             })
           }
-          onExport={() => setActiveView('export')}
+          onExport={() => {
+            setActiveView('export');
+          }}
         />
         {activeView === 'export' ? (
           <ExportCurrentView
@@ -1192,8 +1213,8 @@ const LiveProjectWorkspace = () => {
                 previewingCandidate={false}
                 candidateAuditionAvailable={false}
                 candidateAcceptanceAvailable={false}
-                onReviewCurrent={() => undefined}
-                onReviewCandidate={() => undefined}
+                onReviewCurrent={unavailableCandidateAudition}
+                onReviewCandidate={unavailableCandidateAudition}
                 onAccept={() => void resolveCandidate('accept')}
                 onReject={() => void resolveCandidate('reject')}
               />

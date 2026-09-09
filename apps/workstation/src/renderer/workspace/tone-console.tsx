@@ -70,7 +70,7 @@ export const ToneConsole = ({
     <section className="tone-console" aria-labelledby="tone-console-title">
       <header className="tone-console__header">
         <span>
-          <h2 id="tone-console-title">Track sound · {track.label}</h2>
+          <h2 id="tone-console-title">Sound character · {track.label}</h2>
           <p>
             Current listening profile. Advanced shaping is intentionally kept
             out of P0.
@@ -83,14 +83,18 @@ export const ToneConsole = ({
           <button
             type="button"
             aria-pressed={muted}
-            onClick={() => onToggleMute(trackId)}
+            onClick={() => {
+              onToggleMute(trackId);
+            }}
           >
             {muted ? 'Unmute' : 'Mute'}
           </button>
           <button
             type="button"
             aria-pressed={soloed}
-            onClick={() => onToggleSolo(trackId)}
+            onClick={() => {
+              onToggleSolo(trackId);
+            }}
           >
             {soloed ? 'Unsolo' : 'Solo'}
           </button>
