@@ -110,6 +110,46 @@ export type AgentEvent =
       readonly type: 'agent.executionCancelled';
     });
 
+export type AgentProcessCommand =
+  | {
+      readonly type: 'agent.process.health';
+      readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.process.shutdown';
+      readonly requestId: string;
+    };
+
+export type AgentProcessEvent =
+  | { readonly type: 'agent.process.ready' }
+  | {
+      readonly type: 'agent.process.healthy';
+      readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.process.stopped';
+      readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.process.commandResult';
+      readonly result: AgentCommandResult;
+    }
+  | {
+      readonly type: 'agent.process.agentEvent';
+      readonly event: AgentEvent;
+    }
+  | {
+      readonly type: 'agent.process.commandFailed';
+      readonly requestId: string;
+      readonly code: string;
+      readonly message: string;
+    }
+  | {
+      readonly type: 'agent.process.fatal';
+      readonly code: string;
+      readonly message: string;
+    };
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -121,6 +161,24 @@ const isUuid = (value: unknown): value is string =>
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
+
+const isSessionSummary = (value: unknown): value is AgentSessionSummary =>
+  isRecord(value) &&
+  isUuid(value.sessionId) &&
+  isUuid(value.projectId) &&
+  isNonEmptyString(value.createdAt);
+
+const isConversationMessage = (
+  value: unknown,
+): value is AgentConversationMessage =>
+  isRecord(value) &&
+  (value.role === 'user' || value.role === 'assistant') &&
+  typeof value.text === 'string';
+
+const isConversationMessages = (
+  value: unknown,
+): value is readonly AgentConversationMessage[] =>
+  Array.isArray(value) && value.every(isConversationMessage);
 
 const isCommandBase = (
   value: Record<string, unknown>,
@@ -156,6 +214,41 @@ export const isAgentCommand = (value: unknown): value is AgentCommand => {
   }
 };
 
+export const isAgentCommandResult = (
+  value: unknown,
+): value is AgentCommandResult => {
+  if (!isRecord(value) || !isNonEmptyString(value.requestId)) {
+    return false;
+  }
+
+  switch (value.type) {
+    case 'agent.session.listed':
+      return (
+        Array.isArray(value.sessions) && value.sessions.every(isSessionSummary)
+      );
+    case 'agent.session.created':
+      return isSessionSummary(value.session);
+    case 'agent.session.opened':
+      return (
+        isSessionSummary(value.session) &&
+        isConversationMessages(value.messages)
+      );
+    case 'agent.session.active':
+      return (
+        (value.session === undefined || isSessionSummary(value.session)) &&
+        (value.messages === undefined ||
+          isConversationMessages(value.messages)) &&
+        !(value.session === undefined && value.messages !== undefined)
+      );
+    case 'agent.message.accepted':
+      return isUuid(value.executionId);
+    case 'agent.execution.cancelAccepted':
+      return true;
+    default:
+      return false;
+  }
+};
+
 export const isAgentEvent = (value: unknown): value is AgentEvent => {
   if (
     !isRecord(value) ||
@@ -173,6 +266,44 @@ export const isAgentEvent = (value: unknown): value is AgentEvent => {
     case 'agent.executionCancelled':
       return true;
     case 'agent.executionFailed':
+      return isNonEmptyString(value.code) && isNonEmptyString(value.message);
+    default:
+      return false;
+  }
+};
+
+export const isAgentProcessCommand = (
+  value: unknown,
+): value is AgentProcessCommand =>
+  isRecord(value) &&
+  (value.type === 'agent.process.health' ||
+    value.type === 'agent.process.shutdown') &&
+  isNonEmptyString(value.requestId);
+
+export const isAgentProcessEvent = (
+  value: unknown,
+): value is AgentProcessEvent => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  switch (value.type) {
+    case 'agent.process.ready':
+      return true;
+    case 'agent.process.healthy':
+    case 'agent.process.stopped':
+      return isNonEmptyString(value.requestId);
+    case 'agent.process.commandResult':
+      return isAgentCommandResult(value.result);
+    case 'agent.process.agentEvent':
+      return isAgentEvent(value.event);
+    case 'agent.process.commandFailed':
+      return (
+        isNonEmptyString(value.requestId) &&
+        isNonEmptyString(value.code) &&
+        isNonEmptyString(value.message)
+      );
+    case 'agent.process.fatal':
       return isNonEmptyString(value.code) && isNonEmptyString(value.message);
     default:
       return false;

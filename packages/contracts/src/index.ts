@@ -1,4 +1,10 @@
-export { isAgentCommand, isAgentEvent } from './agent.js';
+export {
+  isAgentCommand,
+  isAgentCommandResult,
+  isAgentEvent,
+  isAgentProcessCommand,
+  isAgentProcessEvent,
+} from './agent.js';
 export {
   CANDIDATE_ERROR_CODES,
   isCandidateCommand,
@@ -18,6 +24,8 @@ export type {
   AgentConversationMessage,
   AgentEvent,
   AgentExecutionId,
+  AgentProcessCommand,
+  AgentProcessEvent,
   AgentSessionId,
   AgentSessionSummary,
 } from './agent.js';

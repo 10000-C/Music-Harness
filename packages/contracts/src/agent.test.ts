@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { isAgentCommand, isAgentEvent } from './agent.js';
+import {
+  isAgentCommand,
+  isAgentCommandResult,
+  isAgentEvent,
+  isAgentProcessCommand,
+  isAgentProcessEvent,
+} from './agent.js';
 
 const projectId = '11111111-1111-4111-8111-111111111111';
 const sessionId = '22222222-2222-4222-8222-222222222222';
@@ -103,6 +109,69 @@ describe('Agent command contract', () => {
   });
 });
 
+describe('Agent command result contract', () => {
+  it('accepts Session lifecycle and execution acknowledgement results', () => {
+    expect(
+      isAgentCommandResult({
+        type: 'agent.session.listed',
+        requestId: 'request-list',
+        sessions: [
+          { sessionId, projectId, createdAt: '2026-09-09T00:00:00.000Z' },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      isAgentCommandResult({
+        type: 'agent.session.opened',
+        requestId: 'request-open',
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-09T00:00:00.000Z',
+        },
+        messages: [{ role: 'user', text: 'Tighten the bass line.' }],
+      }),
+    ).toBe(true);
+    expect(
+      isAgentCommandResult({
+        type: 'agent.message.accepted',
+        requestId: 'request-message',
+        executionId,
+      }),
+    ).toBe(true);
+    expect(
+      isAgentCommandResult({
+        type: 'agent.execution.cancelAccepted',
+        requestId: 'request-cancel',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects malformed Session and execution acknowledgement results', () => {
+    expect(
+      isAgentCommandResult({
+        type: 'agent.session.created',
+        requestId: 'request-create',
+        session: { sessionId: 'bad', projectId, createdAt: 'now' },
+      }),
+    ).toBe(false);
+    expect(
+      isAgentCommandResult({
+        type: 'agent.session.active',
+        requestId: 'request-active',
+        messages: [{ role: 'tool', text: 'raw result' }],
+      }),
+    ).toBe(false);
+    expect(
+      isAgentCommandResult({
+        type: 'agent.message.accepted',
+        requestId: 'request-message',
+        executionId: 'bad-execution-id',
+      }),
+    ).toBe(false);
+  });
+});
+
 describe('Agent event contract', () => {
   it('accepts text delta and terminal events', () => {
     expectValidEvent({
@@ -151,6 +220,89 @@ describe('Agent event contract', () => {
         sessionId,
         executionId: 'bad-execution-id',
         text: 'delta',
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('Agent process lifecycle contract', () => {
+  it('accepts health and process shutdown commands', () => {
+    expect(
+      isAgentProcessCommand({
+        type: 'agent.process.health',
+        requestId: 'health-1',
+      }),
+    ).toBe(true);
+    expect(
+      isAgentProcessCommand({
+        type: 'agent.process.shutdown',
+        requestId: 'close-1',
+      }),
+    ).toBe(true);
+  });
+
+  it('accepts ready, healthy, stopped, command result, agent event, and fatal events', () => {
+    expect(isAgentProcessEvent({ type: 'agent.process.ready' })).toBe(true);
+    expect(
+      isAgentProcessEvent({
+        type: 'agent.process.healthy',
+        requestId: 'health-1',
+      }),
+    ).toBe(true);
+    expect(
+      isAgentProcessEvent({
+        type: 'agent.process.stopped',
+        requestId: 'close-1',
+      }),
+    ).toBe(true);
+    expect(
+      isAgentProcessEvent({
+        type: 'agent.process.commandResult',
+        result: {
+          type: 'agent.execution.cancelAccepted',
+          requestId: 'cancel-1',
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isAgentProcessEvent({
+        type: 'agent.process.agentEvent',
+        event: {
+          type: 'agent.executionCompleted',
+          projectId,
+          sessionId,
+          executionId,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isAgentProcessEvent({
+        type: 'agent.process.fatal',
+        code: 'AGENT_PROCESS_FAILED',
+        message: 'Agent process failed',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects malformed process lifecycle messages', () => {
+    expect(
+      isAgentProcessCommand({ type: 'agent.process.health', requestId: '' }),
+    ).toBe(false);
+    expect(
+      isAgentProcessEvent({
+        type: 'agent.process.commandResult',
+        result: {
+          type: 'agent.message.accepted',
+          requestId: 'r',
+          executionId: 'bad',
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isAgentProcessEvent({
+        type: 'agent.process.fatal',
+        code: '',
+        message: 'details',
       }),
     ).toBe(false);
   });
