@@ -24,6 +24,7 @@ import {
 } from '@agent-music/contracts';
 import { z } from 'zod';
 
+import { candidateErrorPayload } from '../candidate/candidate-error.js';
 import type { MusicCoreToolName } from './music-core-tool-host.js';
 
 export interface MusicCoreToolInvoker {
@@ -67,7 +68,8 @@ const replacementSchema = z.object({
   abc: z.string(),
 });
 
-const toolResult = (value: unknown) => ({
+const toolResult = (value: unknown, isError = false) => ({
+  ...(isError ? { isError: true } : {}),
   content: [
     {
       type: 'text' as const,
@@ -86,10 +88,16 @@ const registerJsonTool = (
   server.registerTool(
     name,
     { description, inputSchema: schema },
-    async (input, extra) =>
-      toolResult(
-        await host.call(name, schema.parse(input), { signal: extra.signal }),
-      ),
+    async (input, extra) => {
+      const parsedInput = schema.parse(input);
+      try {
+        return toolResult(
+          await host.call(name, parsedInput, { signal: extra.signal }),
+        );
+      } catch (error) {
+        return toolResult(candidateErrorPayload(error), true);
+      }
+    },
   );
 };
 

@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export interface McpTextResult {
+  readonly isError?: boolean;
   readonly content: readonly {
     readonly type: 'text';
     readonly text: string;

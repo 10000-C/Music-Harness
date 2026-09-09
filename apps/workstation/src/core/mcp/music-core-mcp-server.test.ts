@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { CandidateError } from '../candidate/candidate-error.js';
 import { connectMcpTestClient } from './mcp-sdk-test-client.js';
 import type { ProjectId } from '@agent-music/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -135,6 +136,81 @@ describe('MusicCoreMcpHttpServer', () => {
 
     await expect(server.stop()).rejects.toThrow('descriptor remove failed');
     await expect(server.start()).resolves.toMatchObject({ projectId });
+  });
+
+  it('preserves stable sanitized Candidate errors in MCP Tool Results', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const server = new MusicCoreMcpHttpServer({
+      projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () =>
+          Promise.reject(
+            new CandidateError(
+              'OPERATION_NOT_ALLOWED',
+              'Operation is not allowed by the current Task Scope',
+              {
+                worktreePath: '/private/worktree',
+                stderr: 'secret git stderr',
+              },
+            ),
+          ),
+      },
+      createToken: () => 'stable-error-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const client = await connectMcpTestClient(
+      descriptor.endpoint,
+      descriptor.instanceToken,
+    );
+
+    const result = await client.callTool({
+      name: 'getTaskContext',
+      arguments: { taskId },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]?.text ?? '{}')).toEqual({
+      code: 'OPERATION_NOT_ALLOWED',
+      message: 'Operation is not allowed by the current Task Scope',
+    });
+    expect(JSON.stringify(result)).not.toContain('/private/worktree');
+    expect(JSON.stringify(result)).not.toContain('secret git stderr');
+    await client.close();
+  });
+
+  it('redacts unexpected MCP Tool failures behind the stable A3 fallback', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const server = new MusicCoreMcpHttpServer({
+      projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () => Promise.reject(new Error('/secret/path provider detail')),
+      },
+      createToken: () => 'generic-error-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const client = await connectMcpTestClient(
+      descriptor.endpoint,
+      descriptor.instanceToken,
+    );
+
+    const result = await client.callTool({
+      name: 'getTaskContext',
+      arguments: { taskId },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]?.text ?? '{}')).toEqual({
+      code: 'CANDIDATE_TRANSACTION_FAILED',
+      message: 'Candidate transaction failed',
+    });
+    expect(JSON.stringify(result)).not.toContain('/secret/path');
+    await client.close();
   });
 
   it('serves exactly seven tools over real Streamable HTTP and delegates calls', async () => {

@@ -12,7 +12,10 @@ export interface TestMcpClient {
   callTool(input: {
     readonly name: string;
     readonly arguments?: Readonly<Record<string, unknown>>;
-  }): Promise<{ readonly content: readonly TestMcpTextContent[] }>;
+  }): Promise<{
+    readonly content: readonly TestMcpTextContent[];
+    readonly isError?: boolean;
+  }>;
   close(): Promise<void>;
 }
 

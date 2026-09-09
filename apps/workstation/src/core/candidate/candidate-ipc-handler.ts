@@ -6,7 +6,7 @@ import type {
   TaskContextView,
 } from '@agent-music/contracts';
 
-import { CandidateError } from './candidate-error.js';
+import { candidateErrorPayload } from './candidate-error.js';
 import type { CandidateControlPort } from './candidate-transaction.js';
 
 export type CandidateControlHandlerPort = CandidateControlPort;
@@ -164,49 +164,15 @@ export class CandidateIpcHandler {
   }
 
   private failed(requestId: string, error: unknown): CandidateEvent {
-    const normalized =
-      error instanceof CandidateError
-        ? error
-        : new CandidateError(
-            'CANDIDATE_TRANSACTION_FAILED',
-            'Unexpected candidate failure',
-          );
-    const details = this.productErrorDetails(normalized);
+    const payload = candidateErrorPayload(
+      error,
+      'Unexpected candidate failure',
+    );
     return {
       type: 'candidate.failed',
       requestId,
       sequence: this.nextSequence(),
-      code: normalized.code,
-      message: normalized.message,
-      ...(details === undefined ? {} : { details }),
+      ...payload,
     };
-  }
-
-  private productErrorDetails(
-    error: CandidateError,
-  ): Readonly<Record<string, unknown>> | undefined {
-    if (error.code === 'VALIDATION_FAILED') {
-      const validation = error.details?.validation;
-      return validation === undefined ? undefined : { validation };
-    }
-    if (error.code === 'UNEXPECTED_CANDIDATE_CHANGE') {
-      const projectJsonChangedFromBase =
-        error.details?.projectJsonChangedFromBase;
-      const unexpectedPaths = error.details?.unexpectedPaths;
-      return {
-        ...(typeof projectJsonChangedFromBase === 'boolean'
-          ? { projectJsonChangedFromBase }
-          : {}),
-        ...(Array.isArray(unexpectedPaths) &&
-        unexpectedPaths.every((path) => typeof path === 'string')
-          ? { unexpectedPaths }
-          : {}),
-      };
-    }
-    if (error.code === 'ORPHAN_CANDIDATE_RESOURCE') {
-      const candidateId = error.details?.candidateId;
-      return typeof candidateId === 'string' ? { candidateId } : undefined;
-    }
-    return undefined;
   }
 }
