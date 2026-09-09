@@ -3,12 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
     "@agent-music/contracts": "workspace:*",
-    "@aws-sdk/client-s3": "3.1127.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@strands-agents/sdk": "1.16.0",
     "openai": "6.45.0",

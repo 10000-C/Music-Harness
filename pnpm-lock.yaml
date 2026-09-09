@@ -34,9 +34,6 @@ importers:
       '@agent-music/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@aws-sdk/client-s3':
-        specifier: 3.1127.0
-        version: 3.1127.0
       '@modelcontextprotocol/sdk':
         specifier: 1.30.0
         version: 1.30.0(zod@4.1.12)
