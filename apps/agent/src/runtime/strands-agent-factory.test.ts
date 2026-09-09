@@ -68,6 +68,8 @@ describe('StrandsAgentRuntimeFactory', () => {
     expect(first.agent.systemPrompt).toContain('submitGenerationPlan');
     expect(first.agent.systemPrompt).toContain('getTaskContext');
     expect(first.agent.systemPrompt).toContain('finishTask');
+    expect(first.agent.systemPrompt).toContain('canonical fragment examples');
+    expect(first.agent.systemPrompt).toContain('currentComposition');
     expect(second.agent.sessionId).toBe(sessionId);
     expect(first.agent.model.getConfig().modelId).toBe('model-a');
     expect(second.agent.model.getConfig().modelId).toBe('model-b');

@@ -24,7 +24,11 @@ import type {
   TrackReplacement,
 } from '../composition/index.js';
 import type { ProjectAuthorityAccess } from '../project/project-authority-access.js';
-import { CandidateError, normalizeCandidateError } from './candidate-error.js';
+import {
+  CandidateError,
+  normalizeCandidateError,
+  tagCandidateValidationPhase,
+} from './candidate-error.js';
 import type { CandidateCleanupManagerPort } from './candidate-cleanup.js';
 import type {
   CandidateRepository,
@@ -387,14 +391,26 @@ export class CandidateTransaction
         candidate.workspace,
       );
       this.assertTaskStillAuthorized(candidate, task, input.envelope);
-      const compilation = await this.dependencies.composition.compileCanonical(
-        authority.compositionSource,
-      );
-      const result = await this.dependencies.composition.replaceScopedMusic(
-        compilation,
-        task.scope,
-        input.replacements,
-      );
+      let compilation: CompositionCompilation;
+      try {
+        compilation = await this.dependencies.composition.compileCanonical(
+          authority.compositionSource,
+        );
+      } catch (error) {
+        throw tagCandidateValidationPhase(error, 'currentComposition');
+      }
+      let result: Awaited<
+        ReturnType<CandidateCompositionPort['replaceScopedMusic']>
+      >;
+      try {
+        result = await this.dependencies.composition.replaceScopedMusic(
+          compilation,
+          task.scope,
+          input.replacements,
+        );
+      } catch (error) {
+        throw tagCandidateValidationPhase(error, 'replacement');
+      }
 
       await this.guardTaskEnvelope(input.envelope);
       this.assertMutationAllowed(task, 'replaceScopedMusic');

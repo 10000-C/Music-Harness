@@ -539,3 +539,14 @@ It does **not** prove:
 - the full Agent path is reachable through real A4 orchestration into project facts — D layer.
 
 B/C/D have separate integration evidence. Do not substitute one layer for another.
+
+### A-10 — Canonical replacement guidance and validation phase
+
+Inspect `tools/list` and exercise a failing replacement.
+
+Expected:
+
+- `getScopedComposition` states that `tracks[].abc` are canonical voice-body fragments and formatting references for `replaceScopedMusic`;
+- `replaceScopedMusic` states that `replacements[].abc` must not contain document headers or `[V:...]` markers and summarizes the supported P0 fragment subset;
+- a preflight `ABC_NOT_CANONICAL` is returned as `VALIDATION_FAILED` with `details.phase = "currentComposition"`; a replacement-originated validation error uses `details.phase = "replacement"`;
+- validation phase metadata never exposes project paths, source text, or underlying exception details.

@@ -835,6 +835,10 @@ A4 / Strands
 
 #### `replaceScopedMusic`
 
+`replacements[].abc` 是单轨 **voice-body fragment**，不是完整 ABC 文档：不得携带 `X:/T:/M:/L:/Q:/K:/V:` header 或 `[V:...]` marker。Agent 应先读取 `getScopedComposition`，并把返回的 `tracks[].abc` 作为 canonical fragment 格式样例。P0 允许受支持的 Note/Rest/Chord、`|`、尾部 Tie、`[I:MIDI vol 1..127]` 以及授权范围内的局部 Tempo/Key 指令；不允许 Slur、Tuplet、Grace Note、Decoration、Broken Rhythm 或任意未支持 inline instruction。time-range replacement 必须保持精确时长；whole-project 生成最终六轨总时长必须一致。
+
+`VALIDATION_FAILED.details.phase` 在该写路径只暴露安全枚举：`currentComposition` 表示 replacement 应用前当前 Candidate authority 的 canonical preflight 已失败，此时改变 replacement 片段不能修复该错误；`replacement` 表示错误来自本次 replacement 的解析、Scope 或重编译阶段。该字段不得携带项目路径、源码或底层异常。
+
 ```ts
 replaceScopedMusic({
   taskId,

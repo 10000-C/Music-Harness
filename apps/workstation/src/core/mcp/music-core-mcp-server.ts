@@ -117,7 +117,7 @@ const registerTools = (
     server,
     host,
     'getScopedComposition',
-    'Read Canonical composition content inside the authorized Scope.',
+    'Read Canonical composition content inside the authorized Scope. Returned tracks[].abc values are canonical voice-body fragments (no document headers or [V:...] markers) and are the formatting reference for replaceScopedMusic.',
     envelopeSchema,
   );
   const generationPlanSchema = z.object({
@@ -160,7 +160,7 @@ const registerTools = (
     server,
     host,
     'replaceScopedMusic',
-    'Replace musical content only inside the authorized Scope.',
+    'Replace musical content only inside the authorized Scope. Each replacements[].abc is one track voice-body fragment only: never include X:/T:/M:/L:/Q:/K:/V: document headers or [V:...] markers. Follow getScopedComposition tracks[].abc as the canonical formatting example. Prefer explicit repeat-free bars. P0 fragment syntax supports notes/accidentals/octaves/durations, rests z, chords [CEG], bar |, end ties -, inline velocity [I:MIDI vol N] with integer N=1..127 immediately before a Note/Chord onset, and authorized inline [Q:1/4=N] or [K:...] directives. Do not use slurs, tuplets, grace notes, decorations, broken-rhythm markers, or arbitrary inline instructions. A timeRange replacement must preserve exact duration; whole-project generation must keep all six tracks equal length. If VALIDATION_FAILED reports ABC_NOT_CANONICAL with phase=currentComposition, the existing Candidate source failed canonical preflight; retrying a different replacement fragment cannot fix that condition.',
     z.object({
       envelope: envelopeSchema,
       replacements: z.array(replacementSchema).min(1),

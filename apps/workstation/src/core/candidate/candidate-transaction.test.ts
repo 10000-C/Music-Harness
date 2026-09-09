@@ -881,7 +881,45 @@ describe('CandidateTransaction A2-backed operations', () => {
     expect(cleanup.authorizeAndAttempt).toHaveBeenCalledOnce();
   });
 
-  it('maps A2 validation failures to stable Candidate validation details', async () => {
+  it('labels current Candidate canonical preflight failures separately from replacement failures', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    vi.spyOn(composition, 'compileCanonical').mockImplementation(() => {
+      throw new CompositionValidationError({
+        code: 'ABC_NOT_CANONICAL',
+        message: 'Current Candidate source is not canonical',
+      });
+    });
+    const replaceScopedMusic = vi.spyOn(composition, 'replaceScopedMusic');
+
+    await expect(
+      transaction.applyScopedMusicChange({
+        envelope: envelopeFor(task),
+        replacements: [{ trackId: 'track.drums', abc: 'C D E F |' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: {
+        phase: 'currentComposition',
+        validation: {
+          valid: false,
+          issues: [
+            {
+              code: 'ABC_NOT_CANONICAL',
+              message: 'Current Candidate source is not canonical',
+            },
+          ],
+        },
+      },
+    });
+    expect(replaceScopedMusic).not.toHaveBeenCalled();
+    expect(repository.writeComposition).not.toHaveBeenCalled();
+  });
+
+  it('maps replacement validation failures to stable Candidate validation details', async () => {
     const { transaction, composition, repository } = createHarness();
     const task = await transaction.startTask({
       projectId,
@@ -902,6 +940,7 @@ describe('CandidateTransaction A2-backed operations', () => {
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
       details: {
+        phase: 'replacement',
         validation: {
           valid: false,
           issues: [

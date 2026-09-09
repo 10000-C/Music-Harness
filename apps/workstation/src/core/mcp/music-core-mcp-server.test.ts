@@ -181,6 +181,69 @@ describe('MusicCoreMcpHttpServer', () => {
     await client.close();
   });
 
+  it('exposes only safe validation phase metadata to MCP clients', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const server = new MusicCoreMcpHttpServer({
+      projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () =>
+          Promise.reject(
+            new CandidateError(
+              'VALIDATION_FAILED',
+              'Composition validation failed',
+              {
+                phase: 'currentComposition',
+                validation: {
+                  valid: false,
+                  issues: [
+                    {
+                      code: 'ABC_NOT_CANONICAL',
+                      message: 'Current Candidate source is not canonical',
+                    },
+                  ],
+                },
+                source: '/private/project/composition.abc',
+              },
+            ),
+          ),
+      },
+      createToken: () => 'validation-phase-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const client = await connectMcpTestClient(
+      descriptor.endpoint,
+      descriptor.instanceToken,
+    );
+
+    const result = await client.callTool({
+      name: 'getTaskContext',
+      arguments: { taskId },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]?.text ?? '{}')).toEqual({
+      code: 'VALIDATION_FAILED',
+      message: 'Composition validation failed',
+      details: {
+        phase: 'currentComposition',
+        validation: {
+          valid: false,
+          issues: [
+            {
+              code: 'ABC_NOT_CANONICAL',
+              message: 'Current Candidate source is not canonical',
+            },
+          ],
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('/private/project');
+    await client.close();
+  });
+
   it('redacts unexpected MCP Tool failures behind the stable A3 fallback', async () => {
     const runtimeDirectory = await makeRuntimeDirectory();
     const server = new MusicCoreMcpHttpServer({
@@ -275,6 +338,16 @@ describe('MusicCoreMcpHttpServer', () => {
     );
     const tools = await client.listTools();
     expect(tools.tools.map((tool) => tool.name)).toEqual(P0_MCP_TOOL_NAMES);
+    expect(
+      tools.tools.find((tool) => tool.name === 'getScopedComposition')
+        ?.description,
+    ).toContain('canonical voice-body fragments');
+    const replacementTool = tools.tools.find(
+      (tool) => tool.name === 'replaceScopedMusic',
+    );
+    expect(replacementTool?.description).toContain('voice-body fragment');
+    expect(replacementTool?.description).toContain('ABC_NOT_CANONICAL');
+    expect(replacementTool?.description).toContain('currentComposition');
 
     const result = await client.callTool({
       name: 'getTaskContext',

@@ -42,6 +42,25 @@ export const normalizeCandidateError = (
   return new CandidateError('CANDIDATE_TRANSACTION_FAILED', fallbackMessage);
 };
 
+export type CandidateValidationPhase = 'currentComposition' | 'replacement';
+
+export const tagCandidateValidationPhase = (
+  error: unknown,
+  phase: CandidateValidationPhase,
+): unknown => {
+  if (!(error instanceof CompositionValidationError)) {
+    return error;
+  }
+  return new CandidateError(
+    'VALIDATION_FAILED',
+    'Composition validation failed',
+    {
+      validation: error.report,
+      phase,
+    },
+  );
+};
+
 export interface CandidateErrorPayload {
   readonly code: CandidateErrorCode;
   readonly message: string;
@@ -53,7 +72,16 @@ const safeCandidateErrorDetails = (
 ): Readonly<Record<string, unknown>> | undefined => {
   if (error.code === 'VALIDATION_FAILED') {
     const validation = error.details?.validation;
-    return validation === undefined ? undefined : { validation };
+    const phase = error.details?.phase;
+    if (validation === undefined) {
+      return undefined;
+    }
+    return {
+      validation,
+      ...(phase === 'currentComposition' || phase === 'replacement'
+        ? { phase }
+        : {}),
+    };
   }
   if (error.code === 'UNEXPECTED_CANDIDATE_CHANGE') {
     const projectJsonChangedFromBase =

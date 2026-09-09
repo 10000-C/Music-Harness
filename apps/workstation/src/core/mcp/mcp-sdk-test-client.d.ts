@@ -1,5 +1,6 @@
 export interface TestMcpTool {
   readonly name: string;
+  readonly description?: string;
   readonly inputSchema?: {
     readonly properties?: Readonly<Record<string, unknown>>;
     readonly required?: readonly string[];
