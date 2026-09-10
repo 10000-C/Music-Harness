@@ -160,7 +160,7 @@ const registerTools = (
     server,
     host,
     'replaceScopedMusic',
-    'Replace musical content only inside the authorized Scope. Each replacements[].abc is one track voice-body fragment only: never include X:/T:/M:/L:/Q:/K:/V: document headers or [V:...] markers. Follow getScopedComposition tracks[].abc as the canonical formatting example. Prefer explicit repeat-free bars. P0 fragment syntax supports notes/accidentals/octaves/durations, rests z, chords [CEG], bar |, end ties -, inline velocity [I:MIDI vol N] with integer N=1..127 immediately before a Note/Chord onset, and authorized inline [Q:1/4=N] or [K:...] directives. Do not use slurs, tuplets, grace notes, decorations, broken-rhythm markers, or arbitrary inline instructions. A timeRange replacement must preserve exact duration; whole-project generation must keep all six tracks equal length. If VALIDATION_FAILED reports ABC_NOT_CANONICAL with phase=currentComposition, the existing Candidate source failed canonical preflight; retrying a different replacement fragment cannot fix that condition.',
+    'Replace musical content only inside the authorized Scope. Each replacements[].abc is one track voice-body fragment only: never include X:/T:/M:/L:/Q:/K:/V: document headers or [V:...] markers. Follow getScopedComposition tracks[].abc as the canonical formatting example. Prefer explicit repeat-free bars. P0 fragment syntax supports notes/accidentals/octaves/durations, rests z, chords [CEG], bar |, end ties -, inline velocity [I:MIDI vol N] with integer N=1..127 immediately before a Note/Chord onset, and authorized inline [Q:1/4=N] or [K:...] directives. Do not use slurs, tuplets, grace notes, decorations, broken-rhythm markers, or arbitrary inline instructions. A timeRange replacement must preserve exact duration. A wholeProject replacement covering all six tracks may make the composition longer or shorter than its current totalTicks, but all six replacement bodies must end at the same new length. getScopedComposition.endTick reports the current length, not a maximum generation length. Do not request a timeRange beyond current totalTicks to extend song length; use wholeProject replacement instead. If VALIDATION_FAILED reports ABC_NOT_CANONICAL with phase=currentComposition, the existing Candidate source failed canonical preflight; retrying a different replacement fragment cannot fix that condition.',
     z.object({
       envelope: envelopeSchema,
       replacements: z.array(replacementSchema).min(1),
@@ -169,13 +169,25 @@ const registerTools = (
   registerJsonTool(
     server,
     host,
-    'updateGlobalMeter',
-    'Update the global meter for an authorized whole-project Task.',
-    z.object({
-      envelope: envelopeSchema,
-      numerator: z.int().positive(),
-      denominator: z.int().positive(),
-    }),
+    'updateMusicalProperties',
+    'Update initial project-level musical properties for an authorized wholeProject Task covering all six tracks. P0 supports global Meter and initial Tempo. Provide meter {numerator, denominator}, tempo {bpm}, or both. This changes the canonical M:/Q: headers and rebuilds derived outputs; it does not rewrite notes, rests, barlines, local tempo events, or song length.',
+    z
+      .object({
+        envelope: envelopeSchema,
+        meter: z
+          .object({
+            numerator: z.int().positive(),
+            denominator: z.int().positive(),
+          })
+          .optional(),
+        tempo: z.object({ bpm: z.int().positive() }).optional(),
+      })
+      .refine(
+        (value) => value.meter !== undefined || value.tempo !== undefined,
+        {
+          message: 'Provide meter, tempo, or both',
+        },
+      ),
   );
   registerJsonTool(
     server,

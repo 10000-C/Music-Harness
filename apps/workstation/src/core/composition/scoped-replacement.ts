@@ -237,25 +237,27 @@ export const replaceScopedMusic = (
     );
   }
 
-  for (const replacement of replacements) {
-    if (
-      eventFingerprint(
-        compilation,
-        replacement.trackId,
-        query.startTick,
-        query.endTick,
-      ) !==
-      eventFingerprint(
-        next,
-        replacement.trackId,
-        query.startTick,
-        query.endTick,
-      )
-    ) {
-      return failCompositionValidation(
-        'SCOPE_OUTSIDE_CHANGED',
-        `Replacement changed events outside Scope in ${replacement.trackId}`,
-      );
+  if (scope.type === 'timeRange') {
+    for (const replacement of replacements) {
+      if (
+        eventFingerprint(
+          compilation,
+          replacement.trackId,
+          query.startTick,
+          query.endTick,
+        ) !==
+        eventFingerprint(
+          next,
+          replacement.trackId,
+          query.startTick,
+          query.endTick,
+        )
+      ) {
+        return failCompositionValidation(
+          'SCOPE_OUTSIDE_CHANGED',
+          `Replacement changed events outside Scope in ${replacement.trackId}`,
+        );
+      }
     }
   }
 

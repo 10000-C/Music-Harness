@@ -42,7 +42,7 @@ const taskContext = {
   scopeRevision: 0,
   state: 'editing' as const,
   candidateState: 'active' as const,
-  allowedOperations: ['replaceScopedMusic', 'updateGlobalMeter'] as const,
+  allowedOperations: ['replaceScopedMusic', 'updateMusicalProperties'] as const,
   trackIds: scope.trackIds,
   createdAt: '2026-09-09T00:00:00.000Z',
 };
@@ -65,7 +65,7 @@ const makeHarness = () => {
     requestedScope: scope,
   });
   const applyScopedMusicChange = vi.fn().mockResolvedValue({});
-  const updateGlobalMeter = vi.fn().mockResolvedValue({});
+  const updateMusicalProperties = vi.fn().mockResolvedValue({});
   const finishTask = vi.fn().mockResolvedValue({
     candidate: {
       candidateId,
@@ -83,7 +83,7 @@ const makeHarness = () => {
     getScopedComposition,
     requestScopeExtension,
     applyScopedMusicChange,
-    updateGlobalMeter,
+    updateMusicalProperties,
     finishTask,
   };
   const control: CandidateControlPort = {
@@ -107,7 +107,7 @@ const makeHarness = () => {
       getScopedComposition,
       requestScopeExtension,
       applyScopedMusicChange,
-      updateGlobalMeter,
+      updateMusicalProperties,
       finishTask,
       startTask,
       confirmationRequest,
@@ -209,10 +209,10 @@ describe('MusicCoreToolHost', () => {
       requestedScope: scope,
     });
     await host.call('replaceScopedMusic', { envelope, replacements });
-    await host.call('updateGlobalMeter', {
+    await host.call('updateMusicalProperties', {
       envelope,
-      numerator: 3,
-      denominator: 4,
+      meter: { numerator: 3, denominator: 4 },
+      tempo: { bpm: 100 },
     });
     await host.call('finishTask', envelope);
 
@@ -226,10 +226,10 @@ describe('MusicCoreToolHost', () => {
       envelope,
       replacements,
     });
-    expect(mocks.updateGlobalMeter).toHaveBeenCalledWith({
+    expect(mocks.updateMusicalProperties).toHaveBeenCalledWith({
       envelope,
-      numerator: 3,
-      denominator: 4,
+      meter: { numerator: 3, denominator: 4 },
+      tempo: { bpm: 100 },
     });
     expect(mocks.finishTask).toHaveBeenCalledWith(envelope);
   });

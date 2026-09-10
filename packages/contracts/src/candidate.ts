@@ -15,7 +15,8 @@ export type ScopeExtensionRequestId = string & {
 
 export type CandidateState = 'active' | 'ready' | 'accepting' | 'stale';
 export type TaskState = 'editing' | 'validating';
-export type CandidateOperation = 'replaceScopedMusic' | 'updateGlobalMeter';
+export type CandidateOperation =
+  'replaceScopedMusic' | 'updateMusicalProperties';
 
 export interface TaskExecutionEnvelope {
   readonly taskId: TaskId;

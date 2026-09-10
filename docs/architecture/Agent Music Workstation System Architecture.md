@@ -67,7 +67,7 @@
 | ADR-032 | openDAW UI 策略 | openDAW Studio UI 不进入 P0/P2 默认架构；只有产品范围转为完整 DAW 时才单独评估 fork 或局部移植。 |
 | ADR-033 | RuntimeSnapshot 归属 | A2 不生成、不持有 RuntimeSnapshot；B3 在 Renderer 内根据 A2 的 openDAW 无关 `PlaybackCompilation` 构建并缓存 Snapshot。`ScopeMappingCache` 始终留在 Core，是 A2 的独立输出，不进入 RuntimeSnapshot 或 Renderer IPC。 |
 | ADR-034 | P0 Velocity | Canonical ABC 使用 `[I:MIDI vol N]`，`N` 为整数 `1..127`；`0` 保留为 Standard MIDI Note Off，不属于 Note onset Velocity。指令绑定恰好一个后续 Note/Chord onset，并与事件进入同一个 Scope span；Chord 内共享 Velocity，Tie continuation 禁止重新设置。缺省 Velocity 为 `100`。 |
-| ADR-035 | Global Meter 修改 | A2 暴露专用 `updateGlobalMeter` 操作，只接受覆盖全部六轨的 `wholeProject` Scope。该操作只修改唯一 `M:` 头这一底层工程事实，并验证曲长、Note/Rest、Velocity、Tempo 和 Key 不变后重建全部派生输出；不自动重排小节或改编音乐。Agent 根据用户意图继续通过音乐修改工具重排 wholeProject，最终由 `finishTask` 验证 Candidate 与新 Global Meter 一致。 |
+| ADR-035 | Musical Properties 修改 | A2 暴露 `updateMusicalProperties`，只接受覆盖全部六轨的 `wholeProject` Scope。P0 支持修改唯一 `M:` 头与初始 `Q:` 头；更新不得改变曲长、Note/Rest、Velocity、Key 或局部 Tempo Event，并重建全部派生输出。Meter 修改不自动重排小节，Tempo 修改不重写局部 Tempo Map。 |
 | ADR-036 | A3 Task 边界 | 正式 Task 只在用户确认后由 A3 创建；A3 `TaskContext` 只保存事务与授权状态。planning、awaiting_confirmation、repair policy、用户意图和模型配置属于 A4。 |
 | ADR-037 | Candidate 基线与 worktree | Candidate 创建时冻结 `baseRevision=main HEAD`，一个 Candidate 对应一个 `candidate/<candidateId>` branch 与 `.agent-music/worktrees/<candidateId>/` linked worktree；多个 Task 复用同一 worktree。 |
 | ADR-038 | Task 调用一致性 | `taskId`/`candidateId` 全局唯一；除 `getTaskContext({taskId})` bootstrap 外，Task-bound MCP 调用统一携带 project/candidate/baseRevision/expectedScopeRevision execution envelope，并由 A3 逐项核对。 |
@@ -91,7 +91,7 @@
 | ADR-056 | 单 Core/MCP Active Project | P0 正式桌面产品一个窗口使用一个长期存活的 Music Core Utility Process 和一个 MCP Server；Core 同时只持有 `0..1` Active Project。Project 切换只替换 Core 的 Active Project，不启动第二个 Project Core/MCP，也不由 Agent 选择 Endpoint。 |
 | ADR-057 | Project 切换 barrier | B2/B4 负责切换提示，B1 负责生命周期编排。确认切换后必须先让 A4 Cancel 当前 execution；已有 Active Task 时等待 A3 rollback 完成，再停止/释放旧 Project 的播放状态并执行 Core close/open。Cancel/rollback/close 任一步失败都禁止切换；Core/MCP 连接保持存活。 |
 
-> **职责边界：Global Meter 修改与音乐重排分离。** `updateGlobalMeter` 允许 Task 编辑过程中暂时保留旧 ABC barline；A2 不自动拆分 Note/Rest、不自动添加 Tie，也不根据新拍号改编音乐。Agent 负责后续 wholeProject 重排；最终 Candidate 的 Meter/小节一致性属于 `finishTask` 验证边界。
+> **职责边界：Musical Properties 与音乐内容修改分离。** `updateMusicalProperties` 修改初始 Meter / Tempo；A2 不自动拆分 Note/Rest、不自动添加 Tie、不自动按新拍号重排，也不改写局部 Tempo Event。Meter 变化后的音乐重排仍由 Agent 通过 wholeProject `replaceScopedMusic` 完成。
 
 ---
 
@@ -870,19 +870,21 @@ validate MCP session and full execution envelope
 → atomic replace Candidate files
 ```
 
-局部 Task 的替换片段必须保持对应 Scope 的 Tick 长度。只有 `wholeProject` 可以改变整曲长度；全局拍号必须通过下述专用操作修改。
+局部 Task 的替换片段必须保持对应 Scope 的 Tick 长度。只有 `wholeProject` 可以改变整曲长度；`getScopedComposition.endTick` 是当前长度而非上限。初始 Meter / Tempo 通过下述工程级属性操作修改。
 
-#### `updateGlobalMeter`
+#### `updateMusicalProperties`
 
 ```ts
-updateGlobalMeter({
-  taskId,
-  projectId,
-  candidateId,
-  baseRevision,
-  expectedScopeRevision,
-  numerator,
-  denominator
+updateMusicalProperties({
+  envelope: {
+    taskId,
+    projectId,
+    candidateId,
+    baseRevision,
+    expectedScopeRevision
+  },
+  meter?: { numerator, denominator },
+  tempo?: { bpm }
 })
 ```
 
@@ -893,21 +895,21 @@ validate MCP session and full execution envelope
 → reject if Candidate mutation is busy
 → validate Candidate baseline, Task state, scopeRevision and Pending barrier
 → require wholeProject and all six trackIds
-→ validate the requested Global Meter value
-→ update the only M: header on a temporary copy
-→ compile and verify all non-Meter musical facts are unchanged
+→ require at least one of meter / tempo
+→ validate requested Meter and/or initial Tempo
+→ update M: and/or initial Q: header on a temporary copy
+→ compile and verify song length, Note/Rest, Velocity, Key and local Tempo events are unchanged
 → rebuild Mapping, MIDI and TimelineViewModel
-→ atomic replace Candidate files
-→ leave musical rearrangement to subsequent Agent music edits in the same Task
+→ atomic replace Candidate composition
 ```
 
-该工具不接受局部时间范围，不通过 `replaceScopedMusic` 的轨道 fragment 间接修改全局拍号。它只提供 Global Meter 的底层写能力；若用户要求“把 4/4 的作品改成 3/4”等音乐性变化，Agent 必须在同一 `wholeProject` Task 中继续使用音乐修改工具重排内容。
+该工具只修改工程级初始属性，不改变曲长。局部 Tempo Event 仍由 `replaceScopedMusic` 中的 `[Q:1/4=N]` 表达。若 Global Meter 改变，Agent 必须在同一 `wholeProject` Task 中继续重排音乐内容，使最终 Candidate 通过 Meter/barline 校验。
 
 ### 12.4 完成
 
 #### `finishTask`
 
-调用 `finishTask` 时必须携带完整 `TaskExecutionEnvelope`。A2 向 A3 提供只读最终态校验 `CompositionPipeline.validateFinalMeterConsistency(source): ValidationReport`。该方法复用 Canonical ABC parser 与精确 PPQ 时值计算，只检查 barline 是否符合唯一 Global Meter；它不修改 ABC，也不进入普通 `compileCanonical`/`updateGlobalMeter` 的编辑中间态校验。P0 要求从 Tick 0 开始的每个非末尾小节恰好等于当前 Meter 的小节长度，允许最后一个小节不足整小节；不支持弱起导致的全局小节网格偏移。
+调用 `finishTask` 时必须携带完整 `TaskExecutionEnvelope`。A2 向 A3 提供只读最终态校验 `CompositionPipeline.validateFinalMeterConsistency(source): ValidationReport`。该方法复用 Canonical ABC parser 与精确 PPQ 时值计算，只检查 barline 是否符合唯一 Global Meter；它不修改 ABC，也不进入普通 `compileCanonical`/`updateMusicalProperties` 的编辑中间态校验。P0 要求从 Tick 0 开始的每个非末尾小节恰好等于当前 Meter 的小节长度，允许最后一个小节不足整小节；不支持弱起导致的全局小节网格偏移。
 
 执行完整验证：
 
@@ -1020,7 +1022,7 @@ Current dirty 时返回 `CURRENT_NOT_CLEAN` 并保留 Candidate；`main HEAD != 
 
 ### 13.4 Candidate mutation concurrency
 
-A3 不为普通 Candidate mutation 建队列。`replaceScopedMusic`、`updateGlobalMeter`、`finishTask` 和其他普通 mutation 通过单写 lease 互斥：已有 mutation 时新调用立即返回 `TASK_BUSY`。
+A3 不为普通 Candidate mutation 建队列。`replaceScopedMusic`、`updateMusicalProperties`、`finishTask` 和其他普通 mutation 通过单写 lease 互斥：已有 mutation 时新调用立即返回 `TASK_BUSY`。
 
 Cancel / Reject 不受 `TASK_BUSY` 限制：
 
@@ -1348,7 +1350,7 @@ A4 Agent Service
 | 方向 | 命令/事件 |
 |---|---|
 | Renderer → Core | createScope、startTask、cancelTask、approveScopeExtension、rejectScopeExtension、acceptCandidate、rejectCandidate、loadPreview、exportCurrent |
-| Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、replaceScopedMusic、updateGlobalMeter、finishTask |
+| Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、replaceScopedMusic、updateMusicalProperties、finishTask |
 | Core → Renderer | candidateChanged、taskChanged、scopeExtensionRequested、validationResult、currentCommitted、candidateInvalidated、error |
 | Renderer ↔ Agent Service（经 Main / Preload） | Project Session 的 list/create/open/getActive；`sendMessage` / `cancelCurrentExecution`；普通局部修改的 `sendMessage` 可携带最小 `{taskId, candidateId}` bootstrap；assistant text delta；execution completed / failed / cancelled。Scope/baseRevision/scopeRevision、原始 MCP Tool Result、Strands Storage 与 A4 内部 Workflow state 不进入该 Contract |
 | Main ↔ Agent Service lifecycle | typed `ready` / `health` / `shutdown` / `fatal`；Agent command/result/event 均经共享 exact-key runtime validator；受控 fatal 先执行 A4 cleanup；rollback failure 作为 execution failure 并升级为 process fatal，不伪装为 clean shutdown |

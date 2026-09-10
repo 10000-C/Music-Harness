@@ -56,10 +56,10 @@ describe('CompositionPipeline facade', () => {
       pipeline.createInitialComposition(),
     );
 
-    const result = pipeline.updateGlobalMeter(
+    const result = pipeline.updateMusicalProperties(
       compilation,
       { type: 'wholeProject', trackIds: TRACK_IDS },
-      { numerator: 7, denominator: 8 },
+      { meter: { numerator: 7, denominator: 8 } },
     );
 
     expect(result.compilation.meterMap).toEqual([

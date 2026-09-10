@@ -44,7 +44,7 @@
 ### 1.4 V1.9 相对 V1.7 的主要调整
 
 - 冻结 P0 Velocity：支持每事件 `1..127`；`0` 在 Standard MIDI 中表示 Note Off，因此不得作为 Note onset Velocity。一个 Chord 内所有 pitch 共享 Velocity，Tie chain 只在起音处设置。
-- 补齐 Agent 修改全局拍号的正式能力：仅允许覆盖全部六轨的 `wholeProject` Task，并使用专用 `updateGlobalMeter` 工具。
+- 补齐 Agent 修改工程级 Musical Properties 的正式能力：仅允许覆盖全部六轨的 `wholeProject` Task，并使用 `updateMusicalProperties` 修改初始 Global Meter 与初始 Tempo。
 - P0 MCP Tool 由 6 个增为 7 个；轨道片段替换与全局拍号修改保持不同的授权和写入接口。
 
 ### 1.5 V1.6 的工作区调整
@@ -197,7 +197,7 @@ P0 固定六条角色轨道：
 
 - 不设置固定曲长枚举；
 - 支持 ABC 工具链能够稳定处理的任意正数小节长度；
-- `wholeProject` 修改可以延长或缩短整曲；
+- `wholeProject` 修改可以延长或缩短整曲；`getScopedComposition.endTick` 只表示当前曲长，不是可生成曲长上限；
 - 局部连续范围修改不得静默改变 Scope 外时间位置。
 
 ### 4.4 拍号、Tempo 与调性
@@ -207,7 +207,7 @@ P0 固定六条角色轨道：
 - P0 支持一个全局拍号；
 - 支持 ABC 工具链稳定支持的全局拍号；
 - Agent 可以在 `wholeProject` Task 中修改全局拍号；
-- `updateGlobalMeter` 只修改工程唯一的 Global Meter，不承担把原音乐自动改编为新拍号；
+- `updateMusicalProperties` 可修改工程唯一的 Global Meter 与初始 Tempo；修改这些工程级属性不自动重排 Note/Rest、小节或局部 Tempo Event；
 - Agent 在修改 Global Meter 后，根据用户意图通过音乐修改工具重排 `wholeProject` 内的 Note/Rest 等内容，使最终 Candidate 符合新拍号；
 - P0 不支持曲中局部变拍。
 
@@ -215,7 +215,8 @@ P0 固定六条角色轨道：
 
 - P0 支持 Tempo Map；
 - 支持曲中局部变速；
-- Agent 可以新增、删除或修改 Scope 内的 Tempo Event；
+- Agent 可以通过 `replaceScopedMusic` 新增、删除或修改 Scope 内的局部 Tempo Event；
+- Agent 可以通过 `updateMusicalProperties` 修改 Tick 0 的初始 Tempo；
 - 不设置人为 BPM 上限；
 - 只拒绝零、负数、非有限数或底层工具链明确无法处理的值；其中 Standard MIDI Set Tempo 使用 24-bit 微秒/四分音符字段，无法表示的 BPM 必须在生成 Candidate 时明确拒绝，不得静默回绕；
 - Tempo 变化不改变 Tick、小节和拍位置，只改变实际播放时间。
@@ -355,7 +356,7 @@ Agent 调用 requestScopeExtension
 约束：
 
 - Agent 只能提出扩展请求，`TaskContext.scope` 与 `scopeRevision` 只能由 A3 修改；
-- Pending Scope Extension 期间禁止 `replaceScopedMusic`、`updateGlobalMeter`、`finishTask` 和再次请求扩展；
+- Pending Scope Extension 期间禁止 `replaceScopedMusic`、`updateMusicalProperties`、`finishTask` 和再次请求扩展；
 - 每次扩展请求使用唯一 `requestId`，旧确认事件不得批准新的请求；
 - 所有 Task-bound MCP 调用携带 `projectId`、`candidateId`、`baseRevision` 和 `expectedScopeRevision`，A3 必须与当前权威状态逐项核对；
 - `taskId` 和 `candidateId` 在整个系统内全局唯一；
@@ -561,7 +562,7 @@ P0 向 Agent 暴露 7 个高层工具：
 3. `submitGenerationPlan`：首次生成前提交工程计划并请求用户确认；Agent-facing 输入只包含计划摘要和 Scope，Project 由 MCP Host 绑定当前 Active Project；P0 中该调用等待用户决策后返回，确认后才创建正式 Task；
 4. `requestScopeExtension`：申请扩大当前 Task Scope；
 5. `replaceScopedMusic`：提交 Scope 内 ABC 片段，由 Music Core 定位并原子替换；
-6. `updateGlobalMeter`：在覆盖全部六轨的 `wholeProject` Task 中修改唯一 Global Meter；该工具是底层工程事实修改能力，不自动重排音乐内容；
+6. `updateMusicalProperties`：在覆盖全部六轨的 `wholeProject` Task 中修改工程级初始 Meter / Tempo；该工具不改变曲长、不自动重排音乐内容或局部 Tempo Event；
 7. `finishTask`：执行完整验证，成功后创建一个 Task checkpoint。
 
 Agent 不获得以下工具：

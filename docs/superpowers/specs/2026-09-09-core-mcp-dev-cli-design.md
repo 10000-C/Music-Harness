@@ -15,7 +15,7 @@ The seven P0 MCP tools remain exactly:
 3. `submitGenerationPlan`
 4. `requestScopeExtension`
 5. `replaceScopedMusic`
-6. `updateGlobalMeter`
+6. `updateMusicalProperties`
 7. `finishTask`
 
 ## Invocation

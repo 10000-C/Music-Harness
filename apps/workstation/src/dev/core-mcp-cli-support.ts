@@ -213,10 +213,10 @@ export class InteractiveCandidateAgentPort implements CandidateAgentPort {
     return this.agent.applyScopedMusicChange(...args);
   }
 
-  public updateGlobalMeter(
-    ...args: Parameters<CandidateAgentPort['updateGlobalMeter']>
-  ): ReturnType<CandidateAgentPort['updateGlobalMeter']> {
-    return this.agent.updateGlobalMeter(...args);
+  public updateMusicalProperties(
+    ...args: Parameters<CandidateAgentPort['updateMusicalProperties']>
+  ): ReturnType<CandidateAgentPort['updateMusicalProperties']> {
+    return this.agent.updateMusicalProperties(...args);
   }
 
   public finishTask(

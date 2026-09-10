@@ -189,7 +189,7 @@ describe('CandidateTransaction lifecycle', () => {
     });
     expect(task.allowedOperations).toEqual([
       'replaceScopedMusic',
-      'updateGlobalMeter',
+      'updateMusicalProperties',
     ]);
     expect(task).not.toHaveProperty('userIntent');
     expect(task).not.toHaveProperty('modelConfigurationId');
@@ -327,7 +327,7 @@ describe('CandidateTransaction authorization', () => {
     });
     expect(wholeTask.allowedOperations).toEqual([
       'replaceScopedMusic',
-      'updateGlobalMeter',
+      'updateMusicalProperties',
     ]);
   });
 
@@ -621,19 +621,18 @@ describe('CandidateTransaction A2-backed operations', () => {
     );
   });
 
-  it('requires derived updateGlobalMeter permission before calling A2', async () => {
+  it('requires derived updateMusicalProperties permission before calling A2', async () => {
     const { transaction, composition, repository } = createHarness();
     const task = await transaction.startTask({
       projectId,
       scope: { type: 'wholeProject', trackIds: ['track.drums'] },
     });
-    const update = vi.spyOn(composition, 'updateGlobalMeter');
+    const update = vi.spyOn(composition, 'updateMusicalProperties');
 
     await expect(
-      transaction.updateGlobalMeter({
+      transaction.updateMusicalProperties({
         envelope: envelopeFor(task),
-        numerator: 3,
-        denominator: 4,
+        meter: { numerator: 3, denominator: 4 },
       }),
     ).rejects.toMatchObject({ code: 'OPERATION_NOT_ALLOWED' });
     expect(update).not.toHaveBeenCalled();
@@ -654,20 +653,20 @@ describe('CandidateTransaction A2-backed operations', () => {
       canonicalAbc: `${compilation.canonicalAbc}\n% meter result\n`,
     };
     vi.spyOn(composition, 'compileCanonical').mockReturnValue(compilation);
-    const update = vi.spyOn(composition, 'updateGlobalMeter').mockReturnValue({
-      compilation: nextCompilation,
-    });
+    const update = vi
+      .spyOn(composition, 'updateMusicalProperties')
+      .mockReturnValue({
+        compilation: nextCompilation,
+      });
 
     await expect(
-      transaction.updateGlobalMeter({
+      transaction.updateMusicalProperties({
         envelope: envelopeFor(task),
-        numerator: 3,
-        denominator: 4,
+        meter: { numerator: 3, denominator: 4 },
       }),
     ).resolves.toBe(nextCompilation);
     expect(update).toHaveBeenCalledWith(compilation, wholeProjectScope, {
-      numerator: 3,
-      denominator: 4,
+      meter: { numerator: 3, denominator: 4 },
     });
     expect(repository.writeComposition).toHaveBeenCalledWith(
       expect.objectContaining({ candidateId }),

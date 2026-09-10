@@ -16,11 +16,11 @@
 | A-02 submitGenerationPlan pending/approve | PASS | No Candidate existed before confirmation; approval created the expected Candidate/Task bootstrap. |
 | A-03 getTaskContext | PASS | Returned A3-authoritative project/task/candidate/baseRevision/Scope/scopeRevision. |
 | A-04 getScopedComposition | PASS | Narrow drum Scope returned one authorized track view. |
-| A-05 unauthorized meter | PASS after fix | Narrow Scope rejected `updateGlobalMeter` with stable `OPERATION_NOT_ALLOWED`. |
+| A-05 unauthorized meter | PASS after fix | Narrow Scope rejected `updateMusicalProperties` with stable `OPERATION_NOT_ALLOWED`. |
 | A-06 replaceScopedMusic | PASS | Candidate `composition.abc` changed to drum `C4`; Current file and `main` stayed unchanged. |
 | A-07 requestScopeExtension | PASS | Pending request created and ordinary Candidate mutation was blocked while pending. |
 | A-08 revision invalidation | PASS | Approval moved Scope revision 0 → 1; old revision-0 envelope was rejected as stale. |
-| A-09 updateGlobalMeter | PASS | Candidate file changed to `M:3/4`; Current/main stayed unchanged. |
+| A-09 updateMusicalProperties | PASS | Candidate file changed to `M:3/4`; Current/main stayed unchanged. |
 | A-10 all-track rebar | PASS | Candidate contained drum `C3` and `z3` for the other five tracks under `M:3/4`. |
 | A-11 finishTask | PASS | Candidate became Ready, a new Candidate checkpoint was created, Task authority ended, and `main` remained at the original Current revision. |
 

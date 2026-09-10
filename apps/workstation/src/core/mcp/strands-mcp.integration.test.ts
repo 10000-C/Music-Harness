@@ -38,7 +38,7 @@ const taskContext: TaskContextView = {
   scopeRevision: 2,
   state: 'editing',
   candidateState: 'active',
-  allowedOperations: ['replaceScopedMusic', 'updateGlobalMeter'],
+  allowedOperations: ['replaceScopedMusic', 'updateMusicalProperties'],
   trackIds: [
     'track.drums',
     'track.bass',

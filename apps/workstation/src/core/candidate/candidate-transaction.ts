@@ -20,6 +20,7 @@ import {
 import type {
   CompositionCompilation,
   CompositionPipeline,
+  MusicalPropertiesUpdate,
   ScopedComposition,
   TrackReplacement,
 } from '../composition/index.js';
@@ -48,10 +49,10 @@ export interface CandidateAgentPort {
     readonly envelope: TaskExecutionEnvelope;
     readonly replacements: readonly TrackReplacement[];
   }): Promise<CompositionCompilation>;
-  updateGlobalMeter(input: {
+  updateMusicalProperties(input: {
     readonly envelope: TaskExecutionEnvelope;
-    readonly numerator: number;
-    readonly denominator: number;
+    readonly meter?: MusicalPropertiesUpdate['meter'];
+    readonly tempo?: MusicalPropertiesUpdate['tempo'];
   }): Promise<CompositionCompilation>;
   finishTask(envelope: TaskExecutionEnvelope): Promise<FinishTaskResult>;
 }
@@ -100,9 +101,9 @@ interface CandidateCompositionPort {
   replaceScopedMusic(
     ...args: Parameters<CompositionPipeline['replaceScopedMusic']>
   ): Awaitable<ReturnType<CompositionPipeline['replaceScopedMusic']>>;
-  updateGlobalMeter(
-    ...args: Parameters<CompositionPipeline['updateGlobalMeter']>
-  ): Awaitable<ReturnType<CompositionPipeline['updateGlobalMeter']>>;
+  updateMusicalProperties(
+    ...args: Parameters<CompositionPipeline['updateMusicalProperties']>
+  ): Awaitable<ReturnType<CompositionPipeline['updateMusicalProperties']>>;
   validateFinalMeterConsistency(
     ...args: Parameters<CompositionPipeline['validateFinalMeterConsistency']>
   ): Awaitable<
@@ -425,14 +426,14 @@ export class CandidateTransaction
     });
   }
 
-  public async updateGlobalMeter(input: {
+  public async updateMusicalProperties(input: {
     readonly envelope: TaskExecutionEnvelope;
-    readonly numerator: number;
-    readonly denominator: number;
+    readonly meter?: MusicalPropertiesUpdate['meter'];
+    readonly tempo?: MusicalPropertiesUpdate['tempo'];
   }): Promise<CompositionCompilation> {
     return this.runOrdinaryMutation(input.envelope.taskId, async (lease) => {
       const { candidate, task } = await this.guardTaskEnvelope(input.envelope);
-      this.assertMutationAllowed(task, 'updateGlobalMeter');
+      this.assertMutationAllowed(task, 'updateMusicalProperties');
       const authority = await this.dependencies.repository.readAuthority(
         candidate.workspace,
       );
@@ -440,17 +441,18 @@ export class CandidateTransaction
       const compilation = await this.dependencies.composition.compileCanonical(
         authority.compositionSource,
       );
-      const result = await this.dependencies.composition.updateGlobalMeter(
-        compilation,
-        task.scope,
-        {
-          numerator: input.numerator,
-          denominator: input.denominator,
-        },
-      );
+      const result =
+        await this.dependencies.composition.updateMusicalProperties(
+          compilation,
+          task.scope,
+          {
+            ...(input.meter === undefined ? {} : { meter: input.meter }),
+            ...(input.tempo === undefined ? {} : { tempo: input.tempo }),
+          },
+        );
 
       await this.guardTaskEnvelope(input.envelope);
-      this.assertMutationAllowed(task, 'updateGlobalMeter');
+      this.assertMutationAllowed(task, 'updateMusicalProperties');
       this.assertTaskStillAuthorized(candidate, task, input.envelope);
       lease.writeEntered = true;
       await this.dependencies.repository.writeComposition(
@@ -931,8 +933,8 @@ export class CandidateTransaction
     scope: TaskScope,
   ): readonly CandidateOperation[] {
     const operations: CandidateOperation[] = ['replaceScopedMusic'];
-    if (hasAllTracks(scope)) {
-      operations.push('updateGlobalMeter');
+    if (scope.type === 'wholeProject' && hasAllTracks(scope)) {
+      operations.push('updateMusicalProperties');
     }
     return operations;
   }

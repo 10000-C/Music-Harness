@@ -97,7 +97,7 @@ getScopedComposition
 submitGenerationPlan
 requestScopeExtension
 replaceScopedMusic
-updateGlobalMeter
+updateMusicalProperties
 finishTask
 ```
 
@@ -171,7 +171,7 @@ scopeRevision == 0
 state == editing
 candidateState == active
 allowedOperations contains replaceScopedMusic
-allowedOperations does not contain updateGlobalMeter
+allowedOperations does not contain updateMusicalProperties
 ```
 
 Use this result, not Renderer/UI copies, as the authoritative source for subsequent execution envelopes.
@@ -199,13 +199,13 @@ Expected:
 - returned scoped composition contains only the authorized drum track view for this Scope;
 - no project file/Git fact changes.
 
-### A-05 — Unauthorized `updateGlobalMeter` fails with a stable A3 error
+### A-05 — Unauthorized `updateMusicalProperties` fails with a stable A3 error
 
 Using the same revision-0 envelope, call:
 
 ```json
 {
-  "name": "updateGlobalMeter",
+  "name": "updateMusicalProperties",
   "arguments": {
     "envelope": {
       "taskId": "<taskId>",
@@ -214,8 +214,8 @@ Using the same revision-0 envelope, call:
       "baseRevision": "<baseRevision>",
       "expectedScopeRevision": 0
     },
-    "numerator": 3,
-    "denominator": 4
+    "meter": { "numerator": 3, "denominator": 4 },
+    "tempo": { "bpm": 100 }
   }
 }
 ```
@@ -330,7 +330,7 @@ Expected authoritative context:
 scope == wholeProject(all six tracks)
 scopeRevision == 1
 allowedOperations contains replaceScopedMusic
-allowedOperations contains updateGlobalMeter
+allowedOperations contains updateMusicalProperties
 ```
 
 Then call any Task-bound MCP read using the old revision-0 envelope.
@@ -343,13 +343,13 @@ Expected:
 
 All following calls use `expectedScopeRevision: 1`.
 
-### A-09 — `updateGlobalMeter` now mutates the Candidate global meter
+### A-09 — `updateMusicalProperties` mutates Candidate initial Meter/Tempo
 
 Call:
 
 ```json
 {
-  "name": "updateGlobalMeter",
+  "name": "updateMusicalProperties",
   "arguments": {
     "envelope": {
       "taskId": "<taskId>",
@@ -358,8 +358,8 @@ Call:
       "baseRevision": "<baseRevision>",
       "expectedScopeRevision": 1
     },
-    "numerator": 3,
-    "denominator": 4
+    "meter": { "numerator": 3, "denominator": 4 },
+    "tempo": { "bpm": 100 }
   }
 }
 ```
@@ -367,7 +367,7 @@ Call:
 Authoritative fact checks:
 
 ```text
-Candidate composition.abc contains M:3/4
+Candidate composition.abc contains M:3/4 and Q:1/4=100
 Current composition.abc == initialCurrentAbc
 git rev-parse main == initialMainRevision
 ```

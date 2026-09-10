@@ -149,7 +149,7 @@ A 负责：
 - Canonical ABC 解析、Repeat 展开、规范化和序列化；
 - 固定六 Voice、PPQ=960、P0 语法白名单和每事件 Velocity `1..127`；Velocity `0` 必须在进入领域事件前拒绝；
 - Scope Mapping、`scopeRevision`、跨边界事件保护；
-- `replaceScopedMusic` 与 `updateGlobalMeter` 原子事务；
+- `replaceScopedMusic` 与 `updateMusicalProperties` 原子事务；
 - ABC → Standard MIDI Document；
 - 单一 MCP Server、Instance Token、Core-process-scoped runtime descriptor；MCP 与 Core 同生命周期，Project close/open 不重启；
 - 七个 P0 MCP Tool 的 Schema、授权和业务语义；
@@ -359,7 +359,7 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 | 编号 | 模块 | 主要范围 | 直接依赖 | 稳定输出 |
 |---|---|---|---|---|
 | **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、关闭、显式恢复、另存为；一个长期 Core 内同时 `0..1` Active Project；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；可在同一 Core 内安全 close/open 不同 Project；同项目单写实例；稳定 Project Command/Event |
-| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Meter 修改与最终 Meter/barline 一致性校验、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateGlobalMeter`、`validateFinalMeterConsistency`、PlaybackCompilation、TimelineViewModel、ValidationReport |
+| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Musical Properties（初始 Meter / Tempo）修改与最终 Meter/barline 一致性校验、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateMusicalProperties`、`validateFinalMeterConsistency`、PlaybackCompilation、TimelineViewModel、ValidationReport |
 | **A3** | Candidate Transaction | Candidate `baseRevision`、`.agent-music` worktree、Candidate/Task 双状态机、execution envelope、Scope Extension 授权、checkpoint、Accept/Reject、取消回滚、cleanup marker、稳定领域错误；Current 正式写入经 A1 串行写入机制；Project close 前 Active Task 必须已取消/回滚 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 cancel/rollback 与 Agent-facing / Renderer-control interface；Project switch 可用权威 Task 状态 fail-closed |
 | **A4** | Agent Toolchain | Strands Agent Loop、OpenAI-compatible Chat Completions、Agent-side MCP Client、Project 多 Session/SessionManager/Storage、Core-process-scoped descriptor、Agent / Model Settings、planning/confirmation、统一 Cancel/final-failure rollback、有限 repair、Agent transport | A1、A3、MCP/Agent Contracts | 一个 Project 可有多个 Session 但同时唯一 Active Session；Agent Service 对单一 Core MCP 保持一个基础设施连接，不按 Project 切 Endpoint；Project switch 时 Cancel Promise 在 Active Task rollback 后才完成；Renderer 仅通过最小 Session lifecycle + 文本流/终态访问 A4 |
 | **A5** | Export Preparation | 复用 A1 clean Current 读取校验、A2 重新编译，准备 ABC/MIDI 导出数据与 WAV 输入；不拥有 Agent Settings、Session 或历史数据库 | A1、A2 | 经过 Current 校验的 ABC/MIDI/WAV 导出输入 |
@@ -506,7 +506,7 @@ flowchart LR
 | 依赖 | 上游必须稳定的输出 | 下游可开始的工作 |
 |---|---|---|
 | A1 → A3 | Current Git、跨实例写锁、项目级串行写入和 Project Command/Event | Candidate branch/worktree、事务状态机及安全 Accept |
-| A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask` 完整验证 |
+| A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic`、`updateMusicalProperties` 和 `finishTask` 完整验证 |
 | A1/A3 → A4 | A1 的 Active Project 生命周期，A3 的 TaskContext、Candidate 和七个 Tool 业务状态 | 单一 Core MCP connection、Strands Tool Loop 与 Agent Workflow；`projectId` 只用于业务/授权校验，不用于 Endpoint 选择 |
 | A1/A2 → A5 | A1 的 clean Current 读取校验、A2 的重新编译能力 | 正式 ABC/MIDI/WAV 导出准备 |
 | A4 → B1 → B2 | A4 最小 Session lifecycle + text/terminal Contract；B1 安全 Main/Preload transport | Renderer-side AgentClient、Project Session 新建/切换、用户消息/Cancel、assistant 流式文本与 execution 终态 |
@@ -637,7 +637,7 @@ I5 是跨模块 seam 的联调点，不新增 A6/B6，也不把联调逻辑集�
 - A4 可使用 Strands Agent-side MCP Client 通过 Core-process-scoped descriptor + Instance Token 连接唯一真实 MCP Server，并跨 Project close/open 保持该基础设施连接；
 - A4 已能通过 Strands SessionManager/Storage 在同一 Project 下 list/create/open 多个 Session，并保持唯一 Active Session；
 - B1 已提供 Main/Preload typed Agent bridge，B2 已能使用 Fake AgentClient 新建/切换 Session、读取 Active Session、发送用户消息/Cancel 并消费 text delta / terminal event；
-- A3 已支持完整 Task execution envelope、严格 `scopeRevision`、Scope Extension barrier、`replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask`；
+- A3 已支持完整 Task execution envelope、严格 `scopeRevision`、Scope Extension barrier、`replaceScopedMusic`、`updateMusicalProperties` 和 `finishTask`；
 - B4 可展示 generation plan、确认、Task 阶段和 Candidate 状态。
 
 **联调链：**

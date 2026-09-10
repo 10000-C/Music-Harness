@@ -7,7 +7,7 @@ import {
   CompositionValidationError,
   canonicalizeExternalAbc,
   compileComposition,
-  updateGlobalMeter,
+  updateMusicalProperties,
 } from './index.js';
 
 const tick = (value: number): Tick => value as Tick;
@@ -29,13 +29,12 @@ const wholeProject: TaskScope = {
   trackIds: TRACK_IDS,
 };
 
-describe('global Meter update', () => {
+describe('musical properties update', () => {
   it('updates the only M header and regenerates every derived Meter output', () => {
     const before = compileComposition(canonicalizeExternalAbc(composition()));
 
-    const result = updateGlobalMeter(before, wholeProject, {
-      numerator: 3,
-      denominator: 4,
+    const result = updateMusicalProperties(before, wholeProject, {
+      meter: { numerator: 3, denominator: 4 },
     });
 
     expect(result.compilation.canonicalAbc).toContain('\nM:3/4\n');
@@ -62,9 +61,8 @@ describe('global Meter update', () => {
   it('preserves project length, notes, velocity, Tempo, and Key', () => {
     const before = compileComposition(canonicalizeExternalAbc(composition()));
 
-    const result = updateGlobalMeter(before, wholeProject, {
-      numerator: 6,
-      denominator: 8,
+    const result = updateMusicalProperties(before, wholeProject, {
+      meter: { numerator: 6, denominator: 8 },
     }).compilation;
 
     expect(result.totalTicks).toBe(before.totalTicks);
@@ -101,6 +99,70 @@ describe('global Meter update', () => {
     );
   });
 
+  it('updates initial Tempo while preserving local Tempo events and music', () => {
+    const source = canonicalizeExternalAbc(
+      composition()
+        .replace(
+          '[V:track.drums] [I:MIDI vol 72]C D E F |',
+          '[V:track.drums] [I:MIDI vol 72]C [Q:1/4=90] D E F |',
+        )
+        .replace(
+          '[V:track.bass] [I:MIDI vol 72]C D E F |',
+          '[V:track.bass] [I:MIDI vol 72]C [Q:1/4=90] D E F |',
+        )
+        .replace(
+          '[V:track.guitar] [I:MIDI vol 72]C D E F |',
+          '[V:track.guitar] [I:MIDI vol 72]C [Q:1/4=90] D E F |',
+        )
+        .replace(
+          '[V:track.keys] [I:MIDI vol 72]C D E F |',
+          '[V:track.keys] [I:MIDI vol 72]C [Q:1/4=90] D E F |',
+        )
+        .replace(
+          '[V:track.strings] [I:MIDI vol 72]C D E F |',
+          '[V:track.strings] [I:MIDI vol 72]C [Q:1/4=90] D E F |',
+        )
+        .replace(
+          '[V:track.winds] [I:MIDI vol 72]C D E F |',
+          '[V:track.winds] [I:MIDI vol 72]C [Q:1/4=90] D E F |',
+        ),
+    );
+    const before = compileComposition(source);
+
+    const result = updateMusicalProperties(before, wholeProject, {
+      tempo: { bpm: 100 },
+    }).compilation;
+
+    expect(result.canonicalAbc).toContain('\nQ:1/4=100\n');
+    expect(result.tempoMap).toEqual([
+      { tick: 0, bpm: 100 },
+      { tick: 960, bpm: 90 },
+    ]);
+    expect(result.totalTicks).toBe(before.totalTicks);
+    expect(result.keyMap).toEqual(before.keyMap);
+  });
+
+  it('updates Meter and initial Tempo together', () => {
+    const before = compileComposition(canonicalizeExternalAbc(composition()));
+
+    const result = updateMusicalProperties(before, wholeProject, {
+      meter: { numerator: 3, denominator: 4 },
+      tempo: { bpm: 100 },
+    }).compilation;
+
+    expect(result.meterMap).toEqual([
+      { tick: 0, numerator: 3, denominator: 4 },
+    ]);
+    expect(result.tempoMap).toEqual([{ tick: 0, bpm: 100 }]);
+  });
+
+  it.each([0, -1, 3.5])('rejects invalid global Tempo %s BPM', (bpm) => {
+    const before = compileComposition(canonicalizeExternalAbc(composition()));
+    expect(() =>
+      updateMusicalProperties(before, wholeProject, { tempo: { bpm } }),
+    ).toThrow(CompositionValidationError);
+  });
+
   it.each([
     [
       'a time range',
@@ -122,7 +184,9 @@ describe('global Meter update', () => {
     const before = compileComposition(canonicalizeExternalAbc(composition()));
 
     expect(() =>
-      updateGlobalMeter(before, scope, { numerator: 3, denominator: 4 }),
+      updateMusicalProperties(before, scope, {
+        meter: { numerator: 3, denominator: 4 },
+      }),
     ).toThrow(CompositionValidationError);
   });
 
@@ -136,8 +200,8 @@ describe('global Meter update', () => {
   ])('rejects a Meter outside the stable ABC-to-MIDI boundary', (meter) => {
     const before = compileComposition(canonicalizeExternalAbc(composition()));
 
-    expect(() => updateGlobalMeter(before, wholeProject, meter)).toThrow(
-      CompositionValidationError,
-    );
+    expect(() =>
+      updateMusicalProperties(before, wholeProject, { meter }),
+    ).toThrow(CompositionValidationError);
   });
 });

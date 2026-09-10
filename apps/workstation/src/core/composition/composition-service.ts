@@ -11,11 +11,11 @@ import {
 import type { ValidationReport } from './composition-types.js';
 import { CompositionValidationError } from './composition-validation-error.js';
 import {
-  updateGlobalMeter,
-  type GlobalMeterUpdateResult,
-} from './global-meter.js';
+  updateMusicalProperties,
+  type MusicalPropertiesUpdate,
+  type MusicalPropertiesUpdateResult,
+} from './musical-properties.js';
 import { validateFinalMeterConsistency } from './meter-consistency.js';
-import type { GlobalMeterValue } from './meter-policy.js';
 import {
   getScopedComposition,
   type ScopedComposition,
@@ -75,11 +75,11 @@ export class CompositionPipeline {
     return replaceScopedMusic(compilation, scope, replacements);
   }
 
-  public updateGlobalMeter(
+  public updateMusicalProperties(
     compilation: CompositionCompilation,
     scope: TaskScope,
-    meter: GlobalMeterValue,
-  ): GlobalMeterUpdateResult {
-    return updateGlobalMeter(compilation, scope, meter);
+    update: MusicalPropertiesUpdate,
+  ): MusicalPropertiesUpdateResult {
+    return updateMusicalProperties(compilation, scope, update);
   }
 }

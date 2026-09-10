@@ -47,7 +47,8 @@ const isTaskContextView = (value: unknown): value is TaskContextView =>
   Array.isArray(value.allowedOperations) &&
   value.allowedOperations.every(
     (operation) =>
-      operation === 'replaceScopedMusic' || operation === 'updateGlobalMeter',
+      operation === 'replaceScopedMusic' ||
+      operation === 'updateMusicalProperties',
   ) &&
   hasCanonicalTrackIds(value.trackIds) &&
   typeof value.createdAt === 'string';

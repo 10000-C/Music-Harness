@@ -28,7 +28,7 @@ The existing `core:mcp --project ...` CLI remains intentionally Project-bound fo
 - TDD: one public-seam behavior at a time; verify red before implementation and green after implementation.
 - Atomic commits: each task below ends in an independently reviewable commit.
 - Product runtime uses one Core-process-scoped MCP connection across Project switches; A4 does not maintain one MCP endpoint per Project.
-- P0 exposes exactly seven Agent MCP tools: `getTaskContext`, `getScopedComposition`, `submitGenerationPlan`, `requestScopeExtension`, `replaceScopedMusic`, `updateGlobalMeter`, `finishTask`; the Agent-facing `submitGenerationPlan` schema is `summary + scope` only, with Core/MCP injecting the Active Project ID.
+- P0 exposes exactly seven Agent MCP tools: `getTaskContext`, `getScopedComposition`, `submitGenerationPlan`, `requestScopeExtension`, `replaceScopedMusic`, `updateMusicalProperties`, `finishTask`; the Agent-facing `submitGenerationPlan` schema is `summary + scope` only, with Core/MCP injecting the Active Project ID.
 - A4 must use Strands native OpenAI-compatible model, MCP client, SessionManager/Storage and context management; no custom SSE parser, generic retry loop, transcript engine or compaction engine.
 - Model configuration is read at each Strands model call. `maxRepairAttempts` is read immediately before each new repair round.
 - Repair never requests Scope Extension. One `ValidationReport → repair → finishTask` cycle counts as one `repairAttempt`.

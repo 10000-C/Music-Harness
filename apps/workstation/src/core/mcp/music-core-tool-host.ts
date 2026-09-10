@@ -17,7 +17,7 @@ export const P0_MCP_TOOL_NAMES = [
   'submitGenerationPlan',
   'requestScopeExtension',
   'replaceScopedMusic',
-  'updateGlobalMeter',
+  'updateMusicalProperties',
   'finishTask',
 ] as const;
 
@@ -57,10 +57,10 @@ interface ReplaceScopedMusicInput {
 
 const isAborted = (signal?: AbortSignal): boolean => signal?.aborted === true;
 
-interface UpdateGlobalMeterInput {
+interface UpdateMusicalPropertiesInput {
   readonly envelope: TaskExecutionEnvelope;
-  readonly numerator: number;
-  readonly denominator: number;
+  readonly meter?: { readonly numerator: number; readonly denominator: number };
+  readonly tempo?: { readonly bpm: number };
 }
 
 export class MusicCoreToolHost {
@@ -99,9 +99,9 @@ export class MusicCoreToolHost {
         return this.dependencies.agent.applyScopedMusicChange(
           input as ReplaceScopedMusicInput,
         );
-      case 'updateGlobalMeter':
-        return this.dependencies.agent.updateGlobalMeter(
-          input as UpdateGlobalMeterInput,
+      case 'updateMusicalProperties':
+        return this.dependencies.agent.updateMusicalProperties(
+          input as UpdateMusicalPropertiesInput,
         );
       case 'finishTask':
         return this.dependencies.agent.finishTask(

@@ -94,7 +94,7 @@ getScopedComposition
 submitGenerationPlan
 requestScopeExtension
 replaceScopedMusic
-updateGlobalMeter
+updateMusicalProperties
 finishTask
 ```
 

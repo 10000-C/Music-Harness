@@ -1451,7 +1451,7 @@ Spike-002 的 TG-001/TG-002 只用单音、单声部事件证明了 Canonicaliza
 
 - 从 Canonical `Q:1/4=N` 读取初始 Tempo，不使用 Meter 相关的 `getBpm()` 派生值；
 - 从显式事件 token 与 `L:` 独立计算 Tick 时值，不接受 Meter 改写音乐事件时长；
-- `updateGlobalMeter` 修改后验证 totalTicks、Note/Rest、Velocity、Tempo 和 Key 均不变；
+- `updateMusicalProperties` 修改后验证 totalTicks、Note/Rest、Velocity、Tempo 和 Key 均不变；
 - Global Meter 仅允许覆盖全部六轨的 `wholeProject` Scope，并重建 Standard MIDI Time Signature、Scope Mapping 与 TimelineViewModel。
 
 ### 7. 证据索引

@@ -63,7 +63,7 @@ const makeAgent = (pending: PendingScopeExtensionView) => {
     getScopedComposition: vi.fn(),
     requestScopeExtension,
     applyScopedMusicChange: vi.fn(),
-    updateGlobalMeter: vi.fn(),
+    updateMusicalProperties: vi.fn(),
     finishTask: vi.fn(),
   };
   return { port, requestScopeExtension };

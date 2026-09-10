@@ -155,7 +155,10 @@ describe('AgentService lifecycle integration', () => {
             scopeRevision: 0,
             state: 'editing',
             candidateState: 'active',
-            allowedOperations: ['replaceScopedMusic', 'updateGlobalMeter'],
+            allowedOperations: [
+              'replaceScopedMusic',
+              'updateMusicalProperties',
+            ],
             trackIds: [
               'track.drums',
               'track.bass',
