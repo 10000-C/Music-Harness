@@ -94,6 +94,7 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
     let currentRevision: string;
 
     try {
+      await this.git.configureRepository(absolutePath);
       [manifestSource, currentRevision] = await Promise.all([
         this.git.readMainFile(absolutePath, 'project.json'),
         this.git.mainRevision(absolutePath),
