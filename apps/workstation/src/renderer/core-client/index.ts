@@ -6,6 +6,11 @@ export {
   reduceLiveCandidateState,
 } from './live-candidate-adapter.js';
 export {
+  createLiveAgentAdapter,
+  type LiveAgentAdapter,
+  type LiveAgentState,
+} from './live-agent-adapter.js';
+export {
   FAKE_CANDIDATE_ID,
   FAKE_PROJECT_ID,
   FAKE_TASK_ID,

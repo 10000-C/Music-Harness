@@ -28,11 +28,18 @@ import {
   type LiveCandidateAdapter,
   type LiveCandidateState,
 } from './core-client/live-candidate-adapter.js';
+import {
+  createLiveAgentAdapter,
+  type LiveAgentAdapter,
+  type LiveAgentState,
+} from './core-client/index.js';
 import { type PlaybackRuntimeState } from './opendaw-runtime/index.js';
 import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-playback-runtime.js';
 import { CurrentPlaybackSession } from './opendaw-runtime/current-playback-session.js';
 import type { PlaybackCommand } from './opendaw-runtime/types.js';
 import { CompetitionAgentPanel } from './workspace/agent/competition-agent-panel.js';
+import { LiveAgentPanel } from './workspace/agent/live-agent-panel.js';
+import type { AgentSessionId } from '@agent-music/contracts';
 import { ArrangementMap } from './workspace/arrangement-map.js';
 import { CandidateStage } from './workspace/candidate-stage.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
@@ -840,6 +847,9 @@ const LiveProjectWorkspace = () => {
   const [candidateState, setCandidateState] =
     useState<LiveCandidateState | null>(null);
   const candidateAdapter = useRef<LiveCandidateAdapter | null>(null);
+  const [agentState, setAgentState] = useState<LiveAgentState | null>(null);
+  const [agentPrompt, setAgentPrompt] = useState('');
+  const agentAdapter = useRef<LiveAgentAdapter | null>(null);
   const [selectedExportPaths, setSelectedExportPaths] = useState<
     Partial<Record<ExportCurrentFormat, string>>
   >({});
@@ -937,6 +947,57 @@ const LiveProjectWorkspace = () => {
       if (candidateAdapter.current === adapter) candidateAdapter.current = null;
     };
   }, [project?.projectId, project?.state]);
+
+  useEffect(() => {
+    const bridge = window.agentMusic;
+    const previous = agentAdapter.current;
+    agentAdapter.current = null;
+    previous?.dispose();
+    setAgentState(null);
+    if (project?.state !== 'ready' || bridge === undefined) return undefined;
+
+    const adapter = createLiveAgentAdapter({
+      projectId: project.projectId,
+      bridge,
+    });
+    agentAdapter.current = adapter;
+    setAgentState(adapter.getState());
+    const unsubscribe = adapter.subscribe(setAgentState);
+    void adapter.initialize();
+
+    return () => {
+      unsubscribe();
+      adapter.dispose();
+      if (agentAdapter.current === adapter) agentAdapter.current = null;
+    };
+  }, [project?.projectId, project?.state]);
+
+  const handleSendAgentMessage = useCallback(() => {
+    if (agentPrompt.trim().length === 0) return;
+    const adapter = agentAdapter.current;
+    if (adapter === null) return;
+    const taskContext =
+      candidateState?.task !== null && candidateState?.task !== undefined
+        ? {
+            taskId: candidateState.task.taskId,
+            candidateId: candidateState.task.candidateId,
+          }
+        : undefined;
+    void adapter.sendMessage(agentPrompt, taskContext);
+    setAgentPrompt('');
+  }, [agentPrompt, candidateState?.task]);
+
+  const handleCancelAgentExecution = useCallback(() => {
+    void agentAdapter.current?.cancel();
+  }, []);
+
+  const handleCreateAgentSession = useCallback(() => {
+    void agentAdapter.current?.createSession();
+  }, []);
+
+  const handleSelectAgentSession = useCallback((sessionId: AgentSessionId) => {
+    void agentAdapter.current?.openSession(sessionId);
+  }, []);
 
   const sendPlayback = useCallback(async (command: PlaybackCommand) => {
     const outcome = await playbackSession.current?.send(command);
@@ -1366,26 +1427,16 @@ const LiveProjectWorkspace = () => {
           </div>
         )}
       </main>
-      <aside className="agent-panel" aria-label="Agent panel">
-        <div className="agent-panel__header">
-          <h2>MUSE Agent</h2>
-        </div>
-        <div className="agent-empty-state">
-          <span className="agent-empty-state__mark" aria-hidden="true">
-            <i />
-          </span>
-          <h3>
-            {project === null
-              ? 'A collaborator for your next piece.'
-              : 'Ready when your Current is ready.'}
-          </h3>
-          <p>
-            {project === null
-              ? 'Open a project, then describe the change you want to hear.'
-              : 'Agent tasks will appear here when this project can accept them.'}
-          </p>
-        </div>
-      </aside>
+      <LiveAgentPanel
+        state={agentState}
+        prompt={agentPrompt}
+        projectOpen={project !== null && project.state === 'ready'}
+        onPromptChange={setAgentPrompt}
+        onSendMessage={handleSendAgentMessage}
+        onCancel={handleCancelAgentExecution}
+        onCreateSession={handleCreateAgentSession}
+        onSelectSession={handleSelectAgentSession}
+      />
     </div>
   );
 };
