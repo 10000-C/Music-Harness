@@ -60,8 +60,17 @@ export type {
 } from './domain.js';
 
 export { isPlaybackCompilation, isTimelineViewModel } from './composition.js';
+export { isExportCommand } from './export.js';
 export { isMcpRuntimeDescriptor } from './mcp.js';
 export { createMidiNoteNumber, isMidiNoteNumber } from './music-values.js';
+
+export type {
+  ExportCommand,
+  ExportErrorCode,
+  ExportEvent,
+  PreparedCurrentExport,
+  PrepareCurrentExportCommand,
+} from './export.js';
 
 export type {
   KeyEvent,
