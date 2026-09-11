@@ -18,12 +18,14 @@ import {
   type TaskState,
 } from '@agent-music/contracts';
 
-import type {
-  CompositionCompilation,
-  CompositionPipeline,
-  MusicalPropertiesUpdate,
-  ScopedComposition,
-  TrackReplacement,
+import {
+  CompositionValidationError,
+  type CompositionCompilation,
+  type CompositionPipeline,
+  type MusicalPropertiesUpdate,
+  type ScopedComposition,
+  type TrackReplacement,
+  type ValidationReport,
 } from '../composition/index.js';
 import type { ProjectAuthorityAccess } from '../project/project-authority-access.js';
 import {
@@ -103,6 +105,9 @@ interface CandidateCompositionPort {
   compileCanonical(
     ...args: Parameters<CompositionPipeline['compileCanonical']>
   ): Awaitable<ReturnType<CompositionPipeline['compileCanonical']>>;
+  compileFinalCanonical(
+    ...args: Parameters<CompositionPipeline['compileFinalCanonical']>
+  ): Awaitable<ReturnType<CompositionPipeline['compileFinalCanonical']>>;
   getScopedComposition(
     ...args: Parameters<CompositionPipeline['getScopedComposition']>
   ): Awaitable<ReturnType<CompositionPipeline['getScopedComposition']>>;
@@ -115,11 +120,6 @@ interface CandidateCompositionPort {
   resizeComposition(
     ...args: Parameters<CompositionPipeline['resizeComposition']>
   ): Awaitable<ReturnType<CompositionPipeline['resizeComposition']>>;
-  validateFinalMeterConsistency(
-    ...args: Parameters<CompositionPipeline['validateFinalMeterConsistency']>
-  ): Awaitable<
-    ReturnType<CompositionPipeline['validateFinalMeterConsistency']>
-  >;
 }
 
 export interface CandidateTransactionDependencies {
@@ -557,13 +557,17 @@ export class CandidateTransaction
           candidate.workspace,
         );
         this.assertTaskStillAuthorized(candidate, task, envelope, 'validating');
-        await this.dependencies.composition.compileCanonical(
-          authority.compositionSource,
-        );
-        const validation =
-          await this.dependencies.composition.validateFinalMeterConsistency(
+        let validation: ValidationReport = { valid: true, issues: [] };
+        try {
+          await this.dependencies.composition.compileFinalCanonical(
             authority.compositionSource,
           );
+        } catch (error) {
+          if (!(error instanceof CompositionValidationError)) {
+            throw error;
+          }
+          validation = error.report;
+        }
 
         await this.assertCandidateBaseline(candidate);
         this.assertTaskStillAuthorized(candidate, task, envelope, 'validating');
@@ -914,20 +918,9 @@ export class CandidateTransaction
     const authority = await this.dependencies.repository.readAuthority(
       candidate.workspace,
     );
-    await this.dependencies.composition.compileCanonical(
+    await this.dependencies.composition.compileFinalCanonical(
       authority.compositionSource,
     );
-    const validation =
-      await this.dependencies.composition.validateFinalMeterConsistency(
-        authority.compositionSource,
-      );
-    if (!validation.valid) {
-      throw new CandidateError(
-        'VALIDATION_FAILED',
-        'Candidate final validation failed',
-        { validation },
-      );
-    }
   }
 
   private assertReadyCandidateStillAuthorized(

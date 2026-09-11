@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { TRACK_IDS, type Tick } from '@agent-music/contracts';
 
 import { createInitialComposition } from '../project/initial-composition.js';
-import { CompositionPipeline } from './index.js';
+import { CompositionPipeline, CompositionValidationError } from './index.js';
 
 const tick = (value: number): Tick => value as Tick;
 
@@ -65,5 +65,38 @@ describe('CompositionPipeline facade', () => {
     expect(result.compilation.meterMap).toEqual([
       { tick: 0, numerator: 7, denominator: 8 },
     ]);
+  });
+  it('enforces final Meter/barline consistency only at the final compile seam', () => {
+    const pipeline = new CompositionPipeline();
+    const staleBarlines = pipeline.canonicalizeExternalInput(`X:1
+T:Final validation
+M:3/4
+L:1/4
+Q:1/4=120
+K:C
+${TRACK_IDS.map((trackId) => `V:${trackId}`).join('\n')}
+${TRACK_IDS.map((trackId) => `[V:${trackId}] C D E F | G A B c |`).join('\n')}
+`).canonicalAbc;
+
+    expect(() => pipeline.compileCanonical(staleBarlines)).not.toThrow();
+    expect(() => pipeline.compileFinalCanonical(staleBarlines)).toThrow(
+      CompositionValidationError,
+    );
+    try {
+      pipeline.compileFinalCanonical(staleBarlines);
+    } catch (error) {
+      if (!(error instanceof CompositionValidationError)) {
+        throw error;
+      }
+      expect(error.report).toMatchObject({
+        valid: false,
+        issues: [{ code: 'METER_BARLINE_MISMATCH' }],
+      });
+    }
+
+    expect(
+      pipeline.compileFinalCanonical(pipeline.createInitialComposition())
+        .totalTicks,
+    ).toBe(3840);
   });
 });

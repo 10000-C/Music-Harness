@@ -1188,14 +1188,11 @@ describe('CandidateTransaction finishTask', () => {
       projectId,
       scope: wholeProjectScope,
     });
-    vi.spyOn(composition, 'validateFinalMeterConsistency').mockReturnValue({
-      valid: false,
-      issues: [
-        {
-          code: 'METER_BARLINE_MISMATCH',
-          message: 'Final bars do not match meter',
-        },
-      ],
+    vi.spyOn(composition, 'compileFinalCanonical').mockImplementation(() => {
+      throw new CompositionValidationError({
+        code: 'METER_BARLINE_MISMATCH',
+        message: 'Final bars do not match meter',
+      });
     });
 
     await expect(
@@ -1384,6 +1381,38 @@ describe('CandidateTransaction acceptCandidate', () => {
     expect(nextTask.candidateId).not.toBe(candidateId);
     expect(nextTask.baseRevision).toBe('C1');
     expect(repository.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the A2 final compile seam before entering serialized Accept', async () => {
+    const { transaction, composition, repository, serializedWrites } =
+      createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+    const finalCompile = vi
+      .spyOn(composition, 'compileFinalCanonical')
+      .mockImplementation(() => {
+        throw new CompositionValidationError({
+          code: 'METER_BARLINE_MISMATCH',
+          message: 'Final bars do not match meter',
+        });
+      });
+
+    await expect(
+      transaction.acceptCandidate({ projectId, candidateId }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: {
+        validation: {
+          issues: [{ code: 'METER_BARLINE_MISMATCH' }],
+        },
+      },
+    });
+    expect(finalCompile).toHaveBeenCalledWith(initialSource);
+    expect(serializedWrites).not.toHaveBeenCalled();
+    expect(repository.commitCompositionToCurrent).not.toHaveBeenCalled();
   });
 
   it('lets Reject preempt an Accept that has not committed main yet', async () => {

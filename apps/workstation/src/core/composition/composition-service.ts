@@ -49,6 +49,16 @@ export class CompositionPipeline {
     return compileComposition(source);
   }
 
+  public compileFinalCanonical(source: string): CompositionCompilation {
+    const compilation = this.compileCanonical(source);
+    const validation = this.validateFinalMeterConsistency(source);
+    const issue = validation.issues[0];
+    if (!validation.valid && issue !== undefined) {
+      throw new CompositionValidationError(issue);
+    }
+    return compilation;
+  }
+
   public validateCanonical(source: string): ValidationReport {
     try {
       return this.compileCanonical(source).validationReport;
