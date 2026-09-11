@@ -81,7 +81,11 @@ export const createMainWindow = (
     webPreferences: secureWebPreferences(),
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  window.webContents.on('will-navigate', (event) => {
+  window.webContents.on('will-navigate', (event, url) => {
+    // Allow same-origin navigation to the Vite dev server (HMR full reloads)
+    // while still blocking navigation away from the app.
+    const devUrl = process.env.ELECTRON_RENDERER_URL;
+    if (devUrl !== undefined && url.startsWith(devUrl)) return;
     event.preventDefault();
   });
   window.once('ready-to-show', () => {

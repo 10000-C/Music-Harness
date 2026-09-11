@@ -35,5 +35,19 @@ export default defineConfig({
     esbuild: {
       jsx: 'automatic',
     },
+    optimizeDeps: {
+      // Pre-bundle the renderer's static dependencies so the first page load
+      // does not trigger Vite's cold-start dependency re-optimization (which
+      // forces a full reload and renders blank in the Electron window).
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-dev-runtime',
+        'spessasynth_core',
+        'spessasynth_lib',
+        'midi-file',
+      ],
+    },
   },
 });
