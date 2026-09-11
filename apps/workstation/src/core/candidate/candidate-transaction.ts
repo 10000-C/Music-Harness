@@ -7,6 +7,7 @@ import {
   type CandidateView,
   type CurrentCommittedResult,
   type FinishTaskResult,
+  type OperationId,
   type PendingScopeExtensionView,
   type ProjectId,
   type ScopeExtensionRequestId,
@@ -43,14 +44,10 @@ export interface CandidateAgentPort {
     targetScope?: TaskScope,
   ): Promise<ScopedComposition>;
   requestScopeExtension(input: {
+    readonly operationId?: OperationId;
     readonly envelope: TaskExecutionEnvelope;
     readonly requestedScope: TaskScope;
-    readonly signal?: AbortSignal;
   }): Promise<PendingScopeExtensionView>;
-  cancelScopeExtension(input: {
-    readonly envelope: TaskExecutionEnvelope;
-    readonly requestId: ScopeExtensionRequestId;
-  }): Promise<TaskContextView>;
   applyScopedMusicChange(input: {
     readonly envelope: TaskExecutionEnvelope;
     readonly targetScope?: TaskScope;
@@ -135,6 +132,7 @@ export interface CandidateTransactionDependencies {
 }
 
 interface PendingScopeExtension {
+  readonly operationId: OperationId;
   readonly requestId: ScopeExtensionRequestId;
   readonly fromScopeRevision: number;
   readonly requestedScope: TaskScope;
@@ -308,6 +306,7 @@ export class CandidateTransaction
   }
 
   public async requestScopeExtension(input: {
+    readonly operationId?: OperationId;
     readonly envelope: TaskExecutionEnvelope;
     readonly requestedScope: TaskScope;
   }): Promise<PendingScopeExtensionView> {
@@ -327,36 +326,16 @@ export class CandidateTransaction
       );
     }
 
+    const requestId = this.dependencies.createId() as ScopeExtensionRequestId;
     const pending: PendingScopeExtension = {
-      requestId: this.dependencies.createId() as ScopeExtensionRequestId,
+      operationId: input.operationId ?? (requestId as unknown as OperationId),
+      requestId,
       fromScopeRevision: task.scopeRevision,
       requestedScope: input.requestedScope,
       createdAt: this.dependencies.now(),
     };
     task.pendingScopeExtension = pending;
     return this.toPendingScopeExtensionView(task, pending);
-  }
-
-  public async cancelScopeExtension(input: {
-    readonly envelope: TaskExecutionEnvelope;
-    readonly requestId: ScopeExtensionRequestId;
-  }): Promise<TaskContextView> {
-    const { candidate, task } = await this.guardTaskEnvelope(input.envelope);
-    const pending = task.pendingScopeExtension;
-    if (pending?.requestId !== input.requestId) {
-      throw new CandidateError(
-        'STALE_SCOPE_EXTENSION_REQUEST',
-        'Scope Extension request is no longer current',
-      );
-    }
-    if (pending.fromScopeRevision !== task.scopeRevision) {
-      throw new CandidateError(
-        'STALE_SCOPE_EXTENSION_REQUEST',
-        'Scope Extension request was based on a stale Scope revision',
-      );
-    }
-    task.pendingScopeExtension = undefined;
-    return this.toTaskContextView(candidate, task);
   }
 
   public approveScopeExtension(input: {
@@ -1185,6 +1164,7 @@ export class CandidateTransaction
     pending: PendingScopeExtension,
   ): PendingScopeExtensionView {
     return {
+      operationId: pending.operationId,
       taskId: task.taskId,
       requestId: pending.requestId,
       fromScopeRevision: pending.fromScopeRevision,

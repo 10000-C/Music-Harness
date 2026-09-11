@@ -76,7 +76,16 @@ export type {
   TimelineViewModel,
 } from './composition.js';
 
-export type { McpRuntimeDescriptor } from './mcp.js';
+export type {
+  GenerationPlanOperationView,
+  McpRuntimeDescriptor,
+  OperationFailure,
+  OperationId,
+  OperationState,
+  OperationType,
+  OperationView,
+  ScopeExtensionOperationView,
+} from './mcp.js';
 export type { MidiNoteNumber } from './music-values.js';
 
 export {

@@ -121,6 +121,7 @@ const registerTools = (
     envelopeSchema.extend({ targetScope: scopeSchema.optional() }),
   );
   const generationPlanSchema = z.object({
+    operationId: z.uuid(),
     summary: z.string().min(1),
     scope: scopeSchema,
   });
@@ -128,7 +129,7 @@ const registerTools = (
     'submitGenerationPlan',
     {
       description:
-        'Submit the initial generation plan for the MCP server current Project and wait for user confirmation. The Project is bound by Core; do not provide a projectId.',
+        'Create or recover the initial generation-plan operation for the current Project. Provide a caller-stable operationId. The call returns immediately and never waits for the human decision; use getOperation for the terminal result/Task bootstrap.',
       inputSchema: generationPlanSchema,
     },
     async (input, extra) => {
@@ -150,8 +151,9 @@ const registerTools = (
     server,
     host,
     'requestScopeExtension',
-    'Request a superset write Scope and wait for product authorization. This changes authorization only; it does not extend composition length or create future timeline. A pending request is observable through getTaskContext.pendingScopeExtension and can be explicitly retracted with cancelScopeExtension.',
+    'Create or recover a Scope Extension operation. Provide a caller-stable operationId so retries after transport timeout are idempotent. The call returns operation state without waiting for user authorization; use getOperation to observe completion and cancelOperation to retract a pending request.',
     z.object({
+      operationId: z.uuid(),
       envelope: envelopeSchema,
       requestedScope: scopeSchema,
     }),
@@ -159,12 +161,16 @@ const registerTools = (
   registerJsonTool(
     server,
     host,
-    'cancelScopeExtension',
-    'Retract the currently pending Scope Extension request. This does not change scopeRevision or the authorized Scope. Use getTaskContext.pendingScopeExtension.requestId as requestId.',
-    z.object({
-      envelope: envelopeSchema,
-      requestId: z.uuid(),
-    }),
+    'getOperation',
+    'Read the authoritative state/result of a long-running Core operation by operationId. Use this after submitGenerationPlan/requestScopeExtension and after any transport timeout.',
+    z.object({ operationId: z.uuid() }),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'cancelOperation',
+    'Explicitly cancel a pending Core operation. Cancellation is a business action, not a transport timeout. If the operation already committed, its terminal state/result is returned.',
+    z.object({ operationId: z.uuid() }),
   );
   registerJsonTool(
     server,

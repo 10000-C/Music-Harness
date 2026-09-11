@@ -1,4 +1,76 @@
-import type { ProjectId } from './domain.js';
+import type {
+  PendingScopeExtensionView,
+  TaskContextView,
+} from './candidate.js';
+import type { ProjectId, TaskScope } from './domain.js';
+
+declare const operationIdBrand: unique symbol;
+
+export type OperationId = string & {
+  readonly [operationIdBrand]: true;
+};
+
+export type OperationType = 'generationPlan' | 'scopeExtension';
+export type OperationState =
+  'pending' | 'succeeded' | 'rejected' | 'cancelled' | 'failed';
+
+export interface OperationFailure {
+  readonly code: string;
+  readonly message: string;
+}
+
+interface OperationViewBase {
+  readonly operationId: OperationId;
+  readonly type: OperationType;
+  readonly state: OperationState;
+  readonly createdAt: string;
+}
+
+export type GenerationPlanOperationView =
+  | (OperationViewBase & {
+      readonly type: 'generationPlan';
+      readonly state: 'pending';
+      readonly summary: string;
+      readonly scope: TaskScope;
+    })
+  | (OperationViewBase & {
+      readonly type: 'generationPlan';
+      readonly state: 'succeeded';
+      readonly result: { readonly task: TaskContextView };
+    })
+  | (OperationViewBase & {
+      readonly type: 'generationPlan';
+      readonly state: 'rejected' | 'cancelled';
+    })
+  | (OperationViewBase & {
+      readonly type: 'generationPlan';
+      readonly state: 'failed';
+      readonly error: OperationFailure;
+    });
+
+export type ScopeExtensionOperationView =
+  | (OperationViewBase & {
+      readonly type: 'scopeExtension';
+      readonly state: 'pending';
+      readonly request?: PendingScopeExtensionView;
+    })
+  | (OperationViewBase & {
+      readonly type: 'scopeExtension';
+      readonly state: 'succeeded';
+      readonly result: { readonly task: TaskContextView };
+    })
+  | (OperationViewBase & {
+      readonly type: 'scopeExtension';
+      readonly state: 'rejected' | 'cancelled';
+    })
+  | (OperationViewBase & {
+      readonly type: 'scopeExtension';
+      readonly state: 'failed';
+      readonly error: OperationFailure;
+    });
+
+export type OperationView =
+  GenerationPlanOperationView | ScopeExtensionOperationView;
 
 export interface McpRuntimeDescriptor {
   readonly projectId: ProjectId;

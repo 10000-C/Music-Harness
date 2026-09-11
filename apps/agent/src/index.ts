@@ -69,9 +69,11 @@ export const createAgentService = (
     descriptors,
     storageRoot: options.paths.sessionStorageRoot,
   });
+  const coreControl = new StrandsTaskBootstrapper(descriptors);
   const workflow = new AgentWorkflow({
     runtimeFactory,
-    taskBootstrap: new StrandsTaskBootstrapper(descriptors),
+    taskBootstrap: coreControl,
+    operations: coreControl,
     rollback: options.rollback,
     settings,
     createExecutionId: options.createExecutionId ?? defaultCreateExecutionId,

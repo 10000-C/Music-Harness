@@ -4,6 +4,8 @@ import type {
   AgentSessionId,
   CandidateId,
   CandidateValidationReport,
+  OperationId,
+  OperationView,
   ProjectId,
   TaskContextView,
   TaskId,
@@ -52,12 +54,21 @@ export interface TaskRollbackPort {
   }): Promise<unknown>;
 }
 
+export interface OperationControlPort {
+  cancelOperation(
+    projectId: ProjectId,
+    operationId: OperationId,
+    signal: AbortSignal,
+  ): Promise<OperationView>;
+}
+
 export type AgentEventSink = (event: AgentEvent) => void;
 
 export interface AgentWorkflowDependencies {
   readonly runtimeFactory: AgentRuntimeFactoryPort;
   readonly taskBootstrap: ConfirmedTaskBootstrapPort;
   readonly rollback: TaskRollbackPort;
+  readonly operations?: OperationControlPort;
   readonly settings: RepairSettingsPort;
   readonly createExecutionId: () => AgentExecutionId;
 }
@@ -76,6 +87,7 @@ type AgentWorkflowErrorCode =
   | 'AGENT_EXECUTION_BUSY'
   | 'AGENT_EXECUTION_FAILED'
   | 'TASK_NOT_FINISHED'
+  | 'OPERATION_NOT_FINISHED'
   | 'TASK_BOOTSTRAP_INVALID'
   | 'REPAIR_LIMIT_EXCEEDED';
 
@@ -109,6 +121,7 @@ interface ActiveExecution {
   readonly emit: AgentEventSink;
   cancelRequested: boolean;
   task: ActiveTaskReference | undefined;
+  readonly operationIds: Set<OperationId>;
   invocationAbortController: AbortController | undefined;
   settlement: Promise<void>;
 }
@@ -180,23 +193,35 @@ const completedToolCall = (event: unknown): CompletedToolCall | undefined => {
   }
 };
 
-const taskReferenceFromGenerationPlan = (
+const operationViewFromToolResult = (
   value: unknown,
-): ActiveTaskReference | undefined => {
+): OperationView | undefined => {
   if (
     !isRecord(value) ||
-    value.approved !== true ||
-    !isRecord(value.task) ||
-    typeof value.task.projectId !== 'string' ||
-    typeof value.task.candidateId !== 'string' ||
-    typeof value.task.taskId !== 'string'
+    typeof value.operationId !== 'string' ||
+    (value.type !== 'generationPlan' && value.type !== 'scopeExtension') ||
+    (value.state !== 'pending' &&
+      value.state !== 'succeeded' &&
+      value.state !== 'rejected' &&
+      value.state !== 'cancelled' &&
+      value.state !== 'failed')
   ) {
     return undefined;
   }
+  return value as unknown as OperationView;
+};
+
+const taskReferenceFromOperation = (
+  operation: OperationView,
+): ActiveTaskReference | undefined => {
+  if (operation.type !== 'generationPlan' || operation.state !== 'succeeded') {
+    return undefined;
+  }
+  const task = operation.result.task;
   return {
-    projectId: value.task.projectId as ProjectId,
-    candidateId: value.task.candidateId as CandidateId,
-    taskId: value.task.taskId as TaskId,
+    projectId: task.projectId,
+    candidateId: task.candidateId,
+    taskId: task.taskId,
   };
 };
 
@@ -288,6 +313,7 @@ export class AgentWorkflow {
       executionId,
       emit,
       cancelRequested: false,
+      operationIds: new Set<OperationId>(),
       task:
         input.task === undefined
           ? undefined
@@ -350,6 +376,7 @@ export class AgentWorkflow {
     try {
       for (;;) {
         if (isCancelRequested(execution)) {
+          await this.cancelPendingOperations(execution);
           await this.rollbackActiveTask(execution);
           this.emitTerminal(execution, 'cancelled');
           return;
@@ -365,6 +392,7 @@ export class AgentWorkflow {
         );
 
         if (isCancelRequested(execution) || outcome.kind === 'cancelled') {
+          await this.cancelPendingOperations(execution);
           await this.rollbackActiveTask(execution);
           this.emitTerminal(execution, 'cancelled');
           return;
@@ -377,6 +405,7 @@ export class AgentWorkflow {
           const maxRepairAttempts =
             await this.dependencies.settings.getMaxRepairAttempts();
           if (isCancelRequested(execution)) {
+            await this.cancelPendingOperations(execution);
             await this.rollbackActiveTask(execution);
             this.emitTerminal(execution, 'cancelled');
             return;
@@ -399,6 +428,12 @@ export class AgentWorkflow {
             'Agent execution ended with an unfinished Task',
           );
         }
+        if (execution.operationIds.size > 0) {
+          throw new AgentWorkflowError(
+            'OPERATION_NOT_FINISHED',
+            'Agent execution ended with a pending Operation',
+          );
+        }
 
         this.emitTerminal(execution, 'completed');
         return;
@@ -408,11 +443,13 @@ export class AgentWorkflow {
         throw error;
       }
       if (isCancelRequested(execution)) {
+        await this.cancelPendingOperations(execution);
         await this.rollbackActiveTask(execution);
         this.emitTerminal(execution, 'cancelled');
         return;
       }
 
+      await this.cancelPendingOperations(execution);
       await this.rollbackActiveTask(execution);
       const normalized =
         error instanceof AgentWorkflowError
@@ -529,8 +566,22 @@ export class AgentWorkflow {
         }
 
         const toolCall = completedToolCall(next.value);
-        if (toolCall?.name === 'submitGenerationPlan') {
-          execution.task = taskReferenceFromGenerationPlan(toolCall.value);
+        if (
+          toolCall?.name === 'submitGenerationPlan' ||
+          toolCall?.name === 'requestScopeExtension' ||
+          toolCall?.name === 'getOperation' ||
+          toolCall?.name === 'cancelOperation'
+        ) {
+          const operation = operationViewFromToolResult(toolCall.value);
+          if (operation !== undefined) {
+            if (operation.state === 'pending') {
+              execution.operationIds.add(operation.operationId);
+            } else {
+              execution.operationIds.delete(operation.operationId);
+            }
+            execution.task =
+              taskReferenceFromOperation(operation) ?? execution.task;
+          }
           continue;
         }
         if (toolCall?.name !== 'finishTask') {
@@ -551,6 +602,22 @@ export class AgentWorkflow {
     } finally {
       execution.invocationAbortController = undefined;
       await runtime.dispose();
+    }
+  }
+
+  private async cancelPendingOperations(
+    execution: ActiveExecution,
+  ): Promise<void> {
+    if (this.dependencies.operations === undefined) return;
+    for (const operationId of [...execution.operationIds]) {
+      const controller = new AbortController();
+      const operation = await this.dependencies.operations.cancelOperation(
+        execution.projectId,
+        operationId,
+        controller.signal,
+      );
+      execution.operationIds.delete(operationId);
+      execution.task = taskReferenceFromOperation(operation) ?? execution.task;
     }
   }
 

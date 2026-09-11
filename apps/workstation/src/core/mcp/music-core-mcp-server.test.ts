@@ -387,7 +387,7 @@ describe('MusicCoreMcpHttpServer', () => {
     await client.close();
   });
 
-  it('serves exactly nine tools over real Streamable HTTP and delegates calls', async () => {
+  it('serves exactly ten tools over real Streamable HTTP and delegates calls', async () => {
     const { call, descriptor } = await makeServer();
     const client = await connectMcpTestClient(
       descriptor.endpoint,

@@ -11,6 +11,7 @@ import {
   type AgentExecutionId,
   type AgentSessionId,
   type CandidateId,
+  type OperationId,
   type TaskId,
 } from '@agent-music/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -33,6 +34,8 @@ const firstTaskId = '70000000-0000-4000-8000-000000000002' as TaskId;
 const secondTaskId = '70000000-0000-4000-8000-000000000003' as TaskId;
 const thirdTaskId = '70000000-0000-4000-8000-000000000004' as TaskId;
 const executionId = '70000000-0000-4000-8000-000000000010' as AgentExecutionId;
+const generationOperationId =
+  '70000000-0000-4000-8000-000000000020' as OperationId;
 const firstSessionId = '70000000-0000-4000-8000-000000000011' as AgentSessionId;
 const secondSessionId =
   '70000000-0000-4000-8000-000000000012' as AgentSessionId;
@@ -258,7 +261,12 @@ describe('AgentWorkflow full project acceptance', { concurrent: false }, () => {
     const toolHost = new MusicCoreToolHost({
       agent: transaction,
       control: transaction,
-      confirmation: { request: () => Promise.resolve('approved') },
+      generationPlanConfirmation: {
+        request: () => Promise.resolve('approved'),
+      },
+      scopeExtensionConfirmation: {
+        request: () => Promise.resolve('approved'),
+      },
     });
     const runtimeDirectory = await makeStorageRoot();
     const mcpServer = new MusicCoreMcpHttpServer({
@@ -274,9 +282,22 @@ describe('AgentWorkflow full project acceptance', { concurrent: false }, () => {
         toolCall: {
           name: 'submitGenerationPlan',
           arguments: {
+            operationId: generationOperationId,
             summary: 'Create a one-bar drum note.',
             scope: { type: 'wholeProject', trackIds: TRACK_IDS },
           },
+        },
+      },
+      {
+        toolCall: {
+          name: 'getOperation',
+          arguments: { operationId: generationOperationId },
+        },
+      },
+      {
+        toolCall: {
+          name: 'getOperation',
+          arguments: { operationId: generationOperationId },
         },
       },
       {
@@ -292,6 +313,12 @@ describe('AgentWorkflow full project acceptance', { concurrent: false }, () => {
             },
             replacements: [{ trackId: 'track.drums', abc: 'C4' }],
           },
+        },
+      },
+      {
+        toolCall: {
+          name: 'getOperation',
+          arguments: { operationId: generationOperationId },
         },
       },
       {

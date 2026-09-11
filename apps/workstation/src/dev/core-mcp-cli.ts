@@ -13,8 +13,8 @@ import { MusicCoreToolHost } from '../core/mcp/music-core-tool-host.js';
 import { ProjectFoundation } from '../core/project/project-foundation.js';
 import {
   CORE_MCP_CLI_USAGE,
-  InteractiveCandidateAgentPort,
   TerminalGenerationPlanConfirmation,
+  TerminalScopeExtensionConfirmation,
   parseCoreMcpCliOptions,
   type CoreMcpCliOptions,
   type CoreMcpCliTerminalPort,
@@ -106,15 +106,15 @@ export const runCoreMcpCli = async (
       createId: randomUUID,
       now: () => new Date().toISOString(),
     });
-    const interactiveAgent = new InteractiveCandidateAgentPort(
-      transaction,
-      transaction,
-      terminal,
-    );
     const toolHost = new MusicCoreToolHost({
-      agent: interactiveAgent,
+      agent: transaction,
       control: transaction,
-      confirmation: new TerminalGenerationPlanConfirmation(terminal),
+      generationPlanConfirmation: new TerminalGenerationPlanConfirmation(
+        terminal,
+      ),
+      scopeExtensionConfirmation: new TerminalScopeExtensionConfirmation(
+        terminal,
+      ),
     });
     server = new MusicCoreMcpHttpServer({
       projectId: opened.projectId,

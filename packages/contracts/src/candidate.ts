@@ -1,3 +1,4 @@
+import type { OperationId } from './mcp.js';
 import {
   TRACK_IDS,
   isTaskScope,
@@ -49,6 +50,7 @@ export interface TaskContextView {
 }
 
 export interface PendingScopeExtensionView {
+  readonly operationId: OperationId;
   readonly taskId: TaskId;
   readonly requestId: ScopeExtensionRequestId;
   readonly fromScopeRevision: number;
@@ -104,6 +106,8 @@ export const CANDIDATE_ERROR_CODES = [
   'VALIDATION_FAILED',
   'CANDIDATE_TRANSACTION_FAILED',
   'ORPHAN_CANDIDATE_RESOURCE',
+  'OPERATION_NOT_FOUND',
+  'OPERATION_ID_CONFLICT',
 ] as const;
 
 export type CandidateErrorCode = (typeof CANDIDATE_ERROR_CODES)[number];

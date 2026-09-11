@@ -9,6 +9,7 @@ import {
   type AgentExecutionId,
   type AgentSessionId,
   type CandidateId,
+  type OperationId,
   type ProjectId,
   type TaskContextView,
   type TaskId,
@@ -26,6 +27,7 @@ const sessionId = '22222222-2222-4222-8222-222222222222' as AgentSessionId;
 const executionId = '33333333-3333-4333-8333-333333333333' as AgentExecutionId;
 const candidateId = '44444444-4444-4444-8444-444444444444' as CandidateId;
 const taskId = '55555555-5555-4555-8555-555555555555' as TaskId;
+const operationId = '66666666-6666-4666-8666-666666666666' as OperationId;
 const baseRevision = 'abc123';
 
 const task: TaskContextView = {
@@ -219,9 +221,16 @@ describe('AgentWorkflow + real Strands + MCP', () => {
         toolCall: {
           name: 'submitGenerationPlan',
           arguments: {
+            operationId,
             summary: 'Generate one bar.',
             scope: { type: 'wholeProject', trackIds: TRACK_IDS },
           },
+        },
+      },
+      {
+        toolCall: {
+          name: 'getOperation',
+          arguments: { operationId },
         },
       },
       {
@@ -247,7 +256,23 @@ describe('AgentWorkflow + real Strands + MCP', () => {
         call: (name) => {
           toolCalls.push(name);
           if (name === 'submitGenerationPlan') {
-            return Promise.resolve({ approved: true, task });
+            return Promise.resolve({
+              operationId,
+              type: 'generationPlan',
+              state: 'pending',
+              createdAt: '2026-09-09T00:00:00.000Z',
+              summary: 'Generate one bar.',
+              scope: task.scope,
+            });
+          }
+          if (name === 'getOperation') {
+            return Promise.resolve({
+              operationId,
+              type: 'generationPlan',
+              state: 'succeeded',
+              createdAt: '2026-09-09T00:00:00.000Z',
+              result: { task },
+            });
           }
           if (name === 'finishTask') {
             return Promise.resolve({
@@ -307,8 +332,12 @@ describe('AgentWorkflow + real Strands + MCP', () => {
     );
     await terminal;
 
-    expect(toolCalls).toEqual(['submitGenerationPlan', 'finishTask']);
-    expect(fake.requests).toHaveLength(3);
+    expect(toolCalls).toEqual([
+      'submitGenerationPlan',
+      'getOperation',
+      'finishTask',
+    ]);
+    expect(fake.requests).toHaveLength(4);
     expect(events).toContainEqual({
       type: 'agent.textDelta',
       projectId,

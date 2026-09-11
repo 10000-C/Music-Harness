@@ -3,6 +3,7 @@ import type {
   AgentExecutionId,
   AgentSessionId,
   CandidateId,
+  OperationId,
   ProjectId,
   TaskContextView,
   TaskId,
@@ -21,6 +22,7 @@ const sessionId = '22222222-2222-4222-8222-222222222222' as AgentSessionId;
 const executionId = '33333333-3333-4333-8333-333333333333' as AgentExecutionId;
 const taskId = '44444444-4444-4444-8444-444444444444' as TaskId;
 const candidateId = '55555555-5555-4555-8555-555555555555' as CandidateId;
+const operationId = '66666666-6666-4666-8666-666666666666' as OperationId;
 
 const task: TaskContextView = {
   taskId,
@@ -50,6 +52,29 @@ const task: TaskContextView = {
     'track.strings',
     'track.winds',
   ],
+  createdAt: '2026-09-09T00:00:00.000Z',
+};
+
+const succeededGenerationOperation = {
+  operationId,
+  type: 'generationPlan' as const,
+  state: 'succeeded' as const,
+  createdAt: '2026-09-09T00:00:00.000Z',
+  result: { task },
+};
+
+const pendingGenerationOperation = {
+  operationId,
+  type: 'generationPlan' as const,
+  state: 'pending' as const,
+  createdAt: '2026-09-09T00:00:00.000Z',
+  summary: 'Generate music',
+  scope: task.scope,
+};
+const cancelledGenerationOperation = {
+  operationId,
+  type: 'generationPlan' as const,
+  state: 'cancelled' as const,
   createdAt: '2026-09-09T00:00:00.000Z',
 };
 
@@ -133,6 +158,9 @@ const makeHarness = (
   const runtimeFactory: AgentRuntimeFactoryPort = { create };
   const cancelTask = vi.fn().mockResolvedValue(undefined);
   const rollback: TaskRollbackPort = { cancelTask };
+  const cancelOperation = vi
+    .fn()
+    .mockResolvedValue(cancelledGenerationOperation);
   const getMaxRepairAttempts = vi.fn();
   for (const value of maxRepairAttempts) {
     getMaxRepairAttempts.mockResolvedValueOnce(value);
@@ -151,6 +179,7 @@ const makeHarness = (
   const workflow = new AgentWorkflow({
     runtimeFactory,
     taskBootstrap: { getTaskContext },
+    operations: { cancelOperation },
     rollback,
     settings: { getMaxRepairAttempts },
     createExecutionId: () => executionId,
@@ -159,6 +188,7 @@ const makeHarness = (
     workflow,
     create,
     cancelTask,
+    cancelOperation,
     getMaxRepairAttempts,
     getTaskContext,
     events,
@@ -241,10 +271,80 @@ describe('AgentWorkflow', () => {
     });
   });
 
+  it('explicitly cancels a pending Operation when the user cancels execution', async () => {
+    const harness = makeHarness([
+      {
+        events: [
+          toolResult('submitGenerationPlan', pendingGenerationOperation),
+        ],
+        waitForAbort: true,
+      },
+    ]);
+
+    start(harness.workflow, harness.emit);
+    await vi.waitFor(() => {
+      expect(harness.workflow.isRunning(projectId)).toBe(true);
+    });
+    await harness.workflow.cancelCurrentExecution(projectId);
+    await harness.terminal;
+
+    expect(harness.cancelOperation).toHaveBeenCalledWith(
+      projectId,
+      operationId,
+      expect.any(AbortSignal),
+    );
+    expect(harness.cancelTask).not.toHaveBeenCalled();
+    expect(harness.events.at(-1)?.type).toBe('agent.executionCancelled');
+  });
+
+  it('rolls back a Task if Operation cancellation discovers it already committed', async () => {
+    const harness = makeHarness([
+      {
+        events: [
+          toolResult('submitGenerationPlan', pendingGenerationOperation),
+        ],
+        waitForAbort: true,
+      },
+    ]);
+    harness.cancelOperation.mockResolvedValueOnce(succeededGenerationOperation);
+
+    start(harness.workflow, harness.emit);
+    await vi.waitFor(() => {
+      expect(harness.workflow.isRunning(projectId)).toBe(true);
+    });
+    await harness.workflow.cancelCurrentExecution(projectId);
+    await harness.terminal;
+
+    expect(harness.cancelTask).toHaveBeenCalledWith({
+      projectId,
+      candidateId,
+      taskId,
+    });
+  });
+
+  it('fails closed and cancels a pending Operation when the model ends without observing it', async () => {
+    const harness = makeHarness([
+      {
+        events: [
+          toolResult('submitGenerationPlan', pendingGenerationOperation),
+        ],
+      },
+    ]);
+
+    start(harness.workflow, harness.emit);
+    await harness.terminal;
+
+    expect(harness.cancelOperation).toHaveBeenCalledOnce();
+    expect(harness.events.at(-1)).toMatchObject({
+      type: 'agent.executionFailed',
+      code: 'OPERATION_NOT_FINISHED',
+    });
+  });
+
   it('rolls back an active Task when the user cancels execution', async () => {
     const harness = makeHarness([
       {
-        events: [toolResult('submitGenerationPlan', { approved: true, task })],
+        events: [toolResult('getOperation', succeededGenerationOperation)],
         waitForAbort: true,
       },
     ]);
@@ -322,7 +422,7 @@ describe('AgentWorkflow', () => {
   it('rolls back on a final runtime error without entering repair', async () => {
     const harness = makeHarness([
       {
-        events: [toolResult('submitGenerationPlan', { approved: true, task })],
+        events: [toolResult('getOperation', succeededGenerationOperation)],
         error: new Error('provider secret details'),
       },
     ]);
@@ -368,7 +468,7 @@ describe('AgentWorkflow', () => {
     const harness = makeHarness([
       {
         events: [
-          toolResult('submitGenerationPlan', { approved: true, task }),
+          toolResult('getOperation', succeededGenerationOperation),
           toolResult('finishTask', invalidFinish),
         ],
       },
@@ -407,7 +507,7 @@ describe('AgentWorkflow', () => {
       [
         {
           events: [
-            toolResult('submitGenerationPlan', { approved: true, task }),
+            toolResult('getOperation', succeededGenerationOperation),
             toolResult('finishTask', invalidFinish),
           ],
         },

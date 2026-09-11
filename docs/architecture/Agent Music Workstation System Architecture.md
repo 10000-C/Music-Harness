@@ -2,14 +2,14 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.15 |
-| 需求基线 | Agent Music Workstation PRD V1.17 Scope Extension Lifecycle |
-| 状态 | P0 架构基线；Scope Extension 可观测、显式撤回与取消一致性设计已冻结 |
+| 架构版本 | V1.16 |
+| 需求基线 | Agent Music Workstation PRD V1.18 Recoverable Operations |
+| 状态 | P0 架构基线；跨 RPC 人工确认统一 Operation 模型已冻结 |
 | 日期 | 2026-09-12 |
 | 首发平台 | Windows 10/11 |
 | 核心技术 | Electron、React、TypeScript、openDAW、Strands、MCP、Git/worktree |
 
-> 本版在 V1.14 基线上补齐 Scope Extension 生命周期：`getTaskContext` 暴露 Pending request，新增 `cancelScopeExtension`，P0 Agent MCP Tool 从 8 个扩展为 9 个；不引入 TTL，Pending 通过显式裁决/撤回、Tool Call cancel、Task cancel 与 Agent-loss reconciliation 闭合。
+> 本版在 V1.15 基线上将 Generation Plan 与 Scope Extension 的人工确认统一建模为可恢复 Operation：P0 Agent MCP Tool 为 10 个，新增通用 `getOperation` / `cancelOperation`，移除专用 `cancelScopeExtension`；Operation 与单次 MCP/RPC 生命周期解耦，transport timeout 不再具有业务取消语义。
 
 ---
 
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.17 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.18 冲突时，以 PRD 为准。
 
 ---
 
@@ -78,7 +78,7 @@
 | ADR-043 | Candidate 权威变化 | P0 Candidate 只允许 `composition.abc` 产生业务差异；`project.json` 必须保持 baseRevision 版本。checkpoint 只 stage `composition.abc`，成功 Task/Accept 均允许 empty commit。 |
 | ADR-044 | Strands 集成边界 | A4 直接使用 Strands 的 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client；不重复实现 SSE Provider 协议层或第二套 MCP Client。A4 只负责配置映射、生命周期、应用级错误归一化与脱敏。 |
 | ADR-045 | A4 Settings ownership | 用户级 Agent / Model `settings.json` 归 A4 所有；A4 负责读取、Schema 校验、活动模型选择和安全写回。A5 只负责 Export Preparation。 |
-| ADR-046 | Generation Plan 确认 | `submitGenerationPlan` 保留为九个 P0 MCP Tool 之一。Agent-facing Schema 不含 `projectId`，MCP Host 以 Core 当前 Active Project 注入 Project 身份。P0 采用 Tool Call 等待 UI 用户决策后再返回的协议；确认前不创建正式 A3 Task，Task-bound Tool 机械不可用；确认后由 A3 创建 Candidate/Task，再返回 Task bootstrap 信息。 |
+| ADR-046 | Generation Plan Operation | `submitGenerationPlan` 输入稳定 `operationId + summary + scope`，不含 `projectId`；MCP Host 绑定 Active Project。调用立即返回 `generationPlan` Operation，不等待人工确认。approve 后 A3 创建 Candidate/Task，并将 Task bootstrap 保存到 Operation `succeeded.result.task`，供 `getOperation` 重取。相同 operationId+输入重试幂等；transport timeout 不取消 Operation。 |
 | ADR-047 | Agent text transport | A4 内部 Workflow 状态不作为 Renderer Contract 暴露。既有 Agent Service → Main/Preload → Renderer typed transport 主要承载用户消息、assistant 文本流与执行终态/错误；Main/Preload 只负责 transport，原始 MCP Tool Result 不经该通道透传。 |
 | ADR-048 | A4 Cancel | Cancel 统一表示取消当前 Agent 操作。正式 Task 尚未创建时只终止 A4 Workflow；已有 Active Task 时先终止 Strands execution，再调用 A3 `cancelTask` 回滚到 `taskBaseCheckpoint`。 |
 | ADR-049 | Execution failure / retry | Provider 与 MCP transient retry 优先使用 Strands/底层 Client 自身能力；A4 不实现第二层通用 retry loop。最终 non-validation execution failure 必须取消并回滚 Active Task，`failed` 不得遗留 Active Task。 |
@@ -94,7 +94,8 @@
 | ADR-059 | Scope / Length 解耦 | Scope 是写授权，Composition length 是工程结构事实。`requestScopeExtension` 不创建未来时间轴；`resizeComposition` 不修改 Scope。`wholeProject` 始终指整个当前 Candidate，而非 Task 创建时冻结的 Tick 窗口。Task-bound read/replace 可提供 `targetScope`，但 A3 必须验证其为当前 Task Scope 的子集，借此允许 wholeProject 授权下的分段 timeRange 操作。 |
 | ADR-060 | Recoverable Validation | A2 Validation Error 必须可供 Agent 确定性修复。`TRACK_LENGTH_MISMATCH` 附各轨实际 Tick；ABC parser warning 在 adapter 边界去 HTML、聚合同类、限制返回规模并提供稳定 syntax hint。 |
 | ADR-061 | Tick-0 Global Events | `Q:`/`K:` header 分别是 Tick 0 Initial Tempo/Key 的唯一来源；inline `[Q:]`/`[K:]` 只允许 `tick > 0`。初始 Tempo 通过 `updateMusicalProperties` 修改，不允许重复 tick-0 map entry。 |
-| ADR-062 | Scope Extension lifecycle | Pending Scope Extension 是 A3 一等 Task 状态：`getTaskContext.pendingScopeExtension` 暴露 `requestId/requestedScope/fromScopeRevision/createdAt`；Agent 可用 `cancelScopeExtension` 显式撤回。确认继续绑定 MCP `AbortSignal`；Task cancel 与 Agent-loss reconciliation 通过结束 Task 清理 pending。P0 不设置 TTL，普通 retract/reject/cancel 不推进 `scopeRevision`。 |
+| ADR-062 | Scope Extension Operation | Pending Scope Extension 是 A3 一等 Task 状态，并携带 `operationId/requestId/requestedScope/fromScopeRevision/createdAt`。`requestScopeExtension` 创建/恢复 `scopeExtension` Operation；Agent 用通用 `getOperation` 查询，用 `cancelOperation` 显式撤回。Task cancel / Agent loss 结束 Active Task 时 pending 随 Task 失效；P0 不设置 TTL。 |
+| ADR-063 | Recoverable Core Operations | 仅将可能跨单次 RPC 等待人工/外部事件的流程建模为 Operation；P0 为 generationPlan 与 scopeExtension。Operation 使用 caller-stable UUID，状态为 pending/succeeded/rejected/cancelled/failed；`getOperation`/`cancelOperation` 为通用能力。普通读写/resize/finish 保持同步 Tool。Operation 结果在 Core runtime 生命周期内可恢复；显式 cancel 才是业务取消。 |
 
 > **职责边界：Musical Properties 与音乐内容修改分离。** `updateMusicalProperties` 修改初始 Meter / Tempo；A2 不自动拆分 Note/Rest、不自动添加 Tie、不自动按新拍号重排，也不改写局部 Tempo Event。Meter 变化后的音乐重排仍由 Agent 通过 wholeProject `replaceScopedMusic` 完成。
 
@@ -746,21 +747,24 @@ oldScope ⊆ requestedScope
 流程：
 
 ```text
-requestScopeExtension(executionEnvelope, requestedScope)
-→ A3 生成唯一 requestId，并记录 fromScopeRevision
+requestScopeExtension(operationId, executionEnvelope, requestedScope)
+→ Core 注册/恢复 scopeExtension Operation
+→ A3 生成唯一 requestId，并记录 operationId + fromScopeRevision
+→ Tool Call 立即返回 pending Operation
 → Pending barrier：Task-bound write、finishTask、再次扩展请求全部暂停
-→ Renderer 展示请求
-→ 用户 approve/reject(requestId)
-→ approve：再次校验 requestId、fromScopeRevision、oldScope ⊆ requestedScope
+→ Renderer 展示 operationId/requestId 对应请求
+→ 用户 approve/reject 当前请求
+→ approve：再次校验 operationId、requestId、fromScopeRevision、oldScope ⊆ requestedScope
              → scope = requestedScope
              → scopeRevision + 1
-→ reject：scope/scopeRevision 不变
-→ Task 回到可编辑状态
+             → Operation succeeded(result.task)
+→ reject：scope/scopeRevision 不变，Operation rejected
+→ Agent 通过 getOperation(operationId) 获取终态
 ```
 
 旧 requestId、旧 `expectedScopeRevision` 或非超集 Scope 均 fail-closed。Scope Extension 只扩大写授权，不负责增加工程小节或创建未来 Tick。
 
-确认等待必须使用原 MCP Tool Call 的 `AbortSignal`：timeout/cancel 发生后立即终止 UI/terminal question，并通过 control seam 清理/拒绝该 Pending request；此后即使收到迟到的 approve 输入也不得更新 Scope 或 `scopeRevision`。
+确认等待由 Operation 自身的 cancellation signal 持有，而不是原 MCP Tool Call 的 transport signal。客户端 timeout/disconnect 不终止确认；只有 `cancelOperation(operationId)`、产品 reject、Task cancel 或 Agent-loss reconciliation 才结束 pending。显式 cancel 与 approve 若发生竞态，以 Operation/A3 的线性化终态为准，不能同时成功。
 
 ### 11.3 Repair ownership
 
@@ -808,7 +812,7 @@ bootstrap 形式为：
 getTaskContext({ taskId })
 ```
 
-返回当前 Active Task 的 execution envelope、Scope、`scopeRevision`、Candidate 产品状态、固定六轨、音乐上下文，以及 A3 根据 Scope 实时推导的允许操作。已结束或失效 Task 返回稳定领域错误，不从历史记录恢复执行授权。
+返回当前 Active Task 的 execution envelope、Scope、`scopeRevision`、Candidate 产品状态、固定六轨，以及 A3 根据 Scope 实时推导的允许操作。若存在 Scope Extension pending，同时返回其 `operationId/requestId/requestedScope/fromScopeRevision/createdAt`。已结束或失效 Task 返回稳定领域错误，不从历史记录恢复执行授权。
 
 #### `getScopedComposition`
 
@@ -818,34 +822,34 @@ getTaskContext({ taskId })
 
 #### `submitGenerationPlan`
 
-首次生成前由 A4 调用该 MCP Tool 提交工程计划并请求 UI 用户确认。Agent-facing 输入为 `summary + scope`，不携带 `projectId`；MCP Host 从 Core 当前 Active Project 确定性注入 Project 身份。该 Tool 不属于 A3 Candidate mutation，不创建 Candidate，也不在确认前授予任何 Task-bound 工程能力。
+首次生成前由 A4 调用该 MCP Tool 提交工程计划并请求 UI 用户确认。Agent-facing 输入为 `operationId + summary + scope`，不携带 `projectId`；MCP Host 从 Core 当前 Active Project 确定性注入 Project 身份。该 Tool 不属于 A3 Candidate mutation，不创建 Candidate，也不在确认前授予任何 Task-bound 工程能力。
 
-P0 先采用长时间挂起 Tool Call 的最简确认协议：
+P0 使用可恢复 Operation 协议：
 
 ```text
 A4 / Strands
-→ submitGenerationPlan(plan)
-→ Core 发布计划确认产品状态
-→ Renderer 展示计划
-→ 用户 approve / reject / cancel
-→ approve：A3 startTask，创建/复用 Candidate + 正式 Task
-          → submitGenerationPlan 返回 Task bootstrap 信息
-→ reject/cancel：返回未批准结果，不创建正式 Task
+→ submitGenerationPlan(operationId, plan)
+→ Core 原子注册 generationPlan Operation
+→ 立即返回 pending
+→ Renderer 根据 operationId 展示并裁决
+→ approve：A3 startTask → Operation = succeeded(result.task)
+→ reject/cancel：Operation = rejected/cancelled
+→ Agent 通过 getOperation(operationId) 读取终态
 ```
 
-在该调用返回批准结果前不存在可用的正式 Task bootstrap，也没有可供 `getTaskContext` 使用的有效 `taskId`；所有 Task-bound read/write 必须机械拒绝。`awaiting_confirmation` 只是 A4 Workflow 状态，不新增对应 MCP Tool。
+`operationId` 由调用方稳定生成。相同 `operationId + 同一请求指纹` 的重试返回既有 Operation；若输入不同则返回 `OPERATION_ID_CONFLICT`。因此 response 丢失后不会重复创建 Task。MCP/client timeout 只结束本次等待，不修改业务 Operation。
 
 #### `requestScopeExtension`
 
 只提出扩大 Scope 的请求，不能直接修改 Scope。调用携带完整 execution envelope 和 `requestedScope`；A3 创建唯一 `ScopeExtensionRequestId` 并进入 Pending barrier，Renderer 通过 A3 control command 批准或拒绝。
 
-Pending request 同时出现在 `getTaskContext.pendingScopeExtension`，包含 `requestId`、`requestedScope`、`fromScopeRevision`、`createdAt`。P0 不使用 TTL；Agent 若需要主动放弃等待，调用 `cancelScopeExtension({ envelope, requestId })`，A3 仅清除匹配的 pending，不改变 Scope 或 `scopeRevision`。Task cancel / Agent loss 结束 Active Task 时 pending 随 Task 一并失效。
+Pending request 同时出现在 `getTaskContext.pendingScopeExtension`，包含 `operationId`、`requestId`、`requestedScope`、`fromScopeRevision`、`createdAt`。P0 不使用 TTL；Agent 若需要主动放弃等待，调用通用 `cancelOperation({operationId})`。Core 将 operation 与 A3 pending 对齐后 reject/清理，不改变 Scope 或 `scopeRevision`。Task cancel / Agent loss 结束 Active Task 时 pending 随 Task 一并失效。
 
 `scopeRevision` 仅表示授权 Scope 版本；只有成功 approve Scope Extension 时递增。普通 `replaceScopedMusic`、`updateMusicalProperties`、`resizeComposition` 与 reject/retract/cancel 均保持当前 revision。
 
-#### `cancelScopeExtension`
+#### `getOperation` / `cancelOperation`
 
-显式撤回当前 Pending Scope Extension。必须使用权威 execution envelope 和 `getTaskContext.pendingScopeExtension.requestId`；requestId 不匹配或已被裁决时返回稳定 stale request 错误。
+`getOperation({operationId})` 返回 long-running Operation 的权威状态/终态结果；`cancelOperation({operationId})` 是显式业务取消。Generation Plan 若已经 commit Task，则 cancel 不伪装成功，而是返回其既有 terminal result；A4 据此决定是否继续 rollback Task。Scope Extension pending cancel 会对齐 A3 `requestId` 并清理 pending。
 
 ### 12.3 写入
 
@@ -1418,7 +1422,7 @@ A4 Agent Service
 | 方向 | 命令/事件 |
 |---|---|
 | Renderer → Core | createScope、startTask、cancelTask、approveScopeExtension、rejectScopeExtension、acceptCandidate、rejectCandidate、loadPreview、exportCurrent |
-| Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、replaceScopedMusic、updateMusicalProperties、resizeComposition、finishTask |
+| Agent → MCP | getTaskContext、getScopedComposition、submitGenerationPlan、requestScopeExtension、getOperation、cancelOperation、replaceScopedMusic、updateMusicalProperties、resizeComposition、finishTask |
 | Core → Renderer | candidateChanged、taskChanged、scopeExtensionRequested、validationResult、currentCommitted、candidateInvalidated、error |
 | Renderer ↔ Agent Service（经 Main / Preload） | Project Session 的 list/create/open/getActive；`sendMessage` / `cancelCurrentExecution`；普通局部修改的 `sendMessage` 可携带最小 `{taskId, candidateId}` bootstrap；assistant text delta；execution completed / failed / cancelled。Scope/baseRevision/scopeRevision、原始 MCP Tool Result、Strands Storage 与 A4 内部 Workflow state 不进入该 Contract |
 | Main ↔ Agent Service lifecycle | typed `ready` / `health` / `shutdown` / `fatal`；Agent command/result/event 均经共享 exact-key runtime validator；受控 fatal 先执行 A4 cleanup；rollback failure 作为 execution failure 并升级为 process fatal，不伪装为 clean shutdown |
@@ -1728,7 +1732,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 40. 自动 Candidate cleanup 必须有持久化 cleanup marker 授权；无 marker 残留不恢复、不自动删除。
 41. A4 使用 Strands 原生 OpenAI-compatible Chat Completions 与 Agent-side MCP Client，不维护第二套 Provider/MCP 协议实现。
 42. Agent / Model Settings 与 Strands Session 集成属于 A4；A5 只负责 Export Preparation。
-43. `submitGenerationPlan` 是九个 P0 MCP Tool 之一；Agent-facing Schema 不含 `projectId`，Project 由 MCP Host 绑定当前 Active Project；确认前不创建正式 Task，P0 使用等待 UI 用户决策后再返回的 Tool Call 语义。
+43. `submitGenerationPlan` 是十个 P0 MCP Tool 之一；Agent-facing Schema 为 `operationId + summary + scope`，不含 `projectId`。调用立即返回 Operation；批准后的 Task bootstrap 由 `getOperation` 可恢复，transport timeout 不具有业务取消语义。
 44. A4 内部 Workflow state 不进入 Renderer Contract；Agent Service → Main/Preload → Renderer 只传 UI 必需的用户消息/Cancel、assistant text stream 与 execution terminal event，原始 MCP Tool Result 不透传。
 45. Cancel 若已有 Active Task，必须 `cancelTask` 并回滚；最终 `failed` Workflow 不得遗留 Active Task。
 46. Provider/MCP transient retry 优先由 Strands/底层 Client 负责；A4 不维护第二层通用 retry loop。

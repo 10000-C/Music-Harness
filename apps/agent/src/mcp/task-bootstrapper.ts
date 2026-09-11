@@ -2,6 +2,8 @@ import {
   TRACK_IDS,
   isTaskScope,
   type McpRuntimeDescriptor,
+  type OperationId,
+  type OperationView,
   type ProjectId,
   type TaskContextView,
   type TaskId,
@@ -48,7 +50,8 @@ const isTaskContextView = (value: unknown): value is TaskContextView =>
   value.allowedOperations.every(
     (operation) =>
       operation === 'replaceScopedMusic' ||
-      operation === 'updateMusicalProperties',
+      operation === 'updateMusicalProperties' ||
+      operation === 'resizeComposition',
   ) &&
   hasCanonicalTrackIds(value.trackIds) &&
   typeof value.createdAt === 'string';
@@ -76,6 +79,17 @@ const parseTextResult = (result: unknown): unknown => {
     );
   }
 };
+
+const isOperationView = (value: unknown): value is OperationView =>
+  isRecord(value) &&
+  typeof value.operationId === 'string' &&
+  (value.type === 'generationPlan' || value.type === 'scopeExtension') &&
+  (value.state === 'pending' ||
+    value.state === 'succeeded' ||
+    value.state === 'rejected' ||
+    value.state === 'cancelled' ||
+    value.state === 'failed') &&
+  typeof value.createdAt === 'string';
 
 export class StrandsTaskBootstrapper {
   public constructor(
@@ -111,6 +125,39 @@ export class StrandsTaskBootstrapper {
         );
       }
       return context;
+    } finally {
+      await client.disconnect();
+    }
+  }
+  public async cancelOperation(
+    projectId: ProjectId,
+    operationId: OperationId,
+    signal: AbortSignal,
+  ): Promise<OperationView> {
+    const descriptor = await this.descriptors.read(projectId);
+    const client = createStrandsMcpClient(descriptor);
+    try {
+      const tools = await client.listTools();
+      const cancelOperation = tools.find(
+        (tool) => tool.name === 'cancelOperation',
+      );
+      if (cancelOperation === undefined) {
+        throw new StrandsTaskBootstrapError(
+          'Music Core does not expose cancelOperation',
+        );
+      }
+      const result = await client.callTool(
+        cancelOperation,
+        { operationId },
+        { signal },
+      );
+      const operation = parseTextResult(result);
+      if (!isOperationView(operation)) {
+        throw new StrandsTaskBootstrapError(
+          'Music Core returned an invalid Operation result',
+        );
+      }
+      return operation;
     } finally {
       await client.disconnect();
     }

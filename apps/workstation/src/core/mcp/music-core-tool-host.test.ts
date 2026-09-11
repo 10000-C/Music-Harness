@@ -1,5 +1,6 @@
 import type {
   CandidateId,
+  OperationId,
   ProjectId,
   ScopeExtensionRequestId,
   TaskExecutionEnvelope,
@@ -17,11 +18,17 @@ import {
   MusicCoreToolHost,
   P0_MCP_TOOL_NAMES,
   type GenerationPlanConfirmationPort,
+  type ScopeExtensionConfirmationPort,
 } from './music-core-tool-host.js';
 
 const projectId = '11111111-1111-4111-8111-111111111111' as ProjectId;
 const taskId = '22222222-2222-4222-8222-222222222222' as TaskId;
 const candidateId = '33333333-3333-4333-8333-333333333333' as CandidateId;
+const generationOperationId =
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' as OperationId;
+const scopeOperationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' as OperationId;
+const scopeRequestId =
+  '44444444-4444-4444-8444-444444444444' as ScopeExtensionRequestId;
 const scope: TaskScope = {
   type: 'wholeProject',
   trackIds: [
@@ -62,14 +69,13 @@ const makeHarness = () => {
   const getTaskContext = vi.fn().mockResolvedValue(taskContext);
   const getScopedComposition = vi.fn().mockResolvedValue({});
   const requestScopeExtension = vi.fn().mockResolvedValue({
+    operationId: scopeOperationId,
     taskId,
-    requestId:
-      '44444444-4444-4444-8444-444444444444' as ScopeExtensionRequestId,
+    requestId: scopeRequestId,
     fromScopeRevision: 0,
     requestedScope: scope,
     createdAt: '2026-09-09T00:00:01.000Z',
   });
-  const cancelScopeExtension = vi.fn().mockResolvedValue(taskContext);
   const applyScopedMusicChange = vi.fn().mockResolvedValue({});
   const updateMusicalProperties = vi.fn().mockResolvedValue({});
   const resizeComposition = vi.fn().mockResolvedValue({});
@@ -83,13 +89,18 @@ const makeHarness = () => {
     validation: { valid: true, issues: [] },
   });
   const startTask = vi.fn().mockResolvedValue(taskContext);
-  const confirmationRequest = vi.fn().mockResolvedValue('approved');
+  const approveScopeExtension = vi.fn().mockResolvedValue({
+    ...taskContext,
+    scopeRevision: 1,
+  });
+  const rejectScopeExtension = vi.fn().mockResolvedValue(taskContext);
+  const generationPlanRequest = vi.fn().mockResolvedValue('approved');
+  const scopeExtensionRequest = vi.fn().mockResolvedValue('approved');
 
   const agent: CandidateAgentPort = {
     getTaskContext,
     getScopedComposition,
     requestScopeExtension,
-    cancelScopeExtension,
     applyScopedMusicChange,
     updateMusicalProperties,
     resizeComposition,
@@ -99,115 +110,186 @@ const makeHarness = () => {
     startTask,
     cancelTask: vi.fn(),
     cancelActiveTaskForAgentLoss: vi.fn(),
-    approveScopeExtension: vi.fn(),
-    rejectScopeExtension: vi.fn(),
+    approveScopeExtension,
+    rejectScopeExtension,
     acceptCandidate: vi.fn(),
     rejectCandidate: vi.fn(),
     reconcileProjectResources: vi.fn(),
   };
-  const confirmation: GenerationPlanConfirmationPort = {
-    request: confirmationRequest,
+  const generationPlanConfirmation: GenerationPlanConfirmationPort = {
+    request: generationPlanRequest,
+  };
+  const scopeExtensionConfirmation: ScopeExtensionConfirmationPort = {
+    request: scopeExtensionRequest,
   };
 
   return {
-    host: new MusicCoreToolHost({ agent, control, confirmation }),
+    host: new MusicCoreToolHost({
+      agent,
+      control,
+      generationPlanConfirmation,
+      scopeExtensionConfirmation,
+      now: () => '2026-09-09T00:00:02.000Z',
+    }),
     mocks: {
       getTaskContext,
       getScopedComposition,
       requestScopeExtension,
-      cancelScopeExtension,
       applyScopedMusicChange,
       updateMusicalProperties,
       resizeComposition,
       finishTask,
       startTask,
-      confirmationRequest,
+      approveScopeExtension,
+      rejectScopeExtension,
+      generationPlanRequest,
+      scopeExtensionRequest,
     },
   };
 };
 
-describe('MusicCoreToolHost', () => {
-  it('exposes exactly the nine P0 Agent tools', () => {
+describe('MusicCoreToolHost operations', () => {
+  it('exposes exactly the ten P0 Agent tools', () => {
     const { host } = makeHarness();
     expect(host.listTools()).toEqual(P0_MCP_TOOL_NAMES);
   });
 
-  it('keeps submitGenerationPlan pending until confirmation and only then starts a Task', async () => {
+  it('returns a generation-plan operation immediately and preserves its Task result for later recovery', async () => {
     let resolveDecision: ((value: 'approved') => void) | undefined;
     const { host, mocks } = makeHarness();
-    mocks.confirmationRequest.mockReturnValue(
+    mocks.generationPlanRequest.mockReturnValue(
       new Promise((resolve) => {
         resolveDecision = resolve;
       }),
     );
 
-    const pending = host.call('submitGenerationPlan', {
+    await expect(
+      host.call('submitGenerationPlan', {
+        operationId: generationOperationId,
+        projectId,
+        summary: 'Build a six-track groove.',
+        scope,
+      }),
+    ).resolves.toMatchObject({
+      operationId: generationOperationId,
+      type: 'generationPlan',
+      state: 'pending',
+    });
+    expect(mocks.startTask).not.toHaveBeenCalled();
+
+    resolveDecision?.('approved');
+    await vi.waitFor(async () => {
+      await expect(
+        host.call('getOperation', { operationId: generationOperationId }),
+      ).resolves.toMatchObject({
+        state: 'succeeded',
+        result: { task: taskContext },
+      });
+    });
+    expect(mocks.startTask).toHaveBeenCalledTimes(1);
+
+    await expect(
+      host.call('submitGenerationPlan', {
+        operationId: generationOperationId,
+        projectId,
+        summary: 'Build a six-track groove.',
+        scope,
+      }),
+    ).resolves.toMatchObject({
+      state: 'succeeded',
+      result: { task: taskContext },
+    });
+    expect(mocks.startTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a pending generation-plan operation without relying on transport abort', async () => {
+    const { host, mocks } = makeHarness();
+    mocks.generationPlanRequest.mockImplementation(
+      ({ signal }: Parameters<GenerationPlanConfirmationPort['request']>[0]) =>
+        new Promise((resolve) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              resolve('cancelled');
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    await host.call('submitGenerationPlan', {
+      operationId: generationOperationId,
       projectId,
       summary: 'Build a six-track groove.',
       scope,
     });
-    await Promise.resolve();
-
+    await expect(
+      host.call('cancelOperation', { operationId: generationOperationId }),
+    ).resolves.toMatchObject({ state: 'cancelled' });
     expect(mocks.startTask).not.toHaveBeenCalled();
-    resolveDecision?.('approved');
-    await expect(pending).resolves.toEqual({
-      approved: true,
-      task: taskContext,
-    });
-    expect(mocks.startTask).toHaveBeenCalledWith({ projectId, scope });
   });
 
-  it('cancels a pending generation plan without creating a Task even if approval arrives later', async () => {
-    let resolveDecision: ((value: 'approved') => void) | undefined;
+  it('creates a recoverable Scope Extension operation and generic cancellation retracts A3 pending state', async () => {
     const { host, mocks } = makeHarness();
-    const abortController = new AbortController();
-    mocks.confirmationRequest.mockReturnValue(
-      new Promise((resolve) => {
-        resolveDecision = resolve;
+    mocks.scopeExtensionRequest.mockImplementation(
+      ({ signal }: Parameters<ScopeExtensionConfirmationPort['request']>[0]) =>
+        new Promise((resolve) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              resolve('cancelled');
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    await expect(
+      host.call('requestScopeExtension', {
+        operationId: scopeOperationId,
+        envelope,
+        requestedScope: scope,
       }),
-    );
-
-    const pending = host.call(
-      'submitGenerationPlan',
-      {
-        projectId,
-        summary: 'Build a six-track groove.',
-        scope,
-      },
-      { signal: abortController.signal },
-    );
-    await Promise.resolve();
-    abortController.abort();
-
-    await expect(pending).resolves.toEqual({
-      approved: false,
-      decision: 'cancelled',
+    ).resolves.toMatchObject({
+      operationId: scopeOperationId,
+      type: 'scopeExtension',
+      state: 'pending',
+      request: { operationId: scopeOperationId, requestId: scopeRequestId },
     });
-    expect(mocks.startTask).not.toHaveBeenCalled();
+    expect(mocks.requestScopeExtension).toHaveBeenCalledWith({
+      operationId: scopeOperationId,
+      envelope,
+      requestedScope: scope,
+    });
 
-    resolveDecision?.('approved');
-    await Promise.resolve();
-    expect(mocks.startTask).not.toHaveBeenCalled();
+    await expect(
+      host.call('cancelOperation', { operationId: scopeOperationId }),
+    ).resolves.toMatchObject({ state: 'cancelled' });
+    expect(mocks.rejectScopeExtension).toHaveBeenCalledWith({
+      taskId,
+      requestId: scopeRequestId,
+    });
   });
 
-  it.each(['rejected', 'cancelled'] as const)(
-    'does not create a Task when generation plan is %s',
-    async (decision) => {
-      const { host, mocks } = makeHarness();
-      mocks.confirmationRequest.mockResolvedValue(decision);
+  it('rejects reusing an operationId for different input', async () => {
+    const { host } = makeHarness();
+    await host.call('submitGenerationPlan', {
+      operationId: generationOperationId,
+      projectId,
+      summary: 'First plan',
+      scope,
+    });
+    await expect(
+      host.call('submitGenerationPlan', {
+        operationId: generationOperationId,
+        projectId,
+        summary: 'Different plan',
+        scope,
+      }),
+    ).rejects.toMatchObject({ code: 'OPERATION_ID_CONFLICT' });
+  });
 
-      await expect(
-        host.call('submitGenerationPlan', {
-          projectId,
-          summary: 'Build a six-track groove.',
-          scope,
-        }),
-      ).resolves.toEqual({ approved: false, decision });
-      expect(mocks.startTask).not.toHaveBeenCalled();
-    },
-  );
-
-  it('delegates Task-bound reads and writes to the A3 Agent port', async () => {
+  it('delegates synchronous Task-bound reads and writes directly to A3', async () => {
     const { host, mocks } = makeHarness();
     const replacements: readonly TrackReplacement[] = [
       { trackId: 'track.bass', abc: 'C2' },
@@ -215,14 +297,6 @@ describe('MusicCoreToolHost', () => {
 
     await host.call('getTaskContext', { taskId });
     await host.call('getScopedComposition', envelope);
-    await host.call('requestScopeExtension', {
-      envelope,
-      requestedScope: scope,
-    });
-    await host.call('cancelScopeExtension', {
-      envelope,
-      requestId: '44444444-4444-4444-8444-444444444444',
-    });
     await host.call('replaceScopedMusic', { envelope, replacements });
     await host.call('updateMusicalProperties', {
       envelope,
@@ -234,14 +308,6 @@ describe('MusicCoreToolHost', () => {
 
     expect(mocks.getTaskContext).toHaveBeenCalledWith(taskId);
     expect(mocks.getScopedComposition).toHaveBeenCalledWith(envelope);
-    expect(mocks.requestScopeExtension).toHaveBeenCalledWith({
-      envelope,
-      requestedScope: scope,
-    });
-    expect(mocks.cancelScopeExtension).toHaveBeenCalledWith({
-      envelope,
-      requestId: '44444444-4444-4444-8444-444444444444',
-    });
     expect(mocks.applyScopedMusicChange).toHaveBeenCalledWith({
       envelope,
       replacements,

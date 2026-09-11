@@ -519,8 +519,8 @@ describe('CandidateTransaction authorization', () => {
       },
     });
 
-    const retracted = await transaction.cancelScopeExtension({
-      envelope,
+    const retracted = await transaction.rejectScopeExtension({
+      taskId: task.taskId,
       requestId: pending.requestId,
     });
     expect(retracted.scopeRevision).toBe(0);

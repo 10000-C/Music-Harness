@@ -6,19 +6,20 @@ Provide a development-only CLI that opens an existing Agent Music project, start
 
 ## Scope
 
-The CLI is a local interoperability harness. It intentionally binds a standalone MCP server to one Project. Architecture V1.15 defines a different formal desktop product composition root: one long-lived Core/MCP with `0..1` Active Project across Project switches. It does not change the product protocol, add Agent-facing tools, or move authorization decisions into MCP.
+The CLI is a local interoperability harness. It intentionally binds a standalone MCP server to one Project. Architecture V1.16 defines a different formal desktop product composition root: one long-lived Core/MCP with `0..1` Active Project across Project switches. It does not change the product protocol, add Agent-facing tools, or move authorization decisions into MCP.
 
-The nine P0 MCP tools are:
+The ten P0 MCP tools are:
 
 1. `getTaskContext`
 2. `getScopedComposition`
 3. `submitGenerationPlan`
 4. `requestScopeExtension`
-5. `cancelScopeExtension`
-6. `replaceScopedMusic`
-7. `updateMusicalProperties`
-8. `resizeComposition`
-9. `finishTask`
+5. `getOperation`
+6. `cancelOperation`
+7. `replaceScopedMusic`
+8. `updateMusicalProperties`
+9. `resizeComposition`
+10. `finishTask`
 
 ## Invocation
 
@@ -60,7 +61,7 @@ The MCP server continues to bind to `127.0.0.1` on an ephemeral port and publish
 
 ### Generation Plan
 
-`submitGenerationPlan` remains a long-held MCP Tool Call. The CLI implements `GenerationPlanConfirmationPort` with a terminal prompt:
+`submitGenerationPlan` now creates or recovers a runtime-scoped Operation and returns immediately. The CLI confirmation prompt is keyed by `operationId`; `getOperation` retrieves the eventual Task bootstrap, while `cancelOperation` is the explicit business cancellation path. Transport timeout is intentionally not treated as cancellation.
 
 ```text
 Generation plan
@@ -122,7 +123,7 @@ Keep process plumbing thin and test the behavior-bearing pieces separately:
 1. argument parsing/default runtime path;
 2. terminal plan confirmation decision mapping;
 3. Scope Extension wrapper creates pending first, binds the terminal question to the MCP cancellation signal, and routes approval/rejection through the existing control seam; cancellation clears/rejects pending authorization;
-4. composition/lifecycle integration starts the real HTTP MCP server over a real temporary project and verifies a standards-compliant client can list exactly nine tools;
+4. composition/lifecycle integration starts the real HTTP MCP server over a real temporary project and verifies a standards-compliant client can list exactly ten tools;
 5. cleanup closes server/project resources.
 
-The existing A-layer manual regression procedure remains the broader behavioral acceptance for all nine tools and real project facts.
+The existing A-layer manual regression procedure remains the broader behavioral acceptance for all ten tools and real project facts.

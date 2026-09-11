@@ -21,11 +21,11 @@
 
 开发必须遵循：
 
-- `docs/product/Agent Music Workstation PRD.md` V1.17；
-- `docs/architecture/Agent Music Workstation System Architecture.md` V1.15；
+- `docs/product/Agent Music Workstation PRD.md` V1.18；
+- `docs/architecture/Agent Music Workstation System Architecture.md` V1.16；
 - `docs/architecture/spike.md` 中 Spike-001～010 的技术结论；Spike-010 的 Velocity 候选已按 ADR-034 纳入 P0。
 
-TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为结论固化为正式模块和回归测试；其中 TG-008 的自研 Provider Adapter 实现约束已由 Architecture V1.15 ADR-044 替代，A4 应以 Strands 原生 Chat Completions / MCP Client 集成为正式实现，并复用 TG-008 的 Tool Call、流式、取消和错误行为作为回归标准。
+TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为结论固化为正式模块和回归测试；其中 TG-008 的自研 Provider Adapter 实现约束已由 Architecture V1.16 ADR-044 替代，A4 应以 Strands 原生 Chat Completions / MCP Client 集成为正式实现，并复用 TG-008 的 Tool Call、流式、取消和错误行为作为回归标准。
 
 本计划只定义：
 
@@ -39,7 +39,7 @@ TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为�
 - Electron Main、Renderer、Music Core Utility Process 和 Agent Service 的进程拓扑；
 - Renderer ↔ Core 的 typed IPC / PlaybackCompilation 通信；
 - Agent ↔ Core 的 MCP Streamable HTTP 通信；
-- MCP Server 的部署位置和九个 P0 Tool；正式桌面产品为单 Core/单 MCP/`0..1` Active Project，Project 切换不重启 MCP；
+- MCP Server 的部署位置和十个 P0 Tool；正式桌面产品为单 Core/单 MCP/`0..1` Active Project，Project 切换不重启 MCP；
 - Canonical ABC → MIDI → openDAW Runtime 的链路；
 - Current、Candidate、Task checkpoint 和 Git/worktree 状态机；
 - ABC、MIDI、WAV 的既定导出链；
@@ -154,7 +154,7 @@ A 负责：
 - `replaceScopedMusic`、`updateMusicalProperties` 与 `resizeComposition` 原子事务；
 - ABC → Standard MIDI Document；
 - 单一 MCP Server、Instance Token、Core-process-scoped runtime descriptor；MCP 与 Core 同生命周期，Project close/open 不重启；
-- 九个 P0 MCP Tool 的 Schema、授权和业务语义；
+- 十个 P0 MCP Tool 的 Schema、授权和业务语义；
 - `finishTask`、Accept、Reject、取消和迟到结果保护；
 - Current-only 导出前检查、重新读取和重新编译；
 - ABC/MIDI 导出数据；
@@ -170,7 +170,7 @@ A 负责：
 - 使用 Strands 原生 OpenAI-compatible Chat Completions 能力，不自研 SSE Tool Call 拼接或第二套 Provider 协议层；
 - 使用 Strands 原生 Agent-side MCP Client，通过 Core-process-scoped descriptor + Instance Token 连接单一 Core MCP Server；A4 不按 `projectId` 选择多个 MCP Endpoint；
 - Provider/MCP transient retry 优先使用 Strands/底层 Client；A4 只处理最终错误归一化，不实现第二层通用 retry loop；
-- 首次生成计划，以及长时间挂起 `submitGenerationPlan` 等待 UI 用户确认的 A4 Workflow；Agent-facing 计划输入不携带 `projectId`，由 MCP Host 注入当前 Active Project；MCP timeout/cancel 必须传播到原 Tool Call；
+- 首次生成计划与 Scope Extension 使用可恢复 Operation：调用方提供稳定 `operationId`，`submitGenerationPlan` / `requestScopeExtension` 立即返回；`getOperation` 查询终态，`cancelOperation` 显式业务取消；Agent-facing 计划输入不携带 `projectId`，由 MCP Host 注入当前 Active Project；transport timeout 不改变 Operation 状态；
 - executing 阶段 Scope 扩展请求；repairing 阶段禁止 Scope Extension；Scope Extension confirmation 继承 MCP cancellation，timeout/cancel 后不得后台批准；
 - `finishTask` validation failure 后的有限 repair：一轮 validation→repair→finishTask 计一次 `repairAttempt`，每轮开始前读取最新 `maxRepairAttempts`；
 - 统一 Cancel：pre-Task 只终止 Workflow，已有 Active Task 时 `cancelTask` 并回滚；最终 execution failure 同样不得遗留 Active Task；
@@ -669,7 +669,7 @@ A4 Strands Agent
 
 **通过标准：**
 
-- `tools/list` 精确暴露九个 P0 Tool，不新增 `awaitingConfirmation`、append/remove 等重复 Tool；
+- `tools/list` 精确暴露十个 P0 Tool，不新增 `awaitingConfirmation`、append/remove 等重复 Tool；
 - Agent 调用 `submitGenerationPlan` 后，在用户决策前 Tool Call 保持 pending，正式 Task 不存在且所有 Task-bound Tool 不可用；
 - 用户确认后 A3 创建 Candidate/Task，pending Tool Call 返回 Task bootstrap，A4 才继续执行；拒绝/取消不产生正式 Task；
 - 普通局部修改由 B4/Core 控制链先创建正式 Task，再通过 B2/B1 `sendMessage` 仅携带 `{taskId, candidateId}` bootstrap；A4 必须先 `getTaskContext({taskId})` 取得 A3 权威 Scope 与 execution envelope，Agent transport 不携带 Scope/baseRevision/scopeRevision；
@@ -752,7 +752,7 @@ git status --short
 
 ## 13. Day 10 Definition of Done
 
-- [ ] PRD V1.17 P0 验收逐项记录。
+- [ ] PRD V1.18 P0 验收逐项记录。
 - [ ] TG-001～TG-010 正式回归可重复运行。
 - [ ] Windows 应用可启动、创建项目、关闭和重开；Project A → B 切换不重启 Core/MCP/Agent。
 - [ ] 运行中 Agent execution/Active Task 时切换 Project 会先提示；确认后 Cancel + rollback + settle 完成才切换，拒绝或失败保持原 Project。
