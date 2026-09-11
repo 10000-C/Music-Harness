@@ -40,19 +40,26 @@ export interface CandidateAgentPort {
   getTaskContext(taskId: TaskId): Promise<TaskContextView>;
   getScopedComposition(
     envelope: TaskExecutionEnvelope,
+    targetScope?: TaskScope,
   ): Promise<ScopedComposition>;
   requestScopeExtension(input: {
     readonly envelope: TaskExecutionEnvelope;
     readonly requestedScope: TaskScope;
+    readonly signal?: AbortSignal;
   }): Promise<PendingScopeExtensionView>;
   applyScopedMusicChange(input: {
     readonly envelope: TaskExecutionEnvelope;
+    readonly targetScope?: TaskScope;
     readonly replacements: readonly TrackReplacement[];
   }): Promise<CompositionCompilation>;
   updateMusicalProperties(input: {
     readonly envelope: TaskExecutionEnvelope;
     readonly meter?: MusicalPropertiesUpdate['meter'];
     readonly tempo?: MusicalPropertiesUpdate['tempo'];
+  }): Promise<CompositionCompilation>;
+  resizeComposition(input: {
+    readonly envelope: TaskExecutionEnvelope;
+    readonly targetMeasureCount: number;
   }): Promise<CompositionCompilation>;
   finishTask(envelope: TaskExecutionEnvelope): Promise<FinishTaskResult>;
 }
@@ -104,6 +111,9 @@ interface CandidateCompositionPort {
   updateMusicalProperties(
     ...args: Parameters<CompositionPipeline['updateMusicalProperties']>
   ): Awaitable<ReturnType<CompositionPipeline['updateMusicalProperties']>>;
+  resizeComposition(
+    ...args: Parameters<CompositionPipeline['resizeComposition']>
+  ): Awaitable<ReturnType<CompositionPipeline['resizeComposition']>>;
   validateFinalMeterConsistency(
     ...args: Parameters<CompositionPipeline['validateFinalMeterConsistency']>
   ): Awaitable<
@@ -266,6 +276,7 @@ export class CandidateTransaction
 
   public async getScopedComposition(
     envelope: TaskExecutionEnvelope,
+    targetScope?: TaskScope,
   ): Promise<ScopedComposition> {
     try {
       const { candidate, task } = await this.guardTaskEnvelope(envelope);
@@ -275,9 +286,11 @@ export class CandidateTransaction
       const compilation = await this.dependencies.composition.compileCanonical(
         authority.compositionSource,
       );
+      const operationScope = targetScope ?? task.scope;
+      this.assertScopeWithinTask(task.scope, operationScope);
       const scoped = await this.dependencies.composition.getScopedComposition(
         compilation,
-        task.scope,
+        operationScope,
       );
       this.assertTaskStillAuthorized(candidate, task, envelope);
       return scoped;
@@ -383,6 +396,7 @@ export class CandidateTransaction
 
   public async applyScopedMusicChange(input: {
     readonly envelope: TaskExecutionEnvelope;
+    readonly targetScope?: TaskScope;
     readonly replacements: readonly TrackReplacement[];
   }): Promise<CompositionCompilation> {
     return this.runOrdinaryMutation(input.envelope.taskId, async (lease) => {
@@ -400,13 +414,15 @@ export class CandidateTransaction
       } catch (error) {
         throw tagCandidateValidationPhase(error, 'currentComposition');
       }
+      const operationScope = input.targetScope ?? task.scope;
+      this.assertScopeWithinTask(task.scope, operationScope);
       let result: Awaited<
         ReturnType<CandidateCompositionPort['replaceScopedMusic']>
       >;
       try {
         result = await this.dependencies.composition.replaceScopedMusic(
           compilation,
-          task.scope,
+          operationScope,
           input.replacements,
         );
       } catch (error) {
@@ -453,6 +469,38 @@ export class CandidateTransaction
 
       await this.guardTaskEnvelope(input.envelope);
       this.assertMutationAllowed(task, 'updateMusicalProperties');
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      lease.writeEntered = true;
+      await this.dependencies.repository.writeComposition(
+        candidate.workspace,
+        result.compilation.canonicalAbc,
+      );
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      return result.compilation;
+    });
+  }
+
+  public async resizeComposition(input: {
+    readonly envelope: TaskExecutionEnvelope;
+    readonly targetMeasureCount: number;
+  }): Promise<CompositionCompilation> {
+    return this.runOrdinaryMutation(input.envelope.taskId, async (lease) => {
+      const { candidate, task } = await this.guardTaskEnvelope(input.envelope);
+      this.assertMutationAllowed(task, 'resizeComposition');
+      const authority = await this.dependencies.repository.readAuthority(
+        candidate.workspace,
+      );
+      this.assertTaskStillAuthorized(candidate, task, input.envelope);
+      const compilation = await this.dependencies.composition.compileCanonical(
+        authority.compositionSource,
+      );
+      const result = await this.dependencies.composition.resizeComposition(
+        compilation,
+        task.scope,
+        input.targetMeasureCount,
+      );
+      await this.guardTaskEnvelope(input.envelope);
+      this.assertMutationAllowed(task, 'resizeComposition');
       this.assertTaskStillAuthorized(candidate, task, input.envelope);
       lease.writeEntered = true;
       await this.dependencies.repository.writeComposition(
@@ -934,7 +982,7 @@ export class CandidateTransaction
   ): readonly CandidateOperation[] {
     const operations: CandidateOperation[] = ['replaceScopedMusic'];
     if (scope.type === 'wholeProject' && hasAllTracks(scope)) {
-      operations.push('updateMusicalProperties');
+      operations.push('updateMusicalProperties', 'resizeComposition');
     }
     return operations;
   }
@@ -1044,6 +1092,18 @@ export class CandidateTransaction
         this.mutationLease = undefined;
       }
       lease.settle();
+    }
+  }
+
+  private assertScopeWithinTask(
+    authorizedScope: TaskScope,
+    targetScope: TaskScope,
+  ): void {
+    if (!this.isScopeSuperset(targetScope, authorizedScope)) {
+      throw new CandidateError(
+        'OPERATION_NOT_ALLOWED',
+        'Requested operation Scope must stay within the authorized Task Scope',
+      );
     }
   }
 

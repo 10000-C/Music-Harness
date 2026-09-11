@@ -8,6 +8,10 @@ import {
   compileComposition,
   type CompositionCompilation,
 } from './composition-pipeline.js';
+import {
+  resizeComposition,
+  type CompositionResizeResult,
+} from './composition-resize.js';
 import type { ValidationReport } from './composition-types.js';
 import { CompositionValidationError } from './composition-validation-error.js';
 import {
@@ -73,6 +77,14 @@ export class CompositionPipeline {
     replacements: readonly TrackReplacement[],
   ): ScopedReplacementResult {
     return replaceScopedMusic(compilation, scope, replacements);
+  }
+
+  public resizeComposition(
+    compilation: CompositionCompilation,
+    scope: TaskScope,
+    targetMeasureCount: number,
+  ): CompositionResizeResult {
+    return resizeComposition(compilation, scope, targetMeasureCount);
   }
 
   public updateMusicalProperties(

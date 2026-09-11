@@ -190,6 +190,7 @@ describe('CandidateTransaction lifecycle', () => {
     expect(task.allowedOperations).toEqual([
       'replaceScopedMusic',
       'updateMusicalProperties',
+      'resizeComposition',
     ]);
     expect(task).not.toHaveProperty('userIntent');
     expect(task).not.toHaveProperty('modelConfigurationId');
@@ -328,6 +329,7 @@ describe('CandidateTransaction authorization', () => {
     expect(wholeTask.allowedOperations).toEqual([
       'replaceScopedMusic',
       'updateMusicalProperties',
+      'resizeComposition',
     ]);
   });
 
@@ -519,6 +521,28 @@ describe('CandidateTransaction authorization', () => {
 });
 
 describe('CandidateTransaction A2-backed operations', () => {
+  it('allows operation targetScope only when it is contained by Task Scope', async () => {
+    const { transaction } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: {
+        type: 'timeRange',
+        trackIds: ['track.drums'],
+        startTick: 0 as never,
+        endTick: 3840 as never,
+      },
+    });
+    const envelope = envelopeFor(task);
+    await expect(
+      transaction.getScopedComposition(envelope, {
+        type: 'timeRange',
+        trackIds: ['track.drums'],
+        startTick: 0 as never,
+        endTick: 7680 as never,
+      }),
+    ).rejects.toMatchObject({ code: 'OPERATION_NOT_ALLOWED' });
+  });
+
   it('returns A2 scoped composition unchanged after reading Candidate authority', async () => {
     const { transaction, repository, composition } = createHarness();
     const task = await transaction.startTask({
@@ -671,6 +695,37 @@ describe('CandidateTransaction A2-backed operations', () => {
     expect(repository.writeComposition).toHaveBeenCalledWith(
       expect.objectContaining({ candidateId }),
       nextCompilation.canonicalAbc,
+    );
+  });
+
+  it('delegates resizeComposition only for wholeProject over all tracks', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const resized = {
+      compilation,
+      previousMeasureCount: 1,
+      targetMeasureCount: 64,
+    };
+    vi.spyOn(composition, 'compileCanonical').mockReturnValue(compilation);
+    const resize = vi
+      .spyOn(composition, 'resizeComposition')
+      .mockReturnValue(resized);
+
+    await transaction.resizeComposition({
+      envelope: envelopeFor(task),
+      targetMeasureCount: 64,
+    });
+
+    expect(resize).toHaveBeenCalledWith(compilation, wholeProjectScope, 64);
+    expect(repository.writeComposition).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId }),
+      compilation.canonicalAbc,
     );
   });
 

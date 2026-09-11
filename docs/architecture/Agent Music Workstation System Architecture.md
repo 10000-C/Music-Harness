@@ -91,7 +91,7 @@
 | ADR-056 | 单 Core/MCP Active Project | P0 正式桌面产品一个窗口使用一个长期存活的 Music Core Utility Process 和一个 MCP Server；Core 同时只持有 `0..1` Active Project。Project 切换只替换 Core 的 Active Project，不启动第二个 Project Core/MCP，也不由 Agent 选择 Endpoint。 |
 | ADR-057 | Project 切换 barrier | B2/B4 负责切换提示，B1 负责生命周期编排。确认切换后必须先让 A4 Cancel 当前 execution；已有 Active Task 时等待 A3 rollback 完成，再停止/释放旧 Project 的播放状态并执行 Core close/open。Cancel/rollback/close 任一步失败都禁止切换；Core/MCP 连接保持存活。 |
 | ADR-058 | Composition Resize | 新增 Agent MCP Tool `resizeComposition({ envelope, targetMeasureCount })`。只允许全六轨 `wholeProject`；Core 使用最终 Global Meter + PPQ=960 推导目标 Tick。扩长补尾部 Rest，等长 no-op，缩短若会删除已有音乐/局部 Tempo/Key 则拒绝。不得向 Agent 暴露 append delta 或 targetTicks。 |
-| ADR-059 | Scope / Length 解耦 | Scope 是写授权，Composition length 是工程结构事实。`requestScopeExtension` 不创建未来时间轴；`resizeComposition` 不修改 Scope。`wholeProject` 始终指整个当前 Candidate，而非 Task 创建时冻结的 Tick 窗口。 |
+| ADR-059 | Scope / Length 解耦 | Scope 是写授权，Composition length 是工程结构事实。`requestScopeExtension` 不创建未来时间轴；`resizeComposition` 不修改 Scope。`wholeProject` 始终指整个当前 Candidate，而非 Task 创建时冻结的 Tick 窗口。Task-bound read/replace 可提供 `targetScope`，但 A3 必须验证其为当前 Task Scope 的子集，借此允许 wholeProject 授权下的分段 timeRange 操作。 |
 | ADR-060 | Recoverable Validation | A2 Validation Error 必须可供 Agent 确定性修复。`TRACK_LENGTH_MISMATCH` 附各轨实际 Tick；ABC parser warning 在 adapter 边界去 HTML、聚合同类、限制返回规模并提供稳定 syntax hint。 |
 | ADR-061 | Tick-0 Global Events | `Q:`/`K:` header 分别是 Tick 0 Initial Tempo/Key 的唯一来源；inline `[Q:]`/`[K:]` 只允许 `tick > 0`。初始 Tempo 通过 `updateMusicalProperties` 修改，不允许重复 tick-0 map entry。 |
 | ADR-062 | Scope Extension cancellation | Scope Extension confirmation 必须绑定原 MCP Tool Call 的 `AbortSignal`。client timeout/cancel 后必须取消确认并清理/拒绝 Pending request，后续用户输入不得再批准，`scopeRevision` 保持不变。 |
@@ -953,7 +953,7 @@ submitGenerationPlan
 → getTaskContext / getScopedComposition
 → updateMusicalProperties(initial meter/tempo)
 → resizeComposition(targetMeasureCount)
-→ getScopedComposition(timeRange) + replaceScopedMusic(timeRange) 分段重复
+→ getScopedComposition(targetScope=timeRange) + replaceScopedMusic(targetScope=timeRange) 分段重复
 → finishTask
 ```
 

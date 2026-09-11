@@ -18,6 +18,7 @@ export const P0_MCP_TOOL_NAMES = [
   'requestScopeExtension',
   'replaceScopedMusic',
   'updateMusicalProperties',
+  'resizeComposition',
   'finishTask',
 ] as const;
 
@@ -52,10 +53,16 @@ interface ScopeExtensionInput {
 
 interface ReplaceScopedMusicInput {
   readonly envelope: TaskExecutionEnvelope;
+  readonly targetScope?: TaskScope;
   readonly replacements: readonly TrackReplacement[];
 }
 
 const isAborted = (signal?: AbortSignal): boolean => signal?.aborted === true;
+
+interface ResizeCompositionInput {
+  readonly envelope: TaskExecutionEnvelope;
+  readonly targetMeasureCount: number;
+}
 
 interface UpdateMusicalPropertiesInput {
   readonly envelope: TaskExecutionEnvelope;
@@ -82,19 +89,25 @@ export class MusicCoreToolHost {
         const { taskId } = input as { readonly taskId: TaskId };
         return this.dependencies.agent.getTaskContext(taskId);
       }
-      case 'getScopedComposition':
-        return this.dependencies.agent.getScopedComposition(
-          input as TaskExecutionEnvelope,
-        );
+      case 'getScopedComposition': {
+        const scopedInput = input as TaskExecutionEnvelope & {
+          readonly targetScope?: TaskScope;
+        };
+        const { targetScope, ...envelope } = scopedInput;
+        return targetScope === undefined
+          ? this.dependencies.agent.getScopedComposition(envelope)
+          : this.dependencies.agent.getScopedComposition(envelope, targetScope);
+      }
       case 'submitGenerationPlan':
         return this.submitGenerationPlan(
           input as GenerationPlanInput,
           options.signal,
         );
       case 'requestScopeExtension':
-        return this.dependencies.agent.requestScopeExtension(
-          input as ScopeExtensionInput,
-        );
+        return this.dependencies.agent.requestScopeExtension({
+          ...(input as ScopeExtensionInput),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        });
       case 'replaceScopedMusic':
         return this.dependencies.agent.applyScopedMusicChange(
           input as ReplaceScopedMusicInput,
@@ -102,6 +115,10 @@ export class MusicCoreToolHost {
       case 'updateMusicalProperties':
         return this.dependencies.agent.updateMusicalProperties(
           input as UpdateMusicalPropertiesInput,
+        );
+      case 'resizeComposition':
+        return this.dependencies.agent.resizeComposition(
+          input as ResizeCompositionInput,
         );
       case 'finishTask':
         return this.dependencies.agent.finishTask(

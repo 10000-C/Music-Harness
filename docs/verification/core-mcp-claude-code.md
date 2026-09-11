@@ -164,7 +164,7 @@ For a long new composition, do not use Scope Extension to create future time or 
 ```text
 updateMusicalProperties(meter/initial tempo as needed)
 → resizeComposition({ targetMeasureCount })
-→ getScopedComposition / replaceScopedMusic over bounded timeRange chunks
+→ getScopedComposition / replaceScopedMusic with bounded timeRange `targetScope` chunks
 → finishTask
 ```
 

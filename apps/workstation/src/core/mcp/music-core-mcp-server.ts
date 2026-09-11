@@ -117,8 +117,8 @@ const registerTools = (
     server,
     host,
     'getScopedComposition',
-    'Read Canonical composition content inside the authorized Scope. Returned tracks[].abc values are canonical voice-body fragments (no document headers or [V:...] markers) and are the formatting reference for replaceScopedMusic.',
-    envelopeSchema,
+    'Read Canonical composition content inside the authorized Task Scope. Optionally provide targetScope to read a smaller sub-scope; targetScope must be contained by the authorized Task Scope. Returned tracks[].abc values are canonical voice-body fragments and are the formatting reference for replaceScopedMusic.',
+    envelopeSchema.extend({ targetScope: scopeSchema.optional() }),
   );
   const generationPlanSchema = z.object({
     summary: z.string().min(1),
@@ -150,7 +150,7 @@ const registerTools = (
     server,
     host,
     'requestScopeExtension',
-    'Request a superset Scope and wait for product authorization.',
+    'Request a superset write Scope and wait for product authorization. This changes authorization only; it does not extend composition length or create future timeline. Cancellation/timeout cancels the pending confirmation.',
     z.object({
       envelope: envelopeSchema,
       requestedScope: scopeSchema,
@@ -160,9 +160,10 @@ const registerTools = (
     server,
     host,
     'replaceScopedMusic',
-    'Replace musical content only inside the authorized Scope. Each replacements[].abc is one track voice-body fragment only: never include X:/T:/M:/L:/Q:/K:/V: document headers or [V:...] markers. Follow getScopedComposition tracks[].abc as the canonical formatting example. Prefer explicit repeat-free bars. P0 fragment syntax supports notes/accidentals/octaves/durations, rests z, chords [CEG], bar |, end ties -, inline velocity [I:MIDI vol N] with integer N=1..127 immediately before a Note/Chord onset, and authorized inline [Q:1/4=N] or [K:...] directives. Do not use slurs, tuplets, grace notes, decorations, broken-rhythm markers, or arbitrary inline instructions. A timeRange replacement must preserve exact duration. A wholeProject replacement covering all six tracks may make the composition longer or shorter than its current totalTicks, but all six replacement bodies must end at the same new length. getScopedComposition.endTick reports the current length, not a maximum generation length. Do not request a timeRange beyond current totalTicks to extend song length; use wholeProject replacement instead. If VALIDATION_FAILED reports ABC_NOT_CANONICAL with phase=currentComposition, the existing Candidate source failed canonical preflight; retrying a different replacement fragment cannot fix that condition.',
+    'Replace musical content only inside the authorized existing Scope. Each replacements[].abc is one track voice-body fragment only: never include X:/T:/M:/L:/Q:/K:/V: document headers or [V:...] markers. Follow getScopedComposition tracks[].abc as the canonical formatting example. ABC accidentals precede pitches (^F, _B, =C; do not use F# or Bb). P0 fragment syntax supports notes/accidentals/octaves/durations, rests z, chords [CEG], bar |, end ties -, inline velocity [I:MIDI vol N] with integer N=1..127 immediately before a Note/Chord onset, and authorized inline [Q:1/4=N] or [K:...] directives only after tick 0. Initial Tempo uses updateMusicalProperties; initial Key remains the K: header. A timeRange replacement must preserve exact duration. For long-form generation, first use resizeComposition(targetMeasureCount), then fill bounded timeRange chunks. wholeProject replacement remains available for genuine whole-song rewrites. If VALIDATION_FAILED reports ABC_NOT_CANONICAL with phase=currentComposition, retrying a different fragment cannot repair the existing Candidate preflight failure.',
     z.object({
       envelope: envelopeSchema,
+      targetScope: scopeSchema.optional(),
       replacements: z.array(replacementSchema).min(1),
     }),
   );
@@ -188,6 +189,16 @@ const registerTools = (
           message: 'Provide meter, tempo, or both',
         },
       ),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'resizeComposition',
+    'Resize the authorized wholeProject/all-six-track Candidate to an absolute target measure count. Core derives ticks from Global Meter + PPQ, appends empty rest measures when growing, is idempotent at the same target, and refuses shrinking that would delete musical content. Use this before segmented timeRange generation; do not send targetTicks or append deltas.',
+    z.object({
+      envelope: envelopeSchema,
+      targetMeasureCount: z.int().positive(),
+    }),
   );
   registerJsonTool(
     server,

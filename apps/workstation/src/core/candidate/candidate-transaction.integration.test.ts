@@ -3,6 +3,7 @@ import {
   type CandidateId,
   type TaskId,
   type TaskScope,
+  type Tick,
 } from '@agent-music/contracts';
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
@@ -124,7 +125,7 @@ describe(
       });
     });
 
-    it('expands a one-bar wholeProject Candidate to 64 bars and finishes it', async () => {
+    it('resizes a one-bar Candidate to 64 bars, fills a bounded sub-scope, and finishes it', async () => {
       const created = await foundation.createProject(projectPath);
       const repository = new CandidateGitRepository();
       const transaction = new CandidateTransaction({
@@ -149,21 +150,40 @@ describe(
         baseRevision: task.baseRevision,
         expectedScopeRevision: task.scopeRevision,
       };
-      const initial = await transaction.getScopedComposition(envelope);
-      expect(initial.endTick).toBe(3840);
 
-      const sixtyFourBars = 'C D E F | '.repeat(64).trim();
+      const resized = await transaction.resizeComposition({
+        envelope,
+        targetMeasureCount: 64,
+      });
+      expect(resized.totalTicks).toBe(245_760);
+
+      const firstEightBars: TaskScope = {
+        type: 'timeRange',
+        trackIds: TRACK_IDS,
+        startTick: 0 as Tick,
+        endTick: 30_720 as Tick,
+      };
+      const scoped = await transaction.getScopedComposition(
+        envelope,
+        firstEightBars,
+      );
+      expect(scoped.startTick).toBe(0);
+      expect(scoped.endTick).toBe(30_720);
+
+      const eightBars = 'C D E F | '.repeat(8).trim();
       const changed = await transaction.applyScopedMusicChange({
         envelope,
+        targetScope: firstEightBars,
         replacements: TRACK_IDS.map((trackId) => ({
           trackId,
-          abc: sixtyFourBars,
+          abc: eightBars,
         })),
       });
-
       expect(changed.totalTicks).toBe(245_760);
-      const expanded = await transaction.getScopedComposition(envelope);
-      expect(expanded.endTick).toBe(245_760);
+      expect(
+        changed.tracks[0]?.events.some((event) => event.type === 'note'),
+      ).toBe(true);
+
       await expect(transaction.finishTask(envelope)).resolves.toMatchObject({
         candidate: { state: 'ready' },
         validation: { valid: true },

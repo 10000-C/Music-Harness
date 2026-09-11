@@ -66,6 +66,45 @@ export interface ParsedAbcDocument {
   readonly parserState: unknown;
 }
 
+const decodeWarningText = (value: string): string =>
+  value
+    .replace(/<[^>]*>/g, '')
+    .replaceAll('&nbsp;', ' ')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const normalizedParserWarnings = (warnings: readonly string[]) => {
+  const grouped = new Map<string, { count: number; first: string }>();
+  for (const raw of warnings) {
+    const clean = decodeWarningText(raw);
+    const key = clean.replace(/Music Line:\d+:\d+:/g, 'Music Line:');
+    const existing = grouped.get(key);
+    grouped.set(key, {
+      count: (existing?.count ?? 0) + 1,
+      first: existing?.first ?? clean,
+    });
+  }
+  const items = [...grouped.values()].slice(0, 5).map((item) => ({
+    message: item.first.slice(0, 400),
+    count: item.count,
+  }));
+  const hasPostfixAccidental = warnings.some((warning) =>
+    /Unknown character ignored:[\s\S]*[#]/.test(warning),
+  );
+  return {
+    totalWarnings: warnings.length,
+    warnings: items,
+    ...(hasPostfixAccidental
+      ? {
+          hint: 'ABC accidentals precede the pitch: use ^F, _B, or =C instead of F#, Bb, or postfix accidentals.',
+        }
+      : {}),
+  };
+};
+
 const collectVoices = (tune: TuneObject): readonly ParsedVoiceItem[][] => {
   const voices = TRACK_IDS.map(() => [] as ParsedVoiceItem[]);
 
@@ -117,9 +156,11 @@ export const parseAbcDocument = (source: string): ParsedAbcDocument => {
     );
   }
   if (tune.warnings !== undefined && tune.warnings.length > 0) {
+    const details = normalizedParserWarnings(tune.warnings);
     return failCompositionValidation(
       'ABC_PARSER_WARNING',
-      `ABC parser warning: ${tune.warnings.join('; ')}`,
+      `ABC parser warning (${String(details.totalWarnings)} occurrence${details.totalWarnings === 1 ? '' : 's'}): ${details.warnings[0]?.message ?? 'invalid ABC syntax'}`,
+      details,
     );
   }
 

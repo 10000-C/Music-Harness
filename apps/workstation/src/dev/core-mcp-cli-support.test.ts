@@ -64,6 +64,7 @@ const makeAgent = (pending: PendingScopeExtensionView) => {
     requestScopeExtension,
     applyScopedMusicChange: vi.fn(),
     updateMusicalProperties: vi.fn(),
+    resizeComposition: vi.fn(),
     finishTask: vi.fn(),
   };
   return { port, requestScopeExtension };
@@ -309,6 +310,45 @@ describe('InteractiveCandidateAgentPort', () => {
       requestedScope: pending.requestedScope,
     });
 
+    expect(control.rejectScopeExtension).toHaveBeenCalledWith({
+      taskId,
+      requestId: pending.requestId,
+    });
+    expect(control.approveScopeExtension).not.toHaveBeenCalled();
+  });
+
+  it('rejects the pending Scope Extension when the MCP signal is aborted', async () => {
+    const agent = makeAgent(pending);
+    const control = makeControl();
+    const controller = new AbortController();
+    const terminal: CoreMcpCliTerminalPort = {
+      write: vi.fn(),
+      close: vi.fn(),
+      question: vi.fn(
+        (_prompt: string, signal?: AbortSignal) =>
+          new Promise<string>((_resolve, reject) => {
+            signal?.addEventListener(
+              'abort',
+              () => {
+                reject(new Error('aborted'));
+              },
+              { once: true },
+            );
+          }),
+      ),
+    };
+    const request = new InteractiveCandidateAgentPort(
+      agent.port,
+      control.port,
+      terminal,
+    ).requestScopeExtension({
+      envelope,
+      requestedScope: pending.requestedScope,
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort();
+    await expect(request).resolves.toEqual(pending);
     expect(control.rejectScopeExtension).toHaveBeenCalledWith({
       taskId,
       requestId: pending.requestId,

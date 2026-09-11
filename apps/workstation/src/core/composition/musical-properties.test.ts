@@ -205,3 +205,58 @@ describe('musical properties update', () => {
     ).toThrow(CompositionValidationError);
   });
 });
+
+describe('composition resize', () => {
+  it('grows a one-measure composition to 64 empty measures and is idempotent', async () => {
+    const { resizeComposition } = await import('./composition-resize.js');
+    const before = compileComposition(
+      canonicalizeExternalAbc(
+        composition().replaceAll('[I:MIDI vol 72]C D E F |', 'z4 |'),
+      ),
+    );
+    const grown = resizeComposition(before, wholeProject, 64).compilation;
+    expect(grown.totalTicks).toBe(245_760);
+    expect(grown.tracks).toHaveLength(6);
+    expect(
+      grown.tracks.every((track) =>
+        track.events.every((event) => event.type === 'rest'),
+      ),
+    ).toBe(true);
+    expect(
+      resizeComposition(grown, wholeProject, 64).compilation.canonicalAbc,
+    ).toBe(grown.canonicalAbc);
+  });
+
+  it('truncates an empty tail but refuses to delete musical content', async () => {
+    const { resizeComposition } = await import('./composition-resize.js');
+    const emptyOne = compileComposition(
+      canonicalizeExternalAbc(
+        composition().replaceAll('[I:MIDI vol 72]C D E F |', 'z4 |'),
+      ),
+    );
+    const four = resizeComposition(emptyOne, wholeProject, 4).compilation;
+    const three = resizeComposition(four, wholeProject, 3).compilation;
+    expect(three.totalTicks).toBe(11_520);
+
+    const withTailMusic = compileComposition(
+      canonicalizeExternalAbc(
+        four.canonicalAbc.replace(
+          '[V:track.drums] z4 | z4 | z4 | z4 |',
+          '[V:track.drums] z4 | z4 | z4 | C D E F |',
+        ),
+      ),
+    );
+    try {
+      resizeComposition(withTailMusic, wholeProject, 3);
+      throw new Error('expected truncate rejection');
+    } catch (error) {
+      expect(error).toBeInstanceOf(CompositionValidationError);
+      expect(
+        (error as CompositionValidationError).report.issues[0],
+      ).toMatchObject({
+        code: 'COMPOSITION_TRUNCATE_WOULD_DELETE_CONTENT',
+        details: { affectedTracks: ['track.drums'] },
+      });
+    }
+  });
+});

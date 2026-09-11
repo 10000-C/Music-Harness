@@ -17,6 +17,11 @@ export class CompositionValidationError extends Error {
 export const failCompositionValidation = (
   code: CompositionValidationIssueCode,
   message: string,
+  details?: Readonly<Record<string, unknown>>,
 ): never => {
-  throw new CompositionValidationError({ code, message });
+  throw new CompositionValidationError({
+    code,
+    message,
+    ...(details === undefined ? {} : { details }),
+  });
 };

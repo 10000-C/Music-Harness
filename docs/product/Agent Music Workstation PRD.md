@@ -25,7 +25,7 @@
 - P0 新增第八个 Agent MCP Tool `resizeComposition`，用于确定性修改 Candidate 的**总小节数**；其输入使用目标状态 `targetMeasureCount`，不向 Agent 暴露 `targetTicks`、`appendCount`、Scope Mapping 或 MIDI 长度等可由 Core 推导的数据。
 - `resizeComposition` 只允许覆盖全部六轨的 `wholeProject` Task。扩长时 Core 在六轨尾部补等长 Rest；等长为幂等 no-op；缩短仅在被裁剪尾部不包含 Note/Chord、局部 Tempo/Key 等已有音乐内容时允许，否则 fail-closed。
 - Scope 与工程曲长正式解耦：`requestScopeExtension` 只扩大**写授权范围**，不创建未来时间轴；`resizeComposition` 修改**工程结构事实**，不承担授权。`wholeProject` 表示整个当前工程的授权，不冻结为创建 Task 时的 `[0,endTick)` 快照。
-- 首次长曲标准流程冻结为 `submitGenerationPlan → getTaskContext → getScopedComposition → updateMusicalProperties → resizeComposition → 分段 getScopedComposition/replaceScopedMusic → finishTask`。建立目标曲长后，Agent 应按合理的连续 `timeRange` 分段创作，不要求一次输出完整六轨长曲。
+- 首次长曲标准流程冻结为 `submitGenerationPlan → getTaskContext → getScopedComposition → updateMusicalProperties → resizeComposition → 分段 targetScope read/replace → finishTask`。建立目标曲长后，Agent 应按合理的连续 `timeRange` 分段创作，不要求一次输出完整六轨长曲。
 - Validation Error 必须以 Agent 可修复为目标：`TRACK_LENGTH_MISMATCH` 返回各轨实测 Tick 长度；ABC parser warning 去除 HTML、聚合同类错误并限制响应规模，对稳定方言规则（如 accidental 使用 `^F/_B/=C` 而非 `F#/Bb`）提供简洁 hint。
 - Tick 0 的 Global Tempo/Key 必须只有唯一来源：`Q:` / `K:` header 定义初始值；inline `[Q:]` / `[K:]` 只允许出现在 `tick > 0`。初始 Tempo 使用 `updateMusicalProperties`，不得通过 voice 起点的 inline directive 产生重复 Global Map entry。
 - Scope Extension 的人工确认必须继承原 MCP Tool Call 的取消信号；客户端 timeout/cancel 后不得继续在后台批准请求。取消必须清理/拒绝对应 Pending request，且 `scopeRevision` 不变化。
@@ -213,6 +213,7 @@ P0 固定六条角色轨道：
 - `getScopedComposition.endTick` 只表示当前工程长度，不是可生成曲长上限；
 - `replaceScopedMusic(timeRange)` 只修改既有连续范围并保持总长度；`replaceScopedMusic(wholeProject)` 可用于真正的整曲重写，但不是首次长曲生成的标准扩长路径；
 - `requestScopeExtension` 只改变授权，不改变工程总长度；不得通过申请“未来 Tick Scope”创建时间轴；
+- Task Scope 是最大授权边界；`getScopedComposition` / `replaceScopedMusic` 可携带可选 `targetScope` 在同一 Task 内操作更小子范围，且必须满足 `targetScope ⊆ Task Scope`；
 - 局部连续范围修改不得静默移动 Scope 外既有事件。
 
 ### 4.4 拍号、Tempo 与调性

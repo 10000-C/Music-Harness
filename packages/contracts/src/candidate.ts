@@ -16,7 +16,7 @@ export type ScopeExtensionRequestId = string & {
 export type CandidateState = 'active' | 'ready' | 'accepting' | 'stale';
 export type TaskState = 'editing' | 'validating';
 export type CandidateOperation =
-  'replaceScopedMusic' | 'updateMusicalProperties';
+  'replaceScopedMusic' | 'updateMusicalProperties' | 'resizeComposition';
 
 export interface TaskExecutionEnvelope {
   readonly taskId: TaskId;
@@ -57,6 +57,7 @@ export interface PendingScopeExtensionView {
 export interface CandidateValidationIssue {
   readonly code: string;
   readonly message: string;
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface CandidateValidationReport {

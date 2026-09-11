@@ -192,19 +192,34 @@ export class InteractiveCandidateAgentPort implements CandidateAgentPort {
     this.terminal.write(
       `\nScope extension requested\nRequest ID: ${pending.requestId}\nRequested Scope: ${JSON.stringify(pending.requestedScope)}\n`,
     );
-    const answer = await this.terminal.question(
-      'Approve scope extension? [y/N] ',
-    );
     const decision = {
       taskId: input.envelope.taskId,
       requestId: pending.requestId,
     };
-    if (isApproved(answer)) {
-      await this.control.approveScopeExtension(decision);
-    } else {
-      await this.control.rejectScopeExtension(decision);
+    try {
+      const answer = await this.terminal.question(
+        'Approve scope extension? [y/N] ',
+        input.signal,
+      );
+      if (isSignalAborted(input.signal)) {
+        await this.control.rejectScopeExtension(decision);
+        this.terminal.write('Decision: cancelled\n');
+        return pending;
+      }
+      if (isApproved(answer)) {
+        await this.control.approveScopeExtension(decision);
+      } else {
+        await this.control.rejectScopeExtension(decision);
+      }
+      return pending;
+    } catch (error) {
+      if (isSignalAborted(input.signal)) {
+        await this.control.rejectScopeExtension(decision);
+        this.terminal.write('Decision: cancelled\n');
+        return pending;
+      }
+      throw error;
     }
-    return pending;
   }
 
   public applyScopedMusicChange(
@@ -217,6 +232,12 @@ export class InteractiveCandidateAgentPort implements CandidateAgentPort {
     ...args: Parameters<CandidateAgentPort['updateMusicalProperties']>
   ): ReturnType<CandidateAgentPort['updateMusicalProperties']> {
     return this.agent.updateMusicalProperties(...args);
+  }
+
+  public resizeComposition(
+    ...args: Parameters<CandidateAgentPort['resizeComposition']>
+  ): ReturnType<CandidateAgentPort['resizeComposition']> {
+    return this.agent.resizeComposition(...args);
   }
 
   public finishTask(

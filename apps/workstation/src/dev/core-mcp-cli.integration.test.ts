@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 describe('runCoreMcpCli', { concurrent: false }, () => {
-  it('opens a real project and serves the seven P0 tools to a standard MCP client', async () => {
+  it('opens a real project and serves the eight P0 tools to a standard MCP client', async () => {
     const parent = await createTemporaryDirectory('core-mcp-cli-');
     parents.push(parent);
     const projectPath = join(parent, 'Claude MCP 工程');

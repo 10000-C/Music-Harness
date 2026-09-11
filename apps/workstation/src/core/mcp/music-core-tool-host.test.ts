@@ -42,7 +42,11 @@ const taskContext = {
   scopeRevision: 0,
   state: 'editing' as const,
   candidateState: 'active' as const,
-  allowedOperations: ['replaceScopedMusic', 'updateMusicalProperties'] as const,
+  allowedOperations: [
+    'replaceScopedMusic',
+    'updateMusicalProperties',
+    'resizeComposition',
+  ] as const,
   trackIds: scope.trackIds,
   createdAt: '2026-09-09T00:00:00.000Z',
 };
@@ -66,6 +70,7 @@ const makeHarness = () => {
   });
   const applyScopedMusicChange = vi.fn().mockResolvedValue({});
   const updateMusicalProperties = vi.fn().mockResolvedValue({});
+  const resizeComposition = vi.fn().mockResolvedValue({});
   const finishTask = vi.fn().mockResolvedValue({
     candidate: {
       candidateId,
@@ -84,6 +89,7 @@ const makeHarness = () => {
     requestScopeExtension,
     applyScopedMusicChange,
     updateMusicalProperties,
+    resizeComposition,
     finishTask,
   };
   const control: CandidateControlPort = {
@@ -108,6 +114,7 @@ const makeHarness = () => {
       requestScopeExtension,
       applyScopedMusicChange,
       updateMusicalProperties,
+      resizeComposition,
       finishTask,
       startTask,
       confirmationRequest,
@@ -116,7 +123,7 @@ const makeHarness = () => {
 };
 
 describe('MusicCoreToolHost', () => {
-  it('exposes exactly the seven P0 Agent tools', () => {
+  it('exposes exactly the eight P0 Agent tools', () => {
     const { host } = makeHarness();
     expect(host.listTools()).toEqual(P0_MCP_TOOL_NAMES);
   });
@@ -214,6 +221,7 @@ describe('MusicCoreToolHost', () => {
       meter: { numerator: 3, denominator: 4 },
       tempo: { bpm: 100 },
     });
+    await host.call('resizeComposition', { envelope, targetMeasureCount: 64 });
     await host.call('finishTask', envelope);
 
     expect(mocks.getTaskContext).toHaveBeenCalledWith(taskId);
@@ -230,6 +238,10 @@ describe('MusicCoreToolHost', () => {
       envelope,
       meter: { numerator: 3, denominator: 4 },
       tempo: { bpm: 100 },
+    });
+    expect(mocks.resizeComposition).toHaveBeenCalledWith({
+      envelope,
+      targetMeasureCount: 64,
     });
     expect(mocks.finishTask).toHaveBeenCalledWith(envelope);
   });
