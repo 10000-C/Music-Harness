@@ -27,6 +27,13 @@ import {
 } from '../../shared/playback-bridge.js';
 import type { ProjectEvent } from '@agent-music/contracts';
 import type { CandidateEvent } from '@agent-music/contracts';
+import {
+  isAgentProcessEvent,
+  type AgentCommand,
+  type AgentCommandResult,
+  type AgentEvent,
+  type AgentProcessCommand,
+} from '@agent-music/contracts';
 
 export type {
   ServiceFleetSnapshot,
@@ -45,6 +52,8 @@ export interface ServiceSupervisor {
   dispatchCandidate(
     command: CoreCandidateRequest['command'],
   ): Promise<readonly CandidateEvent[]>;
+  dispatchAgent(command: AgentCommand): Promise<AgentCommandResult>;
+  onAgentEvent(listener: (event: AgentEvent) => void): () => void;
   readCurrentPlayback(): Promise<CorePlaybackResponse>;
 }
 
@@ -120,6 +129,16 @@ export const createServiceSupervisor = (
       readonly timeout: ReturnType<typeof setTimeout>;
     }
   >();
+  const pendingAgents = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly resolve: (result: AgentCommandResult) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
+  const agentEventListeners = new Set<(event: AgentEvent) => void>();
   const listeners = new Set<(value: ServiceFleetSnapshot) => void>();
   let stopping = false;
   let requestSequence = 0;
@@ -209,6 +228,14 @@ export const createServiceSupervisor = (
         cancel(pending.timeout);
         pending.reject(new Error('The Music Core process restarted.'));
         pendingCandidates.delete(requestId);
+      }
+    }
+    if (service === 'agent') {
+      for (const [requestId, pending] of pendingAgents) {
+        if (pending.generation !== generations.agent) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Agent process restarted.'));
+        pendingAgents.delete(requestId);
       }
     }
     generations[service] += 1;
@@ -322,11 +349,18 @@ export const createServiceSupervisor = (
     clearTimers(service);
     const requestId = `health-${String(++requestSequence)}`;
     pendingHealth[service] = requestId;
-    processes.get(service)?.send({
-      type: 'healthCheck',
-      protocolVersion: 1,
-      requestId,
-    } satisfies MainToServiceMessage);
+    if (service === 'agent') {
+      processes.get(service)?.send({
+        type: 'agent.process.health',
+        requestId,
+      } satisfies AgentProcessCommand);
+    } else {
+      processes.get(service)?.send({
+        type: 'healthCheck',
+        protocolVersion: 1,
+        requestId,
+      } satisfies MainToServiceMessage);
+    }
     addTimer(
       service,
       () => {
@@ -412,6 +446,49 @@ export const createServiceSupervisor = (
       }
       return;
     }
+    if (service === 'agent' && isAgentProcessEvent(message)) {
+      switch (message.type) {
+        case 'agent.process.ready':
+          handleReady('agent', generation);
+          return;
+        case 'agent.process.healthy':
+          handleHealthResult('agent', generation, message.requestId);
+          return;
+        case 'agent.process.stopped':
+          if (message.requestId === pendingShutdown.agent) {
+            finalizeStopped('agent', generation, false);
+          }
+          return;
+        case 'agent.process.commandResult': {
+          const pending = pendingAgents.get(message.result.requestId);
+          if (pending?.generation === generation) {
+            cancel(pending.timeout);
+            pendingAgents.delete(message.result.requestId);
+            pending.resolve(message.result);
+          }
+          return;
+        }
+        case 'agent.process.commandFailed': {
+          const pending = pendingAgents.get(message.requestId);
+          if (pending?.generation === generation) {
+            cancel(pending.timeout);
+            pendingAgents.delete(message.requestId);
+            const err = new Error(message.message);
+            (err as { code?: string }).code = message.code;
+            pending.reject(err);
+          }
+          return;
+        }
+        case 'agent.process.agentEvent':
+          agentEventListeners.forEach((listener) => {
+            listener(message.event);
+          });
+          return;
+        case 'agent.process.fatal':
+          fail('agent', generation);
+          return;
+      }
+    }
     if (!isServiceToMainMessage(message)) {
       fail(service, generation);
       return;
@@ -486,11 +563,18 @@ export const createServiceSupervisor = (
           config.shutdownTimeoutMs,
         );
         try {
-          process.send({
-            type: 'shutdown',
-            protocolVersion: 1,
-            requestId,
-          });
+          if (service === 'agent') {
+            process.send({
+              type: 'agent.process.shutdown',
+              requestId,
+            } satisfies AgentProcessCommand);
+          } else {
+            process.send({
+              type: 'shutdown',
+              protocolVersion: 1,
+              requestId,
+            });
+          }
         } catch {
           finalizeStopped(service, generation, true);
         }
@@ -626,6 +710,48 @@ export const createServiceSupervisor = (
           reject(new Error('Music Core could not receive playback request.'));
         }
       });
+    },
+
+    dispatchAgent(command) {
+      if (states.agent !== 'ready') {
+        return Promise.reject(new Error('Agent service is not ready.'));
+      }
+      const process = processes.get('agent');
+      if (process === undefined) {
+        return Promise.reject(new Error('Agent service is unavailable.'));
+      }
+      const generation = generations.agent;
+      if (pendingAgents.has(command.requestId)) {
+        return Promise.reject(
+          new Error('A matching Agent command is already pending.'),
+        );
+      }
+      return new Promise<AgentCommandResult>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingAgents.delete(command.requestId);
+          reject(new Error('Agent service did not respond to the command.'));
+        }, 30_000);
+        pendingAgents.set(command.requestId, {
+          generation,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send(command);
+        } catch {
+          cancel(timeout);
+          pendingAgents.delete(command.requestId);
+          reject(new Error('Agent service could not receive the command.'));
+        }
+      });
+    },
+
+    onAgentEvent(listener) {
+      agentEventListeners.add(listener);
+      return () => {
+        agentEventListeners.delete(listener);
+      };
     },
   };
 };

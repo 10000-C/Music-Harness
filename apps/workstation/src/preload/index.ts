@@ -10,9 +10,13 @@ import {
   isCandidateCommand,
   isCandidateCommandResult,
   isCorePlaybackResponse,
+  isAgentCommand,
+  isAgentEvent,
+  isDesktopAgentCommandResult,
   shellIpcChannels,
   type CommandResult,
   type DirectoryDialogResult,
+  type AgentEvent,
 } from '../shared/shell-contracts.js';
 import {
   isServiceFleetSnapshot,
@@ -114,6 +118,30 @@ const bridge = {
           code: 'IPC_UNAVAILABLE',
           userMessage: 'The desktop service is unavailable. Try again.',
         };
+  },
+  async dispatchAgent(command: unknown) {
+    if (!isAgentCommand(command))
+      return {
+        ok: false,
+        code: 'INVALID_AGENT_COMMAND',
+        userMessage: 'Invalid Agent command.',
+      };
+    const value = await invoke(shellIpcChannels.agent, command);
+    return isDesktopAgentCommandResult(value)
+      ? value
+      : {
+          ok: false,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
+  },
+  onAgentEvent: (listener: (event: AgentEvent) => void) => {
+    const wrapped = (_event: unknown, event: unknown) => {
+      if (isAgentEvent(event)) listener(event);
+    };
+    ipcRenderer.on(shellIpcChannels.agentEvent, wrapped);
+    return () =>
+      ipcRenderer.removeListener(shellIpcChannels.agentEvent, wrapped);
   },
   async readCurrentPlayback() {
     const value = await invoke(shellIpcChannels.playback);

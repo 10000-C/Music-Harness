@@ -34,6 +34,7 @@ const window = {
   webContents: { isDestroyed: vi.fn(() => false), send: vi.fn() },
 };
 let snapshotListener: ((snapshot: unknown) => void) | undefined;
+let agentEventListener: ((event: unknown) => void) | undefined;
 const supervisor = {
   getSnapshot: vi.fn(() => ({ core: 'ready', agent: 'ready' })),
   restart: vi.fn(async () => undefined),
@@ -43,6 +44,19 @@ const supervisor = {
     sequence: 1,
   })),
   dispatchCandidate: vi.fn(async () => []),
+  dispatchAgent: vi.fn(async () => ({
+    type: 'agent.session.created',
+    requestId: 'agent-test',
+    session: {
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      projectId: '00000000-0000-4000-8000-000000000002',
+      createdAt: '2026-09-11T00:00:00.000Z',
+    },
+  })),
+  onAgentEvent: vi.fn((listener: (event: unknown) => void) => {
+    agentEventListener = listener;
+    return vi.fn();
+  }),
   readCurrentPlayback: vi.fn(),
   shutdown: vi.fn(async () => undefined),
   subscribe: vi.fn((listener: (snapshot: unknown) => void) => {
@@ -62,6 +76,7 @@ describe('shell Main IPC and dialogs', () => {
     handlers.clear();
     vi.clearAllMocks();
     snapshotListener = undefined;
+    agentEventListener = undefined;
     registerShellIpc(window as never, supervisor);
   });
 
@@ -75,6 +90,7 @@ describe('shell Main IPC and dialogs', () => {
         channels.project,
         channels.restart,
         channels.snapshot,
+        channels.agent,
       ].sort(),
     );
 
@@ -227,5 +243,51 @@ describe('shell Main IPC and dialogs', () => {
       core: 'ready',
       agent: 'failed',
     });
+  });
+
+  it('forwards valid Agent commands and rejects invalid commands before supervisor', async () => {
+    await expect(
+      invoke(channels.agent, { invalid: true }),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'INVALID_AGENT_COMMAND',
+      userMessage: 'Invalid Agent command.',
+    });
+
+    const validCommand = {
+      type: 'agent.session.create',
+      requestId: 'req-session-create',
+      projectId: '00000000-0000-4000-8000-000000000002',
+    };
+    await expect(invoke(channels.agent, validCommand)).resolves.toEqual({
+      ok: true,
+      result: {
+        type: 'agent.session.created',
+        requestId: 'agent-test',
+        session: {
+          sessionId: '00000000-0000-4000-8000-000000000001',
+          projectId: '00000000-0000-4000-8000-000000000002',
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
+      },
+    });
+    expect(supervisor.dispatchAgent).toHaveBeenCalledWith(validCommand);
+  });
+
+  it('forwards validated Agent events to the Renderer window', () => {
+    const validEvent = {
+      type: 'agent.textDelta',
+      projectId: '00000000-0000-4000-8000-000000000002',
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      executionId: '00000000-0000-4000-8000-000000000003',
+      text: 'Adding bass line…',
+    };
+    agentEventListener?.(validEvent);
+    agentEventListener?.({ type: 'invalid.event' });
+
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      channels.agentEvent,
+      validEvent,
+    );
   });
 });

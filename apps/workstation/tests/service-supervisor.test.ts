@@ -609,4 +609,76 @@ describe('ServiceSupervisor', () => {
     expect(terminated).toBe(2);
     expect(active.getSnapshot()).toEqual({ core: 'stopped', agent: 'stopped' });
   });
+
+  it('dispatches Agent commands when ready and forwards agent process events', async () => {
+    const processes = adapter();
+    active = createServiceSupervisor(processes);
+    await active.start();
+
+    await expect(
+      active.dispatchAgent({
+        type: 'agent.session.list',
+        requestId: 'req-agent-1',
+        projectId: '00000000-0000-4000-8000-000000000002',
+      }),
+    ).rejects.toThrow('Agent service is not ready.');
+
+    processes.emit('agent', { type: 'agent.process.ready' });
+    expect(active.getSnapshot().agent).toBe('ready');
+
+    const agentEvents: unknown[] = [];
+    const unsubscribe = active.onAgentEvent((event) => {
+      agentEvents.push(event);
+    });
+
+    const commandPromise = active.dispatchAgent({
+      type: 'agent.session.list',
+      requestId: 'req-agent-2',
+      projectId: '00000000-0000-4000-8000-000000000002',
+    });
+
+    expect(processes.sent).toContainEqual({
+      type: 'agent.session.list',
+      requestId: 'req-agent-2',
+      projectId: '00000000-0000-4000-8000-000000000002',
+    });
+
+    // Emit an agent event while command is pending
+    const deltaEvent = {
+      type: 'agent.textDelta',
+      projectId: '00000000-0000-4000-8000-000000000002',
+      sessionId: '00000000-0000-4000-8000-000000000001',
+      executionId: '00000000-0000-4000-8000-000000000003',
+      text: 'Working on arrangement...',
+    };
+    processes.emit('agent', {
+      type: 'agent.process.agentEvent',
+      event: deltaEvent,
+    });
+    expect(agentEvents).toEqual([deltaEvent]);
+
+    // Emit command result
+    processes.emit('agent', {
+      type: 'agent.process.commandResult',
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-agent-2',
+        sessions: [],
+      },
+    });
+
+    await expect(commandPromise).resolves.toEqual({
+      type: 'agent.session.listed',
+      requestId: 'req-agent-2',
+      sessions: [],
+    });
+
+    unsubscribe();
+    processes.emit('agent', {
+      type: 'agent.process.agentEvent',
+      event: { ...deltaEvent, text: 'Ignored after unsubscribe' },
+    });
+    expect(agentEvents.length).toBe(1);
+  });
 });
+

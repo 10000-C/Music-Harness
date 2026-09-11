@@ -7,6 +7,8 @@ import {
   isCandidateCommand,
   isCandidateCommandResult,
   isCorePlaybackResponse,
+  isAgentCommand,
+  isAgentEvent,
   shellIpcChannels,
 } from '../shared/shell-contracts.js';
 import { chooseExportPath, chooseProjectDirectory } from './desktop-dialogs.js';
@@ -133,7 +135,34 @@ export const registerShellIpc = (
       }
     },
   );
-  const unsubscribe = supervisor.subscribe((snapshot) => {
+  ipcMain.handle(shellIpcChannels.agent, async (_event, command: unknown) => {
+    if (!isAgentCommand(command)) {
+      return {
+        ok: false,
+        code: 'INVALID_AGENT_COMMAND',
+        userMessage: 'Invalid Agent command.',
+      };
+    }
+    try {
+      const result = await supervisor.dispatchAgent(command);
+      return { ok: true, result };
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Agent service is unavailable.';
+      const code =
+        error instanceof Error &&
+        'code' in error &&
+        typeof (error as { code: unknown }).code === 'string'
+          ? (error as { code: string }).code
+          : 'AGENT_UNAVAILABLE';
+      return {
+        ok: false,
+        code,
+        userMessage: message,
+      };
+    }
+  });
+  const unsubscribeSnapshot = supervisor.subscribe((snapshot) => {
     if (
       isServiceFleetSnapshot(snapshot) &&
       !window.isDestroyed() &&
@@ -141,8 +170,17 @@ export const registerShellIpc = (
     )
       window.webContents.send(shellIpcChannels.subscribe, snapshot);
   });
+  const unsubscribeAgent = supervisor.onAgentEvent((event) => {
+    if (
+      isAgentEvent(event) &&
+      !window.isDestroyed() &&
+      !window.webContents.isDestroyed()
+    )
+      window.webContents.send(shellIpcChannels.agentEvent, event);
+  });
   return () => {
-    unsubscribe();
+    unsubscribeSnapshot();
+    unsubscribeAgent();
     Object.values(shellIpcChannels).forEach((channel) => {
       ipcMain.removeHandler(channel);
     });

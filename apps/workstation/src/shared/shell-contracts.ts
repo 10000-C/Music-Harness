@@ -11,6 +11,16 @@ import { isProjectCommand, isProjectEvent } from './project-bridge.js';
 import { isCoreCandidateResponse } from './candidate-bridge.js';
 import { isCorePlaybackResponse } from './playback-bridge.js';
 import type { CorePlaybackResponse } from './playback-bridge.js';
+import {
+  isDesktopAgentCommandResult,
+  type DesktopAgentCommandResult,
+} from './agent-bridge.js';
+import {
+  isAgentCommand,
+  isAgentEvent,
+  type AgentCommand,
+  type AgentEvent,
+} from '@agent-music/contracts';
 
 export const shellIpcChannels = {
   snapshot: 'shell:snapshot',
@@ -21,6 +31,8 @@ export const shellIpcChannels = {
   project: 'shell:project',
   candidate: 'shell:candidate',
   playback: 'shell:playback',
+  agent: 'shell:agent',
+  agentEvent: 'shell:agent:event',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';
@@ -148,3 +160,12 @@ export const isCandidateCommandResult = (
 };
 export { isServiceKind };
 export type { ServiceKind };
+export {
+  isDesktopAgentCommandResult,
+  type DesktopAgentCommandResult,
+  isAgentCommand,
+  isAgentEvent,
+  type AgentCommand,
+  type AgentEvent,
+};
+
