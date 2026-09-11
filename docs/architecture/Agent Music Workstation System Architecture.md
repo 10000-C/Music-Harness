@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 架构版本 | V1.16 |
-| 需求基线 | Agent Music Workstation PRD V1.18 Recoverable Operations |
+| 架构版本 | V1.17 |
+| 需求基线 | Agent Music Workstation PRD V1.19 Export Preparation |
 | 状态 | P0 架构基线；跨 RPC 人工确认统一 Operation 模型已冻结 |
 | 日期 | 2026-09-12 |
 | 首发平台 | Windows 10/11 |
@@ -25,7 +25,7 @@
 - 保存、恢复、试听、导出和安全策略；
 - 技术 Gate 与测试边界。
 
-本文档不重新定义产品需求；与 PRD V1.18 冲突时，以 PRD 为准。
+本文档不重新定义产品需求；与 PRD V1.19 冲突时，以 PRD 为准。
 
 ---
 
@@ -93,6 +93,7 @@
 | ADR-058 | Composition Resize | 新增 Agent MCP Tool `resizeComposition({ envelope, targetMeasureCount })`。只允许全六轨 `wholeProject`；Core 使用最终 Global Meter + PPQ=960 推导目标 Tick。扩长补尾部 Rest，等长 no-op，缩短若会删除已有音乐/局部 Tempo/Key 则拒绝。不得向 Agent 暴露 append delta 或 targetTicks。 |
 | ADR-059 | Scope / Length 解耦 | Scope 是写授权，Composition length 是工程结构事实。`requestScopeExtension` 不创建未来时间轴；`resizeComposition` 不修改 Scope。`wholeProject` 始终指整个当前 Candidate，而非 Task 创建时冻结的 Tick 窗口。Task-bound read/replace 可提供 `targetScope`，但 A3 必须验证其为当前 Task Scope 的子集，借此允许 wholeProject 授权下的分段 timeRange 操作。 |
 | ADR-060 | Recoverable Validation | A2 Validation Error 必须可供 Agent 确定性修复。`TRACK_LENGTH_MISMATCH` 附各轨实际 Tick；ABC parser warning 在 adapter 边界去 HTML、聚合同类、限制返回规模并提供稳定 syntax hint。 |
+| ADR-061 | Export Preparation | 正式导出仅从 clean Current `main` HEAD 派生。A5 在 A1 项目级串行协调下捕获一个不可变 Current snapshot，随后用 A2 最终编译产生同 revision 的 Canonical ABC 与 Standard MIDI bytes。MIDI 直接由桌面层写出；WAV 由桌面 Renderer 使用 abcjs Synth 消费 Canonical ABC。openDAW 不参与正式导出。 |
 | ADR-061 | Tick-0 Global Events | `Q:`/`K:` header 分别是 Tick 0 Initial Tempo/Key 的唯一来源；inline `[Q:]`/`[K:]` 只允许 `tick > 0`。初始 Tempo 通过 `updateMusicalProperties` 修改，不允许重复 tick-0 map entry。 |
 | ADR-062 | Scope Extension Operation | Pending Scope Extension 是 A3 一等 Task 状态，并携带 `operationId/requestId/requestedScope/fromScopeRevision/createdAt`。`requestScopeExtension` 创建/恢复 `scopeExtension` Operation；Agent 用通用 `getOperation` 查询，用 `cancelOperation` 显式撤回。Task cancel / Agent loss 结束 Active Task 时 pending 随 Task 失效；P0 不设置 TTL。 |
 | ADR-063 | Recoverable Core Operations | 仅将可能跨单次 RPC 等待人工/外部事件的流程建模为 Operation；P0 为 generationPlan 与 scopeExtension。Operation 使用 caller-stable UUID，状态为 pending/succeeded/rejected/cancelled/failed；`getOperation`/`cancelOperation` 为通用能力。普通读写/resize/finish 保持同步 Tool。Operation 结果在 Core runtime 生命周期内可恢复；显式 cancel 才是业务取消。 |
@@ -1512,14 +1513,18 @@ source Current HEAD tree
 
 ### 18.1 原则
 
-- 所有正式导出只读取 Current `main` HEAD；
+- 所有正式导出只读取 clean Current `main` HEAD；
 - Candidate 不导出；
-- 导出前重新编译和验证，不直接复用可能过期的缓存；
-- 目标文件使用临时文件 + 原子 rename。
+- A5 在与 Accept/rollback 相同的项目级串行协调下捕获 `currentRevision + manifest + composition.abc`，随后释放协调器并对不可变 snapshot 重新编译和最终校验；
+- 不复用可能过期的 MIDI、RuntimeSnapshot 或其他派生缓存；
+- A5 输出同一 revision 绑定的 `PreparedCurrentExport { projectId, currentRevision, canonicalAbc, midiFileBytes }`，并通过最小 typed `export.prepareCurrent → export.prepared/export.failed` Core IPC seam 交给桌面层；命令不接受 Candidate/source override；A5 不负责选择目标路径或写文件；
+- 目标文件由桌面导出层使用临时文件 + fsync + 原子 rename 完成。
 
 ### 18.2 MIDI
 
-保留：
+A5 使用 A2 现有 `StandardMidiDocument.fileBytes`。不得新增 abcjs MIDI 编译链。
+
+必须保留：
 
 - 六轨顺序；
 - Tempo Map；
@@ -1528,21 +1533,21 @@ source Current HEAD tree
 - Note Start、Duration、Pitch、Velocity；
 - 完整长度和尾部休止。
 
-### 18.3 ABC
+### 18.3 Canonical ABC
 
-导出 Current 的 Canonical `composition.abc`。
+Canonical `composition.abc` 不是 P0 用户导出格式。A5 将其作为同一 Current revision 的已验证内部数据交给桌面 WAV 合成链。
 
 ### 18.4 WAV
 
-通过 `OpenDawRuntimeAdapter` 触发 openDAW 整曲离线渲染。技术 Gate 必须验证：
+桌面 Renderer 使用 abcjs Synth 从 `PreparedCurrentExport.canonicalAbc` 合成整曲 WAV。该链路依赖 Web Audio/abcjs 资源环境，不进入 Music Core A5，也不经过 `OpenDawRuntimeAdapter`。
 
-- 渲染 API；
-- 进度；
-- 取消；
-- 尾音；
-- 原子输出。
+桌面导出 Gate 必须验证：
 
-Gate 失败时 WAV 降为 P1。
+- abcjs Synth 与打包资源可用；
+- 生成 WAV 的时长与尾音符合产品语义；
+- 进度/取消能力按实际 abcjs 集成能力定义并验证；
+- 失败或取消不破坏既有目标文件；
+- Windows 中文路径、长路径和目标文件占用行为。
 
 ---
 
@@ -1591,7 +1596,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 - Project Store 在 `.agent-music/locks/` 维护跨实例项目写锁，同一项目同时最多一个可写应用实例；
 - 创建或打开项目时获取写锁，正常关闭时释放；stale lock 可安全识别，失锁实例后续写入必须 fail-closed；
 - 读取可以并发；
-- Git、ABC 编译和 WAV 渲染不运行于 Renderer 音频线程；
+- Git 与 ABC/MIDI 编译不运行于 Renderer 音频线程；桌面 abcjs WAV 合成不得阻塞 UI 主交互。
 - 取消令牌传播到模型、MCP、编译和渲染；
 - 优先保证 UI 可响应、Task 可取消和 Current 不损坏；
 - Candidate 更新可按受影响轨道重建 Mapping，但结构、Meter、Tempo 或 Key 变化允许全量编译。
@@ -1625,7 +1630,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 
 - MCP Tool Schema 和错误码；
 - Core-process-scoped HTTP Endpoint、Token 和 runtime descriptor；Project close/open 不改变 endpoint/token，descriptor 不使用 `projectId` 选择连接；
-- Core IPC Command/Event 与最小 Agent text transport Contract；Agent transport validator 对所有 variant 与嵌套 message/session/task 采用 exact-key allowlist；
+- Core IPC Command/Event（含 exact-shape `export.prepareCurrent` 与 `PreparedCurrentExport`）与最小 Agent text transport Contract；Agent transport validator 对所有 variant 与嵌套 message/session/task 采用 exact-key allowlist；
 - Agent transport 只允许用户消息/Cancel、assistant text delta 与 execution terminal event，不透传原始 MCP Tool Result 或 A4 Workflow state；
 - Main / Preload Agent transport bridge 不解释 A4 Workflow 业务状态；
 - `PlaybackCompilation`、`TimelineViewModel` 与 `OpenDawRuntimeAdapter.buildSnapshot/loadSnapshot` 输入输出；
@@ -1666,7 +1671,7 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 | TG-007 | MCP HTTP | localhost、随机端口、Token 和多实例描述文件。 |
 | TG-008 | Strands Chat Completions Integration | 保留 Tool Call、流式、取消和错误映射的既有行为 Gate；正式 A4 通过 Strands 原生 Chat Completions 集成满足，不要求自研 SSE Provider Adapter。 |
 | TG-009 | MIDI 导出 | 保留核心工程数据。 |
-| TG-010 | WAV | 离线渲染、进度、取消、尾音和原子输出。 |
+| TG-010 | WAV | 桌面 abcjs Synth、资源加载、时长/尾音、取消能力与原子文件输出。 |
 
 ---
 
@@ -1678,7 +1683,8 @@ repairAttempt, finalStatus, durationMs, modelConfigurationIdPerCall
 | abcjs 内部对象不稳定 | 持久化格式被第三方版本绑定 | 只使用解析结果，持久化由自有 Normalizer/Serializer 管理。 |
 | Scope Mapping 错误 | Agent 越界修改 | Hash 绑定、写前重建、边界夹具和属性测试。 |
 | 固定 PPQ 无法表示某些时值 | 编曲无法无损编译 | 明确拒绝，不静默量化；Gate 验证支持语法范围。 |
-| openDAW API 不稳定 | 试听或 WAV 受阻 | 强制 Runtime Adapter、锁定 SDK/Core 版本并保留技术 Gate。 |
+| openDAW API 不稳定 | 试听受阻 | 强制 Runtime Adapter、锁定 SDK/Core 版本并保留播放技术 Gate。 |
+| abcjs 音频环境或资源异常 | WAV 导出失败 | B5 固化 abcjs/Web Audio 资源加载方式，并用桌面集成 Gate 验证时长、尾音、失败安全和 Windows 路径。 |
 | 自研时间轴交互复杂 | 缩放、滚动、选区和 Playhead 行为不一致 | P0 只做只读六轨与连续 Scope；统一 Tick 坐标模型和交互测试。 |
 | UI 直接依赖 openDAW 对象 | Canonical ABC 失去唯一事实来源 | Adapter 不暴露 BoxGraph/UUID；UI 只消费 TimelineViewModel 和领域命令。 |
 | Windows worktree 残留 | 无法打开项目或磁盘污染 | 独立内部目录、stale lock、启动清理和故障注入。 |

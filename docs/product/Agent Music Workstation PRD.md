@@ -1,6 +1,6 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.18 Recoverable Operations\
+**版本：** V1.19 Export Preparation\
 **状态：** P0 产品范围已确认；跨 RPC 人工确认统一 Operation 模型已冻结\
 **日期：** 2026-09-12\
 **开发周期：** 10–15 天\
@@ -64,7 +64,7 @@
 ### 1.6 V1.6 的工作区调整
 
 - P0 产品工作区改为自研 React UI，不 fork、内嵌或直接复用 openDAW Studio UI。
-- openDAW 仅作为 SDK/Core Runtime，负责播放、音频图、运行时工程对象、Solo/Mute 和离线渲染。
+- openDAW 仅作为 SDK/Core Runtime，负责播放、音频图、运行时工程对象和 Solo/Mute；正式 WAV 导出不经过 openDAW。
 - 六轨时间轴、Clip 展示、Transport 控件、Loop、Playhead 与连续 Scope 由产品 Renderer 实现。
 - P0 UI 不直接修改 openDAW BoxGraph；`composition.abc` 仍是唯一编曲事实来源。
 - P2 手动编辑默认采用自研 React 编辑器，经 Music Core 领域编辑命令更新 Canonical ABC，再重建 openDAW Runtime。
@@ -88,7 +88,7 @@ Agent Music Workstation 是一款本地优先、Agent-first 的桌面音乐创�
 - 将 Candidate 整体接受为新 Current，或整体拒绝；
 - 重新打开最后成功提交的 Current；
 - 在同一窗口中关闭当前项目并打开另一个项目；
-- 从 Current 导出 MIDI、ABC，以及技术 Gate 通过后的 WAV。
+- 从 Current 导出标准 MIDI 和整曲 WAV。
 
 ### 2.1 核心价值
 
@@ -98,7 +98,7 @@ Agent Music Workstation 是一款本地优先、Agent-first 的桌面音乐创�
 - **Candidate 隔离：** Agent 不直接覆盖 Current。
 - **本地版本：** Git 保存全部成功 Current Revision。
 - **开放音乐表达：** 不人为限制曲长、调式或主观曲式名称。
-- **可迁移输出：** 导出标准 MIDI、ABC 和经过验证的 WAV。
+- **可迁移输出：** 从同一 Current 导出标准 MIDI 和经过验证的 WAV。
 
 ---
 
@@ -776,10 +776,11 @@ P0 “另存为”流程：
 P0 只允许从 Current 导出：
 
 - 标准多轨 MIDI；
-- Canonical ABC；
-- 整曲 WAV，前提是技术 Gate 通过。
+- 整曲 WAV。
 
-Candidate 不允许正式导出。
+Candidate 不允许正式导出。Canonical ABC 继续作为工程唯一事实来源和 WAV 合成的内部输入，但不作为 P0 用户导出格式。
+
+A5 必须重新读取 clean Current 并执行最终编译/校验；MIDI 使用 A2 的 `StandardMidiDocument.fileBytes`。桌面导出层使用同一 A5 快照中的 Canonical ABC，通过 abcjs Synth 生成 WAV。
 
 标准 MIDI 至少保留：
 
@@ -871,9 +872,9 @@ Candidate 不允许正式导出。
 10. 最后 Current 的可靠恢复；
 11. Chat Completions 的工具调用、流式、取消和超时；
 12. MIDI 导出核心数据；
-13. openDAW 整曲 WAV 离线渲染。
+13. 桌面端 abcjs Synth 可从 A5 提供的已验证 Canonical ABC 生成整曲 WAV，并验证资源加载、时长/尾音和文件输出。
 
-Gate 失败时必须以可复现证据调整技术方案；WAV Gate 失败时可明确降为 P1。
+Gate 失败时必须以可复现证据调整技术方案；MIDI/WAV 导出是 P0 发布能力，不以回退到 openDAW 离线渲染规避失败。
 
 ---
 
@@ -913,9 +914,9 @@ P0 发布必须满足：
 30. P0 Agent 不具有音色与混音写权限；
 31. 自动修复次数可配置且必须有限；
 32. API Key 不进入项目、Git、Agent Session Storage 或日志；
-33. MIDI 和 ABC 只能从 Current 导出；
+33. MIDI 和 WAV 只能从 clean Current 导出；
 34. Candidate 不能导出；
-35. WAV 在 Gate 通过后从 Current 导出；
+35. WAV 必须由桌面端 abcjs 从 A5 同一 Current 快照中的已验证 Canonical ABC 合成；
 36. “另存为”生成新项目且不保留原 Git 历史。
 37. 同一窗口从 Project A 切到 Project B 时不启动第二个 Core/MCP，正式产品的 Core/MCP/Agent 进程与 MCP Endpoint 保持不变。
 38. 若切换时存在 Agent execution 或 Active Task，UI 必须先提示；确认后等待统一 Cancel、必要的 Task rollback 与旧 Project 安全关闭完成才进入 B，拒绝或失败时保持 A。

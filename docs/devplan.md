@@ -1,6 +1,6 @@
 # Agent Music Workstation P0 十天双人模块化开发计划
 
-**版本：** 2.0
+**版本：** 2.1
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -21,8 +21,8 @@
 
 开发必须遵循：
 
-- `docs/product/Agent Music Workstation PRD.md` V1.18；
-- `docs/architecture/Agent Music Workstation System Architecture.md` V1.16；
+- `docs/product/Agent Music Workstation PRD.md` V1.19；
+- `docs/architecture/Agent Music Workstation System Architecture.md` V1.17；
 - `docs/architecture/spike.md` 中 Spike-001～010 的技术结论；Spike-010 的 Velocity 候选已按 ADR-034 纳入 P0。
 
 TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为结论固化为正式模块和回归测试；其中 TG-008 的自研 Provider Adapter 实现约束已由 Architecture V1.16 ADR-044 替代，A4 应以 Strands 原生 Chat Completions / MCP Client 集成为正式实现，并复用 TG-008 的 Tool Call、流式、取消和错误行为作为回归标准。
@@ -42,7 +42,7 @@ TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为�
 - MCP Server 的部署位置和十个 P0 Tool；正式桌面产品为单 Core/单 MCP/`0..1` Active Project，Project 切换不重启 MCP；
 - Canonical ABC → MIDI → openDAW Runtime 的链路；
 - Current、Candidate、Task checkpoint 和 Git/worktree 状态机；
-- ABC、MIDI、WAV 的既定导出链；
+- clean Current → A5 Export Preparation → 桌面 MIDI/WAV 输出的既定导出链；
 - PRD 已冻结的产品范围。
 
 ---
@@ -119,7 +119,7 @@ openDAW Runtime
 ├── WASM / Worker / AudioWorklet
 ├── RuntimeSnapshot Load
 ├── Transport / Preview
-└── Offline WAV Render
+└── abcjs WAV Export
 ```
 
 UI、时间轴、Clip、播放头、Transport 和 openDAW SDK 共享同一 Renderer 运行环境并频繁协同，因此作为一个模块簇分配给开发者 B。
@@ -157,7 +157,7 @@ A 负责：
 - 十个 P0 MCP Tool 的 Schema、授权和业务语义；
 - `finishTask`、Accept、Reject、取消和迟到结果保护；
 - Current-only 导出前检查、重新读取和重新编译；
-- ABC/MIDI 导出数据；
+- 同一 Current revision 的已验证 Canonical ABC 与 Standard MIDI bytes；
 - Core 侧 IPC Handler 和 Event；
 - Music Core 单元、Contract、Git 和故障注入测试。
 
@@ -187,7 +187,7 @@ A 负责：
 - BrowserWindow、Preload 和桌面打包；
 - 直接使用 openDAW SDK；
 - openDAW Worker、WASM、AudioWorklet 或 SoundFont；
-- Transport、试听切换和 WAV Offline Renderer；
+- Transport、试听切换和桌面 abcjs WAV 导出；
 - UI 中的导出进度、确认弹层和错误呈现。
 
 ---
@@ -241,21 +241,22 @@ B 负责所有直接依赖 `@opendaw/studio-sdk` 的实现，无论对应文件�
 - RuntimeSnapshot load/reload/dispose；Project 切换时先停止并释放旧 Project 播放状态，新 Project 打开后再构建/加载 Snapshot；
 - Current/Candidate 试听切换；
 - openDAW Transport；
-- Offline WAV Render、进度、AbortSignal 和尾音；
+
 - openDAW 相关 Contract 和 Electron 集成测试。
 
-### 4.4 WAV 功能归属
+### 4.4 导出功能归属
 
-WAV 是跨模块流程，但功能负责人为 B，因为实际渲染依赖 Electron Renderer 中的 openDAW Runtime。
+A5 负责从 clean Current 捕获稳定快照并执行 A2 最终编译，输出同一 `currentRevision` 绑定的 Canonical ABC 与 Standard MIDI bytes。A5 不写目标文件，也不依赖 abcjs/openDAW。
 
-既有架构职责保持不变：
+B5 负责桌面导出：
 
 ```text
-A：检查只导出 clean Current，重新读取并编译工程，准备既定导出输入
-B：选择输出路径，调用 openDAW Offline Renderer，显示进度并处理取消
+A5：clean Current → final compile → { canonicalAbc, midiFileBytes, currentRevision }
+B5：midiFileBytes → .mid
+B5：canonicalAbc → abcjs Synth → .wav
 ```
 
-这里是同一既有导出链上的任务分配，不是新的实现设计。
+openDAW 继续只服务试听 Runtime；正式 MIDI/WAV 导出不经过 openDAW。
 
 ### 4.5 B 不负责
 
@@ -364,7 +365,7 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 | **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Musical Properties（初始 Meter / Tempo）、Composition Resize 与最终 Meter/barline 一致性校验、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateMusicalProperties`、`resizeComposition`、`validateFinalMeterConsistency`、PlaybackCompilation、TimelineViewModel、ValidationReport |
 | **A3** | Candidate Transaction | Candidate `baseRevision`、`.agent-music` worktree、Candidate/Task 双状态机、execution envelope、Scope Extension 授权、checkpoint、Accept/Reject、取消回滚、cleanup marker、稳定领域错误；Current 正式写入经 A1 串行写入机制；Project close 前 Active Task 必须已取消/回滚 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 cancel/rollback 与 Agent-facing / Renderer-control interface；Project switch 可用权威 Task 状态 fail-closed |
 | **A4** | Agent Toolchain | Strands Agent Loop、OpenAI-compatible Chat Completions、Agent-side MCP Client、Project 多 Session/SessionManager/Storage、Core-process-scoped descriptor、Agent / Model Settings、planning/confirmation、统一 Cancel/final-failure rollback、有限 repair、Agent transport | A1、A3、MCP/Agent Contracts | 一个 Project 可有多个 Session 但同时唯一 Active Session；Agent Service 对单一 Core MCP 保持一个基础设施连接，不按 Project 切 Endpoint；Project switch 时 Cancel Promise 在 Active Task rollback 后才完成；Renderer 仅通过最小 Session lifecycle + 文本流/终态访问 A4 |
-| **A5** | Export Preparation | 复用 A1 clean Current 读取校验、A2 重新编译，准备 ABC/MIDI 导出数据与 WAV 输入；不拥有 Agent Settings、Session 或历史数据库 | A1、A2 | 经过 Current 校验的 ABC/MIDI/WAV 导出输入 |
+| **A5** | Export Preparation | 在 A1 项目级串行协调下捕获 clean Current snapshot，使用 A2 最终编译/校验，准备桌面 MIDI/WAV 所需的 revision-bound Canonical ABC 与 Standard MIDI bytes；通过最小 Export Command/Event IPC 暴露；不拥有文件输出、abcjs/openDAW、Agent Settings、Session 或历史数据库 | A1、A2 | `PreparedCurrentExport { projectId, currentRevision, canonicalAbc, midiFileBytes }` + `export.prepareCurrent` typed IPC |
 
 #### 7.1.1 A1 最小接口与实现边界
 
@@ -398,7 +399,7 @@ interface ProjectAuthorityAccess {
 }
 ```
 
-`getProjectPath()` 只供 Core 内部 A3 定位 Candidate linked worktree；不得向 Renderer 或 Agent 暴露。A3 的 Accept 复用 A1 serialized write，A5 复用 clean Current 读取；不得向 A3 暴露 A1 的 GitAdapter、锁对象或解锁能力。
+`getProjectPath()` 只供 Core 内部 A3 定位 Candidate linked worktree；不得向 Renderer 或 Agent 暴露。A3 的 Accept 与 A5 的 Current snapshot capture 复用 A1 serialized write；不得向 A3 暴露 A1 的 GitAdapter、锁对象或解锁能力。
 
 A1 验收至少覆盖：
 
@@ -448,7 +449,7 @@ A3 必须实现：
 | **B2** | Workstation UI | 六轨工作区、时间轴、Scope、单窗口 Project 打开/切换 UI、Renderer-side AgentClient、Agent Session 新建/切换、Agent 对话流、Agent 面板、错误呈现 | B1、Fake Core/Agent Client | 可消费 Project/Task/Candidate 产品状态；运行中 Agent 操作/Active Task 时切 Project 必须先提示；拒绝保持原 Project，确认后委托 B1 执行 cancel/rollback + close/open |
 | **B3** | openDAW Runtime | SDK Adapter；消费 A2 PlaybackCompilation 构建 RuntimeSnapshot；六轨 Runtime、资源加载、Transport、Snapshot load；Project switch playback teardown/reload | PlaybackCompilation、RuntimeSnapshot Contracts、Spike fixtures | 可从正式编译结果构建、加载 Snapshot 并稳定播放；Project 切换不泄漏旧 Transport/Runtime 状态 |
 | **B4** | Preview & Confirmation | Current/Candidate 试听、generation plan/wholeProject/Scope Extension/Accept 与运行中任务 Project-switch 警告等确认流程、Accept/Reject UI、Core Event 消费 | B2、B3、A3 的稳定输出 | 完整 Candidate 预览和确认交互；Project-switch 确认只授权 B1 启动 Cancel/close/open 流程，不直接改变 A3 状态 |
-| **B5** | WAV & Windows Delivery | Offline Render、进度、取消、尾音、桌面文件输出、Windows 构建 | B1、B3、A5 的稳定输出 | 可从 Current 导出 WAV 的 Windows 可运行构建 |
+| **B5** | Export & Windows Delivery | MIDI 文件输出、abcjs WAV Synth、导出失败安全、桌面文件输出、Windows 构建 | B1、A5 的稳定输出 | 可从 Current 导出 MIDI/WAV 的 Windows 可运行构建 |
 
 ### 7.3 模块完成条件
 
@@ -486,13 +487,12 @@ flowchart LR
         B2[B2 Workstation UI]
         B3[B3 openDAW Runtime]
         B4[B4 Preview & Confirmation]
-        B5[B5 WAV & Windows Delivery]
+        B5[B5 Export & Windows Delivery]
 
         B1 --> B2
         B2 --> B4
         B3 --> B4
         B1 --> B5
-        B3 --> B5
     end
 
     B1 -->|I1 进程启动 / Project switch / health / IPC| A1
@@ -510,11 +510,11 @@ flowchart LR
 | A1 → A3 | Current Git、跨实例写锁、项目级串行写入和 Project Command/Event | Candidate branch/worktree、事务状态机及安全 Accept |
 | A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic`、`updateMusicalProperties`、`resizeComposition` 和 `finishTask` 完整验证 |
 | A1/A3 → A4 | A1 的 Active Project 生命周期，A3 的 TaskContext、Candidate 和八个 Tool 业务状态 | 单一 Core MCP connection、Strands Tool Loop 与 Agent Workflow；`projectId` 只用于业务/授权校验，不用于 Endpoint 选择 |
-| A1/A2 → A5 | A1 的 clean Current 读取校验、A2 的重新编译能力 | 正式 ABC/MIDI/WAV 导出准备 |
+| A1/A2 → A5 | A1 的 clean Current 读取/串行协调、A2 的最终编译能力 | 同一 Current revision 的 Canonical ABC + Standard MIDI bytes |
 | A4 → B1 → B2 | A4 最小 Session lifecycle + text/terminal Contract；B1 安全 Main/Preload transport | Renderer-side AgentClient、Project Session 新建/切换、用户消息/Cancel、assistant 流式文本与 execution 终态 |
 | B1 → B2 | 安全 Preload 和 typed IPC Client | 真实桌面 UI |
 | B2/B3 → B4 | 产品交互状态和可播放 Runtime | Current/Candidate 预览及确认流程 |
-| B1/B3 → B5 | 文件路径、资源环境和 Offline Renderer | WAV 与 Windows 交付 |
+| B1/A5 → B5 | 文件路径/桌面资源环境与 `PreparedCurrentExport` | MIDI 文件输出、abcjs WAV 与 Windows 交付 |
 
 跨开发者依赖只使用图中 `I1～I6` 所标注的架构既有接口，不新增进程、私有调用或替代数据格式。
 
@@ -687,23 +687,23 @@ A4 Strands Agent
 
 **解除阻塞：** 首次生成和局部修改两条主流程不再依赖 Agent/Core/UI Fake。
 
-### I6：Export Preparation → WAV & Windows Delivery
+### I6：Export Preparation → Export & Windows Delivery
 
-**连接模块：** A5 → B5，同时依赖 B1、B3。
+**连接模块：** A5 → B5，同时依赖 B1。
 
 **进入条件：**
 
-- A5 可重新读取 clean `main` HEAD 并生成 ABC、MIDI 和既定 WAV 输入；
-- B5 可执行 openDAW Offline Render、桌面文件输出和取消；
+- A5 可在项目级串行协调下捕获 clean `main` HEAD，并生成同一 revision 的已验证 Canonical ABC 与 Standard MIDI bytes；
+- B5 可将 MIDI bytes 写为 `.mid`，并在桌面 Renderer 使用 abcjs Synth 从 Canonical ABC 生成 `.wav`；
 - I4、I5 已通过。
 
 **通过标准：**
 
 - Candidate 不可导出；
-- ABC、MIDI、WAV 只从 clean Current 生成；
-- WAV 进度单调、可取消，失败或取消不破坏既有目标文件；
+- MIDI、WAV 只从 clean Current 生成，Candidate 不可导出；
+- WAV 的进度/取消语义以实际 abcjs 集成能力为准，失败或取消不破坏既有目标文件；
 - 关闭重开后仍可播放和导出最后 Current；
-- Windows 中文路径、长路径、文件占用和 openDAW 资源路径通过 Smoke；
+- Windows 中文路径、长路径、文件占用和 abcjs 音频资源路径通过 Smoke；
 - 首次生成与局部修改两条 E2E 均使用真实模块。
 
 **解除阻塞：** Day 10 只剩验收阻塞修复和证据整理。
@@ -743,7 +743,7 @@ git status --short
 | openDAW 构建不稳定 | Worker/WASM/SoundFont 路径失败 | 回到 Spike-001 的固定版本、Vite 配置和 shim |
 | ABC 白名单膨胀 | Day 4 仍加入未验证语法 | 固定 P0 白名单，明确拒绝未支持语法 |
 | MCP 与 Agent 绕过边界 | Agent 直接调用 Core 内部模块 | 删除私有路径，强制通过真实 MCP Contract 测试 |
-| WAV 协作不清 | A/B 同时修改整个导出链 | A 负责 Current/编译数据，B 负责 openDAW/Electron 渲染；沿既有 seam 集成 |
+| 导出协作不清 | A/B 同时修改整个导出链 | A5 只提供 revision-bound Canonical ABC + MIDI bytes；B5 负责 Electron 文件输出与 abcjs WAV Synth |
 | 两人互相等待 | 一方当天无可测输入 | 使用 Spike fixture 和 Fake IPC，不改变正式架构 |
 | Project switch 与 Agent 事务竞态 | 切换时仍有 pending Tool Call/Active Task，或切换导致 MCP reconnect | B2/B4 先提示；B1 确认后统一 Cancel 并等待 rollback/settle；Core close fail-closed；单 Core/MCP endpoint 跨切换保持不变 |
 | Windows 问题发现过晚 | Day 8 前未在 Windows 跑 smoke | Day 3 起每日运行最小 Windows smoke，Day 9 完整回归 |
@@ -760,8 +760,8 @@ git status --short
 - [ ] Agent 只能通过 MCP 修改 Candidate。
 - [ ] Current/Candidate 试听、Accept 和 Reject 正确。
 - [ ] dirty Current、stale `scopeRevision` 和跨 Scope 持续事件均 fail-closed。
-- [ ] ABC、MIDI、WAV 只从 Current 导出。
-- [ ] WAV 进度、取消、尾音和失败安全通过。
+- [ ] MIDI、WAV 只从 clean Current 导出，Candidate 不可导出。
+- [ ] 桌面 abcjs WAV 的资源加载、时长/尾音、可用取消语义和失败安全通过。
 - [ ] API Key 未进入项目、Git、Strands Session Storage 或日志。
 - [ ] `pnpm install --frozen-lockfile` 和 `pnpm check` 通过。
 - [ ] Windows 中文路径、长路径、文件占用和恢复 smoke test 通过。
