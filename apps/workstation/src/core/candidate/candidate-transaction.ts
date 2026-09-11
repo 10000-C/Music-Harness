@@ -47,6 +47,10 @@ export interface CandidateAgentPort {
     readonly requestedScope: TaskScope;
     readonly signal?: AbortSignal;
   }): Promise<PendingScopeExtensionView>;
+  cancelScopeExtension(input: {
+    readonly envelope: TaskExecutionEnvelope;
+    readonly requestId: ScopeExtensionRequestId;
+  }): Promise<TaskContextView>;
   applyScopedMusicChange(input: {
     readonly envelope: TaskExecutionEnvelope;
     readonly targetScope?: TaskScope;
@@ -134,6 +138,7 @@ interface PendingScopeExtension {
   readonly requestId: ScopeExtensionRequestId;
   readonly fromScopeRevision: number;
   readonly requestedScope: TaskScope;
+  readonly createdAt: string;
 }
 
 interface ActiveTask {
@@ -310,8 +315,8 @@ export class CandidateTransaction
     const { task } = await this.guardTaskEnvelope(input.envelope);
     this.assertTaskMutationIdle(input.envelope.taskId);
     if (task.pendingScopeExtension !== undefined) {
-      throw new CandidateError(
-        'TASK_SCOPE_EXTENSION_PENDING',
+      throw this.scopeExtensionPendingError(
+        task,
         'A Scope Extension request is already pending',
       );
     }
@@ -326,9 +331,32 @@ export class CandidateTransaction
       requestId: this.dependencies.createId() as ScopeExtensionRequestId,
       fromScopeRevision: task.scopeRevision,
       requestedScope: input.requestedScope,
+      createdAt: this.dependencies.now(),
     };
     task.pendingScopeExtension = pending;
     return this.toPendingScopeExtensionView(task, pending);
+  }
+
+  public async cancelScopeExtension(input: {
+    readonly envelope: TaskExecutionEnvelope;
+    readonly requestId: ScopeExtensionRequestId;
+  }): Promise<TaskContextView> {
+    const { candidate, task } = await this.guardTaskEnvelope(input.envelope);
+    const pending = task.pendingScopeExtension;
+    if (pending?.requestId !== input.requestId) {
+      throw new CandidateError(
+        'STALE_SCOPE_EXTENSION_REQUEST',
+        'Scope Extension request is no longer current',
+      );
+    }
+    if (pending.fromScopeRevision !== task.scopeRevision) {
+      throw new CandidateError(
+        'STALE_SCOPE_EXTENSION_REQUEST',
+        'Scope Extension request was based on a stale Scope revision',
+      );
+    }
+    task.pendingScopeExtension = undefined;
+    return this.toTaskContextView(candidate, task);
   }
 
   public approveScopeExtension(input: {
@@ -521,8 +549,8 @@ export class CandidateTransaction
       try {
         ({ candidate, task } = await this.guardTaskEnvelope(envelope));
         if (task.pendingScopeExtension !== undefined) {
-          throw new CandidateError(
-            'TASK_SCOPE_EXTENSION_PENDING',
+          throw this.scopeExtensionPendingError(
+            task,
             'Task cannot finish while a Scope Extension is pending',
           );
         }
@@ -965,6 +993,14 @@ export class CandidateTransaction
       allowedOperations: this.deriveAllowedOperations(task.scope),
       trackIds: TRACK_IDS,
       createdAt: task.createdAt,
+      ...(task.pendingScopeExtension === undefined
+        ? {}
+        : {
+            pendingScopeExtension: this.toPendingScopeExtensionView(
+              task,
+              task.pendingScopeExtension,
+            ),
+          }),
     };
   }
 
@@ -987,13 +1023,32 @@ export class CandidateTransaction
     return operations;
   }
 
+  private scopeExtensionPendingError(
+    task: ActiveTask,
+    message: string,
+  ): CandidateError {
+    const pending = task.pendingScopeExtension;
+    return new CandidateError(
+      'TASK_SCOPE_EXTENSION_PENDING',
+      message,
+      pending === undefined
+        ? undefined
+        : {
+            requestId: pending.requestId,
+            requestedScope: pending.requestedScope,
+            fromScopeRevision: pending.fromScopeRevision,
+            createdAt: pending.createdAt,
+          },
+    );
+  }
+
   private assertMutationAllowed(
     task: ActiveTask,
     operation: CandidateOperation,
   ): void {
     if (task.pendingScopeExtension !== undefined) {
-      throw new CandidateError(
-        'TASK_SCOPE_EXTENSION_PENDING',
+      throw this.scopeExtensionPendingError(
+        task,
         'Candidate writes are blocked while a Scope Extension is pending',
       );
     }
@@ -1134,6 +1189,7 @@ export class CandidateTransaction
       requestId: pending.requestId,
       fromScopeRevision: pending.fromScopeRevision,
       requestedScope: pending.requestedScope,
+      createdAt: pending.createdAt,
     };
   }
 

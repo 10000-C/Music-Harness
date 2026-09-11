@@ -208,8 +208,10 @@ export class InteractiveCandidateAgentPort implements CandidateAgentPort {
       }
       if (isApproved(answer)) {
         await this.control.approveScopeExtension(decision);
+        this.terminal.write('Decision: approved\n');
       } else {
         await this.control.rejectScopeExtension(decision);
+        this.terminal.write('Decision: rejected\n');
       }
       return pending;
     } catch (error) {
@@ -220,6 +222,12 @@ export class InteractiveCandidateAgentPort implements CandidateAgentPort {
       }
       throw error;
     }
+  }
+
+  public cancelScopeExtension(
+    ...args: Parameters<CandidateAgentPort['cancelScopeExtension']>
+  ): ReturnType<CandidateAgentPort['cancelScopeExtension']> {
+    return this.agent.cancelScopeExtension(...args);
   }
 
   public applyScopedMusicChange(

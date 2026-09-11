@@ -1,4 +1,4 @@
-import type { CandidateErrorCode } from '@agent-music/contracts';
+import { isTaskScope, type CandidateErrorCode } from '@agent-music/contracts';
 
 import { CompositionValidationError } from '../composition/index.js';
 import { ProjectError } from '../project/project-error.js';
@@ -81,6 +81,18 @@ const safeCandidateErrorDetails = (
       ...(phase === 'currentComposition' || phase === 'replacement'
         ? { phase }
         : {}),
+    };
+  }
+  if (error.code === 'TASK_SCOPE_EXTENSION_PENDING') {
+    const requestId = error.details?.requestId;
+    const requestedScope = error.details?.requestedScope;
+    const fromScopeRevision = error.details?.fromScopeRevision;
+    const createdAt = error.details?.createdAt;
+    return {
+      ...(typeof requestId === 'string' ? { requestId } : {}),
+      ...(isTaskScope(requestedScope) ? { requestedScope } : {}),
+      ...(typeof fromScopeRevision === 'number' ? { fromScopeRevision } : {}),
+      ...(typeof createdAt === 'string' ? { createdAt } : {}),
     };
   }
   if (error.code === 'UNEXPECTED_CANDIDATE_CHANGE') {

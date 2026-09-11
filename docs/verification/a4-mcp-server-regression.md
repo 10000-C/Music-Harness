@@ -4,7 +4,7 @@
 
 **Scope:** A only. This procedure must not use Strands, `AgentWorkflow`, or any model provider. Any standards-compliant MCP client should be able to execute it.
 
-**Primary question:** can an arbitrary MCP client call the eight P0 Music Core tools, receive the documented behavior, and observe the corresponding authoritative Candidate/project/Git facts?
+**Primary question:** can an arbitrary MCP client call the nine P0 Music Core tools, receive the documented behavior, and observe the corresponding authoritative Candidate/project/Git facts?
 
 ## 1. Execution Rules
 
@@ -14,7 +14,7 @@ The executing Agent may create a temporary project, start the real Music Core MC
 
 The following rules are mandatory:
 
-1. **All eight Agent-facing capability calls must cross MCP.** Do not call `MusicCoreToolHost`, `CandidateTransaction`, `CompositionPipeline`, or repository mutation methods directly as a substitute for the MCP call under test.
+1. **All nine Agent-facing capability calls must cross MCP.** Do not call `MusicCoreToolHost`, `CandidateTransaction`, `CompositionPipeline`, or repository mutation methods directly as a substitute for the MCP call under test.
 2. **Direct filesystem/Git access is inspection-only.** It may read `composition.abc`, inspect Candidate worktree state, and query Git revisions/status. It must not mutate project authority or Candidate content.
 3. **Strands is forbidden in A-layer verification.** A-layer success must not depend on Strands MCP behavior.
 4. **Non-MCP user/control decisions may use their real Core control seam.** In particular:
@@ -85,7 +85,7 @@ This narrow Scope is deliberate: it allows the regression to prove authorization
 
 Run the sequence in order. A later step may depend on facts created by an earlier step.
 
-### A-01 — Discover exactly eight P0 tools
+### A-01 — Discover exactly nine P0 tools
 
 Invoke MCP `tools/list`.
 
@@ -96,6 +96,7 @@ getTaskContext
 getScopedComposition
 submitGenerationPlan
 requestScopeExtension
+cancelScopeExtension
 replaceScopedMusic
 updateMusicalProperties
 resizeComposition
@@ -104,13 +105,15 @@ finishTask
 
 Pass conditions:
 
-- exactly eight Agent-facing Music Core tools are exposed;
-- no cancel/reconciliation/internal Core control tool appears;
+- exactly nine Agent-facing Music Core tools are exposed;
+- no Candidate Accept/Reject, reconciliation, filesystem, Git, or other internal Core control tool appears;
 - no Strands-specific tool is required for Music Core capability discovery.
 
 ### A-02 — `submitGenerationPlan` is long-held before confirmation
 
 Agent-facing input must not require `projectId`; the MCP Host binds the currently opened Project. A timeout/cancelled client request must abort the corresponding server Tool Call rather than leaving an orphaned confirmation.
+
+For Scope Extension specifically, also verify that `getTaskContext.pendingScopeExtension` exposes the authoritative pending request and that `cancelScopeExtension` can retract it without changing `scopeRevision`. No TTL-based expiry is expected in P0.
 
 Call:
 

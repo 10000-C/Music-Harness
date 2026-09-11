@@ -181,6 +181,63 @@ describe('MusicCoreMcpHttpServer', () => {
     await client.close();
   });
 
+  it('exposes safe pending Scope Extension recovery metadata to MCP clients', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const requestId = '44444444-4444-4444-8444-444444444444';
+    const requestedScope = {
+      type: 'wholeProject',
+      trackIds: ['track.drums', 'track.bass'],
+    };
+    const server = new MusicCoreMcpHttpServer({
+      projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () =>
+          Promise.reject(
+            new CandidateError(
+              'TASK_SCOPE_EXTENSION_PENDING',
+              'Candidate writes are blocked while a Scope Extension is pending',
+              {
+                requestId,
+                requestedScope,
+                fromScopeRevision: 0,
+                createdAt: '2026-09-12T00:00:00.000Z',
+                privatePath: '/private/worktree',
+              },
+            ),
+          ),
+      },
+      createToken: () => 'pending-error-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const client = await connectMcpTestClient(
+      descriptor.endpoint,
+      descriptor.instanceToken,
+    );
+
+    const result = await client.callTool({
+      name: 'getTaskContext',
+      arguments: { taskId },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]?.text ?? '{}')).toEqual({
+      code: 'TASK_SCOPE_EXTENSION_PENDING',
+      message:
+        'Candidate writes are blocked while a Scope Extension is pending',
+      details: {
+        requestId,
+        requestedScope,
+        fromScopeRevision: 0,
+        createdAt: '2026-09-12T00:00:00.000Z',
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain('/private/worktree');
+    await client.close();
+  });
+
   it('exposes only safe validation phase metadata to MCP clients', async () => {
     const runtimeDirectory = await makeRuntimeDirectory();
     const server = new MusicCoreMcpHttpServer({
@@ -330,7 +387,7 @@ describe('MusicCoreMcpHttpServer', () => {
     await client.close();
   });
 
-  it('serves exactly eight tools over real Streamable HTTP and delegates calls', async () => {
+  it('serves exactly nine tools over real Streamable HTTP and delegates calls', async () => {
     const { call, descriptor } = await makeServer();
     const client = await connectMcpTestClient(
       descriptor.endpoint,

@@ -1,5 +1,6 @@
 import type {
   ProjectId,
+  ScopeExtensionRequestId,
   TaskExecutionEnvelope,
   TaskId,
   TaskScope,
@@ -16,6 +17,7 @@ export const P0_MCP_TOOL_NAMES = [
   'getScopedComposition',
   'submitGenerationPlan',
   'requestScopeExtension',
+  'cancelScopeExtension',
   'replaceScopedMusic',
   'updateMusicalProperties',
   'resizeComposition',
@@ -108,6 +110,13 @@ export class MusicCoreToolHost {
           ...(input as ScopeExtensionInput),
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
+      case 'cancelScopeExtension':
+        return this.dependencies.agent.cancelScopeExtension(
+          input as {
+            readonly envelope: TaskExecutionEnvelope;
+            readonly requestId: ScopeExtensionRequestId;
+          },
+        );
       case 'replaceScopedMusic':
         return this.dependencies.agent.applyScopedMusicChange(
           input as ReplaceScopedMusicInput,

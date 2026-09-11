@@ -416,6 +416,7 @@ describe('CandidateTransaction authorization', () => {
       requestId: scopeRequestId,
       fromScopeRevision: 0,
       requestedScope,
+      createdAt: '2026-08-13T00:00:00.000Z',
     });
     await expect(
       transaction.requestScopeExtension({ envelope, requestedScope }),
@@ -440,6 +441,130 @@ describe('CandidateTransaction authorization', () => {
     await expect(
       transaction.approveScopeExtension({ taskId, requestId: scopeRequestId }),
     ).rejects.toMatchObject({ code: 'STALE_SCOPE_EXTENSION_REQUEST' });
+  });
+
+  it.each([
+    [
+      'Task cancel',
+      async (
+        transaction: CandidateTransaction,
+        task: Awaited<ReturnType<CandidateTransaction['startTask']>>,
+      ) =>
+        transaction.cancelTask({
+          projectId: task.projectId,
+          candidateId: task.candidateId,
+          taskId: task.taskId,
+        }),
+    ],
+    [
+      'Agent loss',
+      async (
+        transaction: CandidateTransaction,
+        task: Awaited<ReturnType<CandidateTransaction['startTask']>>,
+      ) => transaction.cancelActiveTaskForAgentLoss(task.projectId),
+    ],
+  ])(
+    'clears pending Scope Extension with %s by ending the Task',
+    async (_name, endTask) => {
+      const { transaction } = createHarness();
+      const task = await transaction.startTask({
+        projectId,
+        scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+      });
+      await transaction.requestScopeExtension({
+        envelope: envelopeFor(task),
+        requestedScope: {
+          type: 'wholeProject',
+          trackIds: ['track.drums', 'track.bass'],
+        },
+      });
+      expect(
+        (await transaction.getTaskContext(task.taskId)).pendingScopeExtension,
+      ).toBeDefined();
+
+      await endTask(transaction, task);
+      await expect(
+        transaction.getTaskContext(task.taskId),
+      ).rejects.toMatchObject({
+        code: 'TASK_NOT_ACTIVE',
+      });
+    },
+  );
+
+  it('exposes pending Scope Extension in Task context and lets the Agent retract it without changing scopeRevision', async () => {
+    const { transaction } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const envelope = envelopeFor(task);
+    const requestedScope: TaskScope = {
+      type: 'wholeProject',
+      trackIds: ['track.drums', 'track.bass'],
+    };
+    const pending = await transaction.requestScopeExtension({
+      envelope,
+      requestedScope,
+    });
+
+    await expect(
+      transaction.getTaskContext(task.taskId),
+    ).resolves.toMatchObject({
+      scopeRevision: 0,
+      pendingScopeExtension: {
+        requestId: pending.requestId,
+        requestedScope,
+        fromScopeRevision: 0,
+        createdAt: '2026-08-13T00:00:00.000Z',
+      },
+    });
+
+    const retracted = await transaction.cancelScopeExtension({
+      envelope,
+      requestId: pending.requestId,
+    });
+    expect(retracted.scopeRevision).toBe(0);
+    expect(retracted.scope).toEqual(task.scope);
+    expect(retracted.pendingScopeExtension).toBeUndefined();
+    await expect(
+      transaction.getTaskContext(task.taskId),
+    ).resolves.toMatchObject({
+      scopeRevision: 0,
+    });
+    expect(
+      (await transaction.getTaskContext(task.taskId)).pendingScopeExtension,
+    ).toBeUndefined();
+  });
+
+  it('returns pending request metadata when a write is blocked by Scope Extension', async () => {
+    const { transaction } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const envelope = envelopeFor(task);
+    const pending = await transaction.requestScopeExtension({
+      envelope,
+      requestedScope: {
+        type: 'wholeProject',
+        trackIds: ['track.drums', 'track.bass'],
+      },
+    });
+
+    await expect(
+      transaction.applyScopedMusicChange({
+        envelope,
+        replacements: [{ trackId: 'track.drums', abc: 'z4 |' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'TASK_SCOPE_EXTENSION_PENDING',
+      details: {
+        requestId: pending.requestId,
+        requestedScope: pending.requestedScope,
+        fromScopeRevision: 0,
+        createdAt: pending.createdAt,
+      },
+    });
   });
 
   it('accepts timeRange to wholeProject only when the track set is a superset', async () => {

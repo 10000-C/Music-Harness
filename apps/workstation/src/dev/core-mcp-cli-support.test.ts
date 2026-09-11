@@ -62,6 +62,7 @@ const makeAgent = (pending: PendingScopeExtensionView) => {
     getTaskContext: vi.fn().mockResolvedValue(task),
     getScopedComposition: vi.fn(),
     requestScopeExtension,
+    cancelScopeExtension: vi.fn(),
     applyScopedMusicChange: vi.fn(),
     updateMusicalProperties: vi.fn(),
     resizeComposition: vi.fn(),
@@ -263,6 +264,7 @@ describe('InteractiveCandidateAgentPort', () => {
       '10000000-0000-4000-8000-000000000004' as ScopeExtensionRequestId,
     fromScopeRevision: 0,
     requestedScope: { type: 'wholeProject', trackIds: TRACK_IDS },
+    createdAt: '2026-09-09T00:00:01.000Z',
   };
 
   it('creates the real pending request before approving through the control seam', async () => {
@@ -277,7 +279,8 @@ describe('InteractiveCandidateAgentPort', () => {
       events.push('approved');
       return Promise.resolve(task);
     });
-    const terminal = makeTerminal('y');
+    const write = vi.fn();
+    const terminal: CoreMcpCliTerminalPort = { ...makeTerminal('y'), write };
 
     const result = await new InteractiveCandidateAgentPort(
       agent.port,
@@ -295,16 +298,19 @@ describe('InteractiveCandidateAgentPort', () => {
       requestId: pending.requestId,
     });
     expect(control.rejectScopeExtension).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledWith('Decision: approved\n');
   });
 
   it('routes a rejected terminal decision through the existing rejection control seam', async () => {
     const agent = makeAgent(pending);
     const control = makeControl();
 
+    const write = vi.fn();
+    const terminal: CoreMcpCliTerminalPort = { ...makeTerminal('n'), write };
     await new InteractiveCandidateAgentPort(
       agent.port,
       control.port,
-      makeTerminal('n'),
+      terminal,
     ).requestScopeExtension({
       envelope,
       requestedScope: pending.requestedScope,
@@ -315,6 +321,7 @@ describe('InteractiveCandidateAgentPort', () => {
       requestId: pending.requestId,
     });
     expect(control.approveScopeExtension).not.toHaveBeenCalled();
+    expect(write).toHaveBeenCalledWith('Decision: rejected\n');
   });
 
   it('rejects the pending Scope Extension when the MCP signal is aborted', async () => {

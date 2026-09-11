@@ -67,7 +67,9 @@ const makeHarness = () => {
       '44444444-4444-4444-8444-444444444444' as ScopeExtensionRequestId,
     fromScopeRevision: 0,
     requestedScope: scope,
+    createdAt: '2026-09-09T00:00:01.000Z',
   });
+  const cancelScopeExtension = vi.fn().mockResolvedValue(taskContext);
   const applyScopedMusicChange = vi.fn().mockResolvedValue({});
   const updateMusicalProperties = vi.fn().mockResolvedValue({});
   const resizeComposition = vi.fn().mockResolvedValue({});
@@ -87,6 +89,7 @@ const makeHarness = () => {
     getTaskContext,
     getScopedComposition,
     requestScopeExtension,
+    cancelScopeExtension,
     applyScopedMusicChange,
     updateMusicalProperties,
     resizeComposition,
@@ -112,6 +115,7 @@ const makeHarness = () => {
       getTaskContext,
       getScopedComposition,
       requestScopeExtension,
+      cancelScopeExtension,
       applyScopedMusicChange,
       updateMusicalProperties,
       resizeComposition,
@@ -123,7 +127,7 @@ const makeHarness = () => {
 };
 
 describe('MusicCoreToolHost', () => {
-  it('exposes exactly the eight P0 Agent tools', () => {
+  it('exposes exactly the nine P0 Agent tools', () => {
     const { host } = makeHarness();
     expect(host.listTools()).toEqual(P0_MCP_TOOL_NAMES);
   });
@@ -215,6 +219,10 @@ describe('MusicCoreToolHost', () => {
       envelope,
       requestedScope: scope,
     });
+    await host.call('cancelScopeExtension', {
+      envelope,
+      requestId: '44444444-4444-4444-8444-444444444444',
+    });
     await host.call('replaceScopedMusic', { envelope, replacements });
     await host.call('updateMusicalProperties', {
       envelope,
@@ -229,6 +237,10 @@ describe('MusicCoreToolHost', () => {
     expect(mocks.requestScopeExtension).toHaveBeenCalledWith({
       envelope,
       requestedScope: scope,
+    });
+    expect(mocks.cancelScopeExtension).toHaveBeenCalledWith({
+      envelope,
+      requestId: '44444444-4444-4444-8444-444444444444',
     });
     expect(mocks.applyScopedMusicChange).toHaveBeenCalledWith({
       envelope,

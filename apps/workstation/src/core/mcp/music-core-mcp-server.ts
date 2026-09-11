@@ -150,10 +150,20 @@ const registerTools = (
     server,
     host,
     'requestScopeExtension',
-    'Request a superset write Scope and wait for product authorization. This changes authorization only; it does not extend composition length or create future timeline. Cancellation/timeout cancels the pending confirmation.',
+    'Request a superset write Scope and wait for product authorization. This changes authorization only; it does not extend composition length or create future timeline. A pending request is observable through getTaskContext.pendingScopeExtension and can be explicitly retracted with cancelScopeExtension.',
     z.object({
       envelope: envelopeSchema,
       requestedScope: scopeSchema,
+    }),
+  );
+  registerJsonTool(
+    server,
+    host,
+    'cancelScopeExtension',
+    'Retract the currently pending Scope Extension request. This does not change scopeRevision or the authorized Scope. Use getTaskContext.pendingScopeExtension.requestId as requestId.',
+    z.object({
+      envelope: envelopeSchema,
+      requestId: z.uuid(),
     }),
   );
   registerJsonTool(

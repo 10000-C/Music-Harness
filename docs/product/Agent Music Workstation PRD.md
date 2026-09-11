@@ -1,8 +1,8 @@
 # Agent Music Workstation 产品需求文档
 
-**版本：** V1.16 Composition Structure & Recoverable Agent Tooling\
-**状态：** P0 产品范围已确认；新增 Composition Resize、可修复 Validation 与授权取消一致性设计已冻结\
-**日期：** 2026-09-11\
+**版本：** V1.17 Scope Extension Lifecycle\
+**状态：** P0 产品范围已确认；Scope Extension 可观测、显式撤回与取消一致性设计已冻结\
+**日期：** 2026-09-12\
 **开发周期：** 10–15 天\
 **团队规模：** 2 人\
 **首发平台：** Windows 10/11\
@@ -22,13 +22,16 @@
 
 ### 1.2 V1.16 Composition Structure 与 Agent 可修复性
 
-- P0 新增第八个 Agent MCP Tool `resizeComposition`，用于确定性修改 Candidate 的**总小节数**；其输入使用目标状态 `targetMeasureCount`，不向 Agent 暴露 `targetTicks`、`appendCount`、Scope Mapping 或 MIDI 长度等可由 Core 推导的数据。
+- `resizeComposition` 继续作为确定性修改 Candidate **总小节数**的结构工具；其输入使用目标状态 `targetMeasureCount`，不向 Agent 暴露 `targetTicks`、`appendCount`、Scope Mapping 或 MIDI 长度等可由 Core 推导的数据。P0 另新增第九个 Agent MCP Tool `cancelScopeExtension`，专门用于撤回 Pending Scope Extension。
 - `resizeComposition` 只允许覆盖全部六轨的 `wholeProject` Task。扩长时 Core 在六轨尾部补等长 Rest；等长为幂等 no-op；缩短仅在被裁剪尾部不包含 Note/Chord、局部 Tempo/Key 等已有音乐内容时允许，否则 fail-closed。
 - Scope 与工程曲长正式解耦：`requestScopeExtension` 只扩大**写授权范围**，不创建未来时间轴；`resizeComposition` 修改**工程结构事实**，不承担授权。`wholeProject` 表示整个当前工程的授权，不冻结为创建 Task 时的 `[0,endTick)` 快照。
 - 首次长曲标准流程冻结为 `submitGenerationPlan → getTaskContext → getScopedComposition → updateMusicalProperties → resizeComposition → 分段 targetScope read/replace → finishTask`。建立目标曲长后，Agent 应按合理的连续 `timeRange` 分段创作，不要求一次输出完整六轨长曲。
 - Validation Error 必须以 Agent 可修复为目标：`TRACK_LENGTH_MISMATCH` 返回各轨实测 Tick 长度；ABC parser warning 去除 HTML、聚合同类错误并限制响应规模，对稳定方言规则（如 accidental 使用 `^F/_B/=C` 而非 `F#/Bb`）提供简洁 hint。
 - Tick 0 的 Global Tempo/Key 必须只有唯一来源：`Q:` / `K:` header 定义初始值；inline `[Q:]` / `[K:]` 只允许出现在 `tick > 0`。初始 Tempo 使用 `updateMusicalProperties`，不得通过 voice 起点的 inline directive 产生重复 Global Map entry。
 - Scope Extension 的人工确认必须继承原 MCP Tool Call 的取消信号；客户端 timeout/cancel 后不得继续在后台批准请求。取消必须清理/拒绝对应 Pending request，且 `scopeRevision` 不变化。
+- Pending Scope Extension 必须通过 `getTaskContext.pendingScopeExtension` 可观测，至少包含 `requestId`、`requestedScope`、`fromScopeRevision`、`createdAt`；Agent 可调用 `cancelScopeExtension` 显式撤回。
+- P0 不为 Scope Extension 设置 TTL。生命周期通过 approve/reject、Agent retract、Tool Call cancel、Task cancel 与 Agent-loss reconciliation 显式闭合。
+- `scopeRevision` 是纯授权版本：只有 Scope Extension approve 推进；普通音乐写入、Musical Properties、resize、reject/retract/cancel 都不推进。
 - Global Meter 的既有限值继续作为 ABC/Standard MIDI 稳定边界，不作为扩长手段；P0 仍支持中间变速、不支持中间变拍。
 
 ### 1.3 V1.15 单 Core/MCP 与 Project 切换
@@ -44,7 +47,7 @@
 
 - Agent Runtime 使用 Strands；OpenAI-compatible Provider、Agent-side MCP Client、Session 与 Context 管理均优先使用 Strands 已提供能力，不重复实现 Provider/MCP 协议层、Session transcript 或 compaction。
 - 用户级 Agent / Model Settings 归 A4 Agent Toolchain 所有；P0 删除 SQLite，A5 收缩为 Export Preparation。
-- `submitGenerationPlan` 保留为八个 P0 MCP Tool 之一。它是确认前唯一允许使用的计划提交工具，不新增 `awaitingConfirmation` 等额外 Tool；P0 先采用 Tool Call 等待 UI 用户决策后再返回的最简确认语义。
+- `submitGenerationPlan` 保留为九个 P0 MCP Tool 之一。它是确认前唯一允许使用的计划提交工具，不新增 `awaitingConfirmation` 等额外 Tool；P0 先采用 Tool Call 等待 UI 用户决策后再返回的最简确认语义。
 - Cancel 统一表示取消当前 Agent 操作：正式 Task 尚未创建时只终止 A4 Workflow；正式 Task 已创建时必须同时 `cancelTask` 并回滚当前 Task。
 - `finishTask` validation failure 才进入有限 repair；repair 不允许 Scope Extension，一轮 `ValidationReport → repair → finishTask` 计为一次 `repairAttempt`，每轮开始前读取最新 `maxRepairAttempts`。
 - 模型配置不冻结；每次 Strands model call 读取当前 active model configuration。Provider/MCP transient retry 优先交给 Strands，A4 不实现第二层通用 retry loop；最终 execution failure 必须取消并回滚 Active Task。
@@ -56,7 +59,7 @@
 
 - 冻结 P0 Velocity：支持每事件 `1..127`；`0` 在 Standard MIDI 中表示 Note Off，因此不得作为 Note onset Velocity。一个 Chord 内所有 pitch 共享 Velocity，Tie chain 只在起音处设置。
 - 补齐 Agent 修改工程级 Musical Properties 的正式能力：仅允许覆盖全部六轨的 `wholeProject` Task，并使用 `updateMusicalProperties` 修改初始 Global Meter 与初始 Tempo。
-- P0 MCP Tool 后续由 7 个扩展为 8 个；音乐内容替换、工程级 Musical Properties 与时间轴结构 resize 保持独立职责。
+- P0 MCP Tool 当前为 9 个；音乐内容替换、工程级 Musical Properties 与时间轴结构 resize 保持独立职责。
 
 ### 1.6 V1.6 的工作区调整
 
@@ -572,16 +575,17 @@ P0 不保证：
 
 ## 9. P0 MCP Tool List
 
-P0 向 Agent 暴露 8 个高层工具：
+P0 向 Agent 暴露 9 个高层工具：
 
 1. `getTaskContext`：读取当前项目、Candidate、Task Scope、能力和状态；
 2. `getScopedComposition`：读取 Scope 内 Canonical ABC 和必要的只读上下文；
 3. `submitGenerationPlan`：首次生成前提交工程计划并请求用户确认；Agent-facing 输入只包含计划摘要和 Scope，Project 由 MCP Host 绑定当前 Active Project；P0 中该调用等待用户决策后返回，确认后才创建正式 Task；
 4. `requestScopeExtension`：申请扩大当前 Task 的写授权；不创建未来时间轴、不改变工程长度；
-5. `replaceScopedMusic`：提交既有 Scope 内 ABC 片段，由 Music Core 定位并原子替换；timeRange 修改保持总曲长；
-6. `updateMusicalProperties`：在覆盖全部六轨的 `wholeProject` Task 中修改工程级初始 Meter / Tempo；不改变曲长；
-7. `resizeComposition`：在覆盖全部六轨的 `wholeProject` Task 中将总小节数确定性 resize 到 `targetMeasureCount`；Core 自动维护六轨 Rest、`totalTicks` 和所有派生输出；
-8. `finishTask`：执行完整验证，成功后创建一个 Task checkpoint。
+5. `cancelScopeExtension`：撤回当前 Pending Scope Extension；必须携带当前 execution envelope 与 `requestId`，不改变 Scope 或 `scopeRevision`；
+6. `replaceScopedMusic`：提交既有 Scope 内 ABC 片段，由 Music Core 定位并原子替换；timeRange 修改保持总曲长；
+7. `updateMusicalProperties`：在覆盖全部六轨的 `wholeProject` Task 中修改工程级初始 Meter / Tempo；不改变曲长；
+8. `resizeComposition`：在覆盖全部六轨的 `wholeProject` Task 中将总小节数确定性 resize 到 `targetMeasureCount`；Core 自动维护六轨 Rest、`totalTicks` 和所有派生输出；
+9. `finishTask`：执行完整验证，成功后创建一个 Task checkpoint。
 
 Agent 不获得以下工具：
 
@@ -969,7 +973,7 @@ P0 发布必须满足：
 49. Scope 决定允许修改的范围，并由 A3 确定性推导当前 P0 `allowedOperations`；不持久化第二份权限状态。
 50. A4 直接使用 Strands 的 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client，不重复实现 Provider 协议层或 MCP Client。
 51. Agent / Model `settings.json` 归 A4 所有；A5 只负责 Export Preparation。
-52. `submitGenerationPlan` 保留为八个 P0 MCP Tool 之一，并在确认前作为唯一计划提交入口；Agent-facing 输入不包含 `projectId`，由 MCP Host 绑定当前 Active Project；P0 先采用 Tool Call 等待 UI 用户决策后再返回的语义，确认前不存在正式 Task，也不允许任何 Task-bound 工程写入。
+52. `submitGenerationPlan` 保留为九个 P0 MCP Tool 之一，并在确认前作为唯一计划提交入口；Agent-facing 输入不包含 `projectId`，由 MCP Host 绑定当前 Active Project；P0 先采用 Tool Call 等待 UI 用户决策后再返回的语义，确认前不存在正式 Task，也不允许任何 Task-bound 工程写入。
 53. A4 内部 Workflow 状态不作为 Renderer Contract 暴露；既有 Agent Service → Main/Preload → Renderer typed transport 主要承载 assistant 文本流与执行终态/错误，原始 MCP Tool Result 不经该通道透传。
 54. Cancel 统一取消当前 Agent 操作：planning/awaiting_confirmation 阶段不创建正式 Task；executing/repairing 阶段必须终止 Strands 执行并调用 A3 `cancelTask` 回滚当前 Task。
 55. Provider/MCP transient retry 优先交给 Strands；A4 不维护第二层通用 retry loop。Strands 最终 execution failure 若已有 Active Task，必须 `cancelTask` 回滚，`failed` 不得遗留 Active Task。

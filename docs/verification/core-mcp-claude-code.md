@@ -2,7 +2,7 @@
 
 This guide starts the real Music Core MCP Server as a standalone local development process and connects Claude Code to it with the standard Streamable HTTP MCP transport.
 
-This is a development/interoperability harness. The formal desktop product runtime defined by Architecture V1.14 uses one long-lived Core/MCP across Project switches; this CLI intentionally binds one standalone server to one Project for external-client verification. It does not change the product MCP contract. The Music Core still exposes exactly eight P0 Agent-facing tools.
+This is a development/interoperability harness. The formal desktop product runtime defined by Architecture V1.15 uses one long-lived Core/MCP across Project switches; this CLI intentionally binds one standalone server to one Project for external-client verification. It does not change the product MCP contract. The Music Core still exposes exactly nine P0 Agent-facing tools.
 
 ## Prerequisites
 
@@ -152,7 +152,7 @@ For broad A-layer MCP Server regression, use:
 docs/verification/a4-mcp-server-regression.md
 ```
 
-That procedure verifies not only connectivity but also the eight tools' behavior against real Candidate files, Git checkpoints, authorization state, stable errors, and Current/main invariants.
+That procedure verifies not only connectivity but also the nine tools' behavior against real Candidate files, Git checkpoints, authorization state, stable errors, and Current/main invariants.
 
 The dev CLI is the recommended launcher for local interoperability checks, but a successful `tools/list` alone is not a substitute for the full A-layer regression procedure.
 

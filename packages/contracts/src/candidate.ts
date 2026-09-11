@@ -45,6 +45,7 @@ export interface TaskContextView {
   readonly allowedOperations: readonly CandidateOperation[];
   readonly trackIds: typeof TRACK_IDS;
   readonly createdAt: string;
+  readonly pendingScopeExtension?: PendingScopeExtensionView;
 }
 
 export interface PendingScopeExtensionView {
@@ -52,6 +53,7 @@ export interface PendingScopeExtensionView {
   readonly requestId: ScopeExtensionRequestId;
   readonly fromScopeRevision: number;
   readonly requestedScope: TaskScope;
+  readonly createdAt: string;
 }
 
 export interface CandidateValidationIssue {

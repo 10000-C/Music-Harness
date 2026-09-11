@@ -69,7 +69,7 @@ afterEach(async () => {
 });
 
 describe('Strands MCP integration', () => {
-  it('discovers exactly the eight P0 tools through the authenticated Core endpoint', async () => {
+  it('discovers exactly the nine P0 tools through the authenticated Core endpoint', async () => {
     const server = new MusicCoreMcpHttpServer({
       projectId,
       runtimeDirectory: await makeRuntimeDirectory(),

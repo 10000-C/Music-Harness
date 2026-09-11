@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 describe('runCoreMcpCli', { concurrent: false }, () => {
-  it('opens a real project and serves the eight P0 tools to a standard MCP client', async () => {
+  it('opens a real project and serves the nine P0 tools to a standard MCP client', async () => {
     const parent = await createTemporaryDirectory('core-mcp-cli-');
     parents.push(parent);
     const projectPath = join(parent, 'Claude MCP 工程');
@@ -232,6 +232,124 @@ describe('runCoreMcpCli', { concurrent: false }, () => {
       expect(questionCount).toBe(2);
       expect(writes.join('')).toContain('Decision: cancelled');
       expect(writes.join('')).toContain('Decision: approved');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('clears a real pending Scope Extension when the MCP client times out', async () => {
+    const parent = await createTemporaryDirectory(
+      'core-mcp-cli-scope-timeout-',
+    );
+    parents.push(parent);
+    const projectPath = join(parent, 'scope-timeout-project');
+    const foundation = new ProjectFoundation();
+    await foundation.createProject(projectPath);
+    await foundation.closeProject();
+    let questionCount = 0;
+    const terminal: CoreMcpCliTerminalPort = {
+      question: vi.fn((_prompt: string, signal?: AbortSignal) => {
+        questionCount += 1;
+        if (questionCount === 1) {
+          return Promise.resolve('y');
+        }
+        return new Promise<string>((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            },
+            { once: true },
+          );
+        });
+      }),
+      write: vi.fn(),
+      close: vi.fn(),
+    };
+    const runtime = await runCoreMcpCli(
+      { projectPath, runtimeDirectory: join(parent, 'runtime') },
+      terminal,
+    );
+    runtimes.push(runtime);
+    const client = await connectMcpTestClient(
+      runtime.descriptor.endpoint,
+      runtime.descriptor.instanceToken,
+    );
+
+    try {
+      const plan = await client.callTool({
+        name: 'submitGenerationPlan',
+        arguments: {
+          summary: 'Generate guitar only.',
+          scope: {
+            type: 'wholeProject',
+            trackIds: ['track.guitar'],
+          },
+        },
+      });
+      const planPayload = JSON.parse(plan.content[0]?.text ?? '{}') as {
+        readonly task?: {
+          readonly taskId: string;
+          readonly projectId: string;
+          readonly candidateId: string;
+          readonly baseRevision: string;
+          readonly scopeRevision: number;
+        };
+      };
+      const task = planPayload.task;
+      if (task === undefined) {
+        throw new Error('Expected approved Task bootstrap');
+      }
+      const envelope = {
+        taskId: task.taskId,
+        projectId: task.projectId,
+        candidateId: task.candidateId,
+        baseRevision: task.baseRevision,
+        expectedScopeRevision: task.scopeRevision,
+      };
+
+      const timedOut = client
+        .callTool(
+          {
+            name: 'requestScopeExtension',
+            arguments: {
+              envelope,
+              requestedScope: {
+                type: 'wholeProject',
+                trackIds: [
+                  'track.drums',
+                  'track.bass',
+                  'track.guitar',
+                  'track.keys',
+                  'track.strings',
+                  'track.winds',
+                ],
+              },
+            },
+          },
+          { timeout: 50 },
+        )
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      await vi.waitFor(() => {
+        expect(questionCount).toBe(2);
+      });
+      const timeoutError = await timedOut;
+      expect(timeoutError).toBeInstanceOf(Error);
+      await vi.waitFor(async () => {
+        const contextResult = await client.callTool({
+          name: 'getTaskContext',
+          arguments: { taskId: task.taskId },
+        });
+        const context = JSON.parse(contextResult.content[0]?.text ?? '{}') as {
+          readonly pendingScopeExtension?: unknown;
+          readonly scopeRevision?: number;
+        };
+        expect(context.pendingScopeExtension).toBeUndefined();
+        expect(context.scopeRevision).toBe(0);
+      });
     } finally {
       await client.close();
     }
