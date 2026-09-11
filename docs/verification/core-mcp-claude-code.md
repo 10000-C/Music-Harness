@@ -2,7 +2,7 @@
 
 This guide starts the real Music Core MCP Server as a standalone local development process and connects Claude Code to it with the standard Streamable HTTP MCP transport.
 
-This is a development/interoperability harness. The formal desktop product runtime defined by Architecture V1.13 uses one long-lived Core/MCP across Project switches; this CLI intentionally binds one standalone server to one Project for external-client verification. It does not change the product MCP contract. The Music Core still exposes exactly seven P0 Agent-facing tools.
+This is a development/interoperability harness. The formal desktop product runtime defined by Architecture V1.14 uses one long-lived Core/MCP across Project switches; this CLI intentionally binds one standalone server to one Project for external-client verification. It does not change the product MCP contract. The Music Core still exposes exactly eight P0 Agent-facing tools.
 
 ## Prerequisites
 
@@ -95,6 +95,7 @@ submitGenerationPlan
 requestScopeExtension
 replaceScopedMusic
 updateMusicalProperties
+resizeComposition
 finishTask
 ```
 
@@ -128,7 +129,7 @@ Approve scope extension? [y/N]
 
 Enter `y` or `yes` to approve; any other answer rejects through the existing A3 control seam.
 
-Approval/rejection is deliberately not exposed as an Agent MCP tool. After `requestScopeExtension` returns, Claude Code should call `getTaskContext` again and use the returned authoritative `scopeRevision` and Scope for all later Task-bound calls.
+Approval/rejection is deliberately not exposed as an Agent MCP tool. The confirmation is cancellation-bound: if the MCP client times out/cancels, the terminal prompt is aborted and the pending extension must not be approved later. After an approved `requestScopeExtension` returns, Claude Code should call `getTaskContext` again and use the returned authoritative `scopeRevision` and Scope for all later Task-bound calls.
 
 ## 8. Stop the server
 
@@ -151,6 +152,20 @@ For broad A-layer MCP Server regression, use:
 docs/verification/a4-mcp-server-regression.md
 ```
 
-That procedure verifies not only connectivity but also the seven tools' behavior against real Candidate files, Git checkpoints, authorization state, stable errors, and Current/main invariants.
+That procedure verifies not only connectivity but also the eight tools' behavior against real Candidate files, Git checkpoints, authorization state, stable errors, and Current/main invariants.
 
 The dev CLI is the recommended launcher for local interoperability checks, but a successful `tools/list` alone is not a substitute for the full A-layer regression procedure.
+
+
+## 10. Long-form composition structure
+
+For a long new composition, do not use Scope Extension to create future time or force one huge whole-project replacement. Use:
+
+```text
+updateMusicalProperties(meter/initial tempo as needed)
+→ resizeComposition({ targetMeasureCount })
+→ getScopedComposition / replaceScopedMusic over bounded timeRange chunks
+→ finishTask
+```
+
+`resizeComposition` uses an absolute target measure count. Repeating the same target after a transport timeout is idempotent.
