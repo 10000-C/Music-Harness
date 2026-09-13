@@ -261,7 +261,7 @@ export const AgentPanel = ({
         ? 'Listening review'
         : isBlank
           ? 'Create your first arrangement'
-          : 'MUSE Agent';
+          : 'Music Harness Agent';
   const subtitle = isRunning
     ? 'Arrangement in progress'
     : isFailed
@@ -273,7 +273,7 @@ export const AgentPanel = ({
           : 'Composer Assistant';
 
   return (
-    <aside className="agent-panel" aria-label="MUSE Agent">
+    <aside className="agent-panel" aria-label="Music Harness Agent">
       <header className="agent-panel__header">
         <span>
           <h2>{title}</h2>

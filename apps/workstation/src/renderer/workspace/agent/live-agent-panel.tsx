@@ -1,6 +1,6 @@
 import { PaperPlaneTiltIcon } from '@phosphor-icons/react/PaperPlaneTilt';
 import { PlusIcon } from '@phosphor-icons/react/Plus';
-import { SparkleIcon } from '@phosphor-icons/react/Sparkle';
+import logoImg from '../../logo.png';
 import { StopIcon } from '@phosphor-icons/react/Stop';
 import type { AgentSessionId } from '@agent-music/contracts';
 import type { LiveAgentState } from '../../core-client/live-agent-adapter.js';
@@ -34,13 +34,13 @@ export const LiveAgentPanel = ({
   const sessions = state?.sessions ?? [];
 
   return (
-    <aside className="agent-panel" aria-label="MUSE Agent studio chat">
+    <aside className="agent-panel" aria-label="Music Harness Agent studio chat">
       <header className="agent-chat__header">
         <span className="agent-chat__avatar" aria-hidden="true">
-          <SparkleIcon size={15} weight="fill" />
+          <img src={logoImg} alt="" style={{ width: '22px', height: '22px', transform: 'scale(2.2)', objectFit: 'contain', filter: 'invert(1)' }} />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h2>MUSE</h2>
+          <h2>Music Harness</h2>
           <small>
             {activeSession !== null
               ? `Session · ${activeSession.sessionId.slice(0, 8)}`
@@ -132,7 +132,7 @@ export const LiveAgentPanel = ({
       </div>
 
       <label className="agent-composer">
-        <span className="sr-only">Message MUSE</span>
+        <span className="sr-only">Message Music Harness</span>
         <textarea
           rows={3}
           value={prompt}

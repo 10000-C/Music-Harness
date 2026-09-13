@@ -70,7 +70,7 @@ export const ProjectHeader = ({
   return (
     <header className="project-header" data-project-open={projectOpen}>
       <div className="project-header__brand">
-        <strong>AMW</strong>
+        <strong>Music Harness</strong>
         <span title={projectName}>{projectName}</span>
       </div>
       {projectOpen ? (

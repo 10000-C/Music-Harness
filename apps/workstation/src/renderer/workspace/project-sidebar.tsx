@@ -1,7 +1,7 @@
 import { ArrowCounterClockwiseIcon } from '@phosphor-icons/react/ArrowCounterClockwise';
 import { DownloadSimpleIcon } from '@phosphor-icons/react/DownloadSimple';
 import { SlidersHorizontalIcon } from '@phosphor-icons/react/SlidersHorizontal';
-import { WaveSineIcon } from '@phosphor-icons/react/WaveSine';
+import logoImg from '../logo.png';
 import { VinylRecordIcon } from '@phosphor-icons/react/VinylRecord';
 import projectCover from '../assets/midnight-sketch.png';
 
@@ -35,11 +35,11 @@ export const ProjectSidebar = ({
   <aside className="project-sidebar" aria-label="Project navigation">
     <div className="brand-lockup">
       <span className="brand-lockup__mark" aria-hidden="true">
-        <WaveSineIcon weight="bold" size={20} />
+        <img src={logoImg} alt="" style={{ width: '28px', height: '28px', transform: 'scale(2.2)', objectFit: 'contain', filter: 'invert(1)' }} />
       </span>
       <span>
-        <strong>MUSE</strong>
-        <small>Agent Music</small>
+        <strong>Music Harness</strong>
+        
       </span>
     </div>
 
