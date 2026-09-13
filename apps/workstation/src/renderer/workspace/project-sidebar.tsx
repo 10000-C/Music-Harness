@@ -43,9 +43,9 @@ export const ProjectSidebar = ({
       </span>
     </div>
 
-    <div className="sidebar-section">
-      <span className="sidebar-eyebrow">Project</span>
-      {projectOpen ? (
+    {projectOpen && (
+      <div className="sidebar-section">
+        <span className="sidebar-eyebrow">Project</span>
         <button
           type="button"
           className="project-card"
@@ -59,18 +59,8 @@ export const ProjectSidebar = ({
             <small>{currentLabel}</small>
           </span>
         </button>
-      ) : (
-        <div className="project-card project-card--empty">
-          <span className="project-card__empty-mark" aria-hidden="true">
-            <WaveSineIcon size={19} weight="regular" />
-          </span>
-          <span>
-            <strong>{projectName}</strong>
-            <small>{currentLabel}</small>
-          </span>
-        </div>
-      )}
-    </div>
+      </div>
+    )}
 
     <nav className="sidebar-section sidebar-navigation" aria-label="Workspace">
       <span className="sidebar-eyebrow">Workspace</span>

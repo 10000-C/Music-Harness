@@ -81,15 +81,13 @@ export const LiveAgentPanel = ({
       </header>
 
       <div className="agent-chat__messages" aria-live="polite">
-        {!projectOpen ? (
-          <article className="agent-chat__message agent-chat__message--assistant">
-            <p>Open or create a project to collaborate with MUSE.</p>
-          </article>
-        ) : (
+        {!projectOpen ? null : (
           <>
             {messages.length === 0 && streamingText.length === 0 && (
               <article className="agent-chat__message agent-chat__message--assistant">
-                <p>Tell me what you want to hear differently in your arrangement.</p>
+                <p>
+                  Tell me what you want to hear differently in your arrangement.
+                </p>
               </article>
             )}
             {messages.map((message, index) => (
@@ -114,7 +112,11 @@ export const LiveAgentPanel = ({
               <article className="agent-chat__message agent-chat__message--assistant">
                 <small>Thinking</small>
                 <p>Developing ideas for your arrangement…</p>
-                <button type="button" onClick={onCancel} className="agent-chat__stop-btn">
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="agent-chat__stop-btn"
+                >
                   <StopIcon size={12} weight="fill" /> Stop
                 </button>
               </article>

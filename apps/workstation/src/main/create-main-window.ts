@@ -45,7 +45,10 @@ export const secureWebPreferences = (): Electron.WebPreferences => ({
 });
 const spessaSynthQuery = (): Record<string, string> | undefined =>
   process.env.AGENT_MUSIC_SPESSA_SPIKE === '1'
-    ? { 'spessa-spike': '1' }
+    ? {
+        'spessa-spike': '1',
+        ...(process.env.AGENT_MUSIC_AUDIBLE === '1' ? { audible: '1' } : {}),
+      }
     : undefined;
 
 export const loadRenderer = (window: BrowserWindow): Promise<void> => {
@@ -77,10 +80,17 @@ export const createMainWindow = (
     minWidth: 1080,
     minHeight: 720,
     useContentSize: true,
-    backgroundColor: '#080b0f',
+    backgroundColor: '#060608',
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#060608',
+      symbolColor: '#a1a1aa',
+      height: 38,
+    },
     webPreferences: secureWebPreferences(),
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.setMenu(null); // Completely remove the ugly legacy Windows menu
   window.webContents.on('will-navigate', (event, url) => {
     // Allow same-origin navigation to the Vite dev server (HMR full reloads)
     // while still blocking navigation away from the app.

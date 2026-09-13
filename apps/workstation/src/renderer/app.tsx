@@ -59,7 +59,6 @@ import {
 } from './workspace/project-sidebar.js';
 import { ToneConsole } from './workspace/tone-console.js';
 import { ticksForBars } from './workspace/timeline/timeline-labels.js';
-import { TransportBar } from './workspace/transport-bar.js';
 import {
   ServiceHealthNotice,
   StructuredErrorNotice,
@@ -647,7 +646,11 @@ const DemoApp = () => {
   };
 
   return (
-    <div className="workstation-shell" data-fixture={fixture}>
+    <div
+      className="workstation-shell"
+      data-fixture={fixture}
+      data-review-mode={candidateReady}
+    >
       <a className="skip-link" href="#workspace-main">
         Skip to workspace
       </a>
@@ -661,16 +664,43 @@ const DemoApp = () => {
       <main className="workspace-main" id="workspace-main">
         <ProjectHeader
           projectName={projectName}
-          tempo={bpm}
-          keyName={keyName}
-          meter={meter}
           statusLabel={statusLabel}
           statusTone={statusTone}
-          playing={playing}
-          playDisabled={!canPlay}
-          onTogglePlayback={togglePlayback}
           onExport={() => {
             setActiveView('export');
+          }}
+          transport={{
+            playing,
+            playDisabled: !canPlay,
+            elapsedLabel: blankCurrent ? '00:00' : formatTime(elapsedSeconds),
+            durationLabel: blankCurrent ? '--:--' : formatTime(durationSeconds),
+            tempo: bpm,
+            meter,
+            keyName,
+            loopEnabled: ui.loopRange !== null,
+            canLoop: ui.timeRange !== null,
+            onTogglePlayback: togglePlayback,
+            onStop: stopPlayback,
+            onPrevious: () => {
+              movePlayback(0 - navigationStep);
+            },
+            onNext: () => {
+              movePlayback(navigationStep);
+            },
+            onToggleLoop: () => {
+              const range = ui.loopRange === null ? ui.timeRange : null;
+              store.dispatch({ type: 'ui/loopRangeChanged', range });
+              if (
+                range !== null &&
+                (ui.playbackTick < range.startTick ||
+                  ui.playbackTick >= range.endTick)
+              ) {
+                store.dispatch({
+                  type: 'ui/playbackTickChanged',
+                  tick: range.startTick,
+                });
+              }
+            },
           }}
         />
 
@@ -690,39 +720,6 @@ const DemoApp = () => {
 
         {activeView === 'studio' ? (
           <div className="workspace-content">
-            <TransportBar
-              playing={playing}
-              elapsedLabel={blankCurrent ? '00:00' : formatTime(elapsedSeconds)}
-              durationLabel={
-                blankCurrent ? '--:--' : formatTime(durationSeconds)
-              }
-              scopeLabel="Current arrangement"
-              loopEnabled={ui.loopRange !== null}
-              canLoop={ui.timeRange !== null}
-              disabled={!canPlay}
-              onTogglePlayback={togglePlayback}
-              onStop={stopPlayback}
-              onPrevious={() => {
-                movePlayback(0 - navigationStep);
-              }}
-              onNext={() => {
-                movePlayback(navigationStep);
-              }}
-              onToggleLoop={() => {
-                const range = ui.loopRange === null ? ui.timeRange : null;
-                store.dispatch({ type: 'ui/loopRangeChanged', range });
-                if (
-                  range !== null &&
-                  (ui.playbackTick < range.startTick ||
-                    ui.playbackTick >= range.endTick)
-                ) {
-                  store.dispatch({
-                    type: 'ui/playbackTickChanged',
-                    tick: range.startTick,
-                  });
-                }
-              }}
-            />
             {candidateReady && (
               <CandidateStage
                 title={authoritative.candidate.summary}
@@ -753,7 +750,6 @@ const DemoApp = () => {
               mutedTrackIds={mutedTrackIds}
               soloTrackIds={soloTrackIds}
               reviewMode={candidateReady}
-              previewingCandidate={previewingCandidate}
               onFocusTrack={setFocusedTrackId}
               onToggleMute={(trackId) => {
                 toggleSetValue(setMutedTrackIds, trackId);
@@ -1170,15 +1166,6 @@ const LiveProjectWorkspace = () => {
         <ProjectHeader
           projectName={projectName}
           projectOpen={project !== null}
-          tempo={bpm}
-          keyName={
-            keyEvent ? `${keyEvent.tonic} ${keyEvent.mode}` : 'Unavailable'
-          }
-          meter={
-            meterEvent
-              ? `${String(meterEvent.numerator)}/${String(meterEvent.denominator)}`
-              : '—'
-          }
           statusLabel={
             project === null
               ? 'Project needed'
@@ -1193,15 +1180,61 @@ const LiveProjectWorkspace = () => {
                 ? 'blank'
                 : 'stable'
           }
-          playing={playback?.transport === 'playing'}
-          playDisabled={!playable}
-          onTogglePlayback={() =>
-            void sendPlayback({
-              type: playback?.transport === 'playing' ? 'pause' : 'play',
-            })
-          }
           onExport={() => {
             setActiveView('export');
+          }}
+          transport={{
+            playing: playback?.transport === 'playing',
+            playDisabled: !playable,
+            elapsedLabel: playable ? formatTime(elapsed) : '--:--',
+            durationLabel: playable ? formatTime(duration) : '--:--',
+            tempo: bpm,
+            meter: meterEvent
+              ? `${String(meterEvent.numerator)}/${String(meterEvent.denominator)}`
+              : '—',
+            keyName: keyEvent
+              ? `${keyEvent.tonic} ${keyEvent.mode}`
+              : 'Unavailable',
+            loopEnabled: playback?.loopRange !== null && playback !== null,
+            canLoop: playable,
+            onTogglePlayback: () =>
+              void sendPlayback({
+                type: playback?.transport === 'playing' ? 'pause' : 'play',
+              }),
+            onStop: () => void sendPlayback({ type: 'stop' }),
+            onPrevious: () =>
+              void sendPlayback({
+                type: 'seek',
+                tick: asTick(
+                  Math.max(
+                    0,
+                    (playback?.positionTick ?? 0) -
+                      (timeline === null ? 0 : ticksForBars(timeline, 4)),
+                  ),
+                ),
+              }),
+            onNext: () =>
+              void sendPlayback({
+                type: 'seek',
+                tick: asTick(
+                  Math.min(
+                    timeline?.totalTicks ?? 0,
+                    (playback?.positionTick ?? 0) +
+                      (timeline === null ? 0 : ticksForBars(timeline, 4)),
+                  ),
+                ),
+              }),
+            onToggleLoop: () =>
+              void sendPlayback({
+                type: 'setLoop',
+                range:
+                  playback?.loopRange === null && timeline !== null
+                    ? {
+                        startTick: 0 as Tick,
+                        endTick: timeline.totalTicks,
+                      }
+                    : null,
+              }),
           }}
         />
         {activeView === 'export' ? (
@@ -1261,62 +1294,6 @@ const LiveProjectWorkspace = () => {
               </section>
             ) : (
               <>
-                <TransportBar
-                  playing={playback?.transport === 'playing'}
-                  elapsedLabel={playable ? formatTime(elapsed) : '--:--'}
-                  durationLabel={playable ? formatTime(duration) : '--:--'}
-                  scopeLabel={
-                    timeline === null ? 'Timeline unavailable' : 'Current'
-                  }
-                  loopEnabled={
-                    playback?.loopRange !== null && playback !== null
-                  }
-                  canLoop={playable}
-                  disabled={!playable}
-                  onTogglePlayback={() =>
-                    void sendPlayback({
-                      type:
-                        playback?.transport === 'playing' ? 'pause' : 'play',
-                    })
-                  }
-                  onStop={() => void sendPlayback({ type: 'stop' })}
-                  onPrevious={() =>
-                    void sendPlayback({
-                      type: 'seek',
-                      tick: asTick(
-                        Math.max(
-                          0,
-                          (playback?.positionTick ?? 0) -
-                            (timeline === null ? 0 : ticksForBars(timeline, 4)),
-                        ),
-                      ),
-                    })
-                  }
-                  onNext={() =>
-                    void sendPlayback({
-                      type: 'seek',
-                      tick: asTick(
-                        Math.min(
-                          timeline?.totalTicks ?? 0,
-                          (playback?.positionTick ?? 0) +
-                            (timeline === null ? 0 : ticksForBars(timeline, 4)),
-                        ),
-                      ),
-                    })
-                  }
-                  onToggleLoop={() =>
-                    void sendPlayback({
-                      type: 'setLoop',
-                      range:
-                        playback?.loopRange === null && timeline !== null
-                          ? {
-                              startTick: 0 as Tick,
-                              endTick: timeline.totalTicks,
-                            }
-                          : null,
-                    })
-                  }
-                />
                 {candidateState?.status === 'ready' && (
                   <CandidateStage
                     title="Candidate ready to review"

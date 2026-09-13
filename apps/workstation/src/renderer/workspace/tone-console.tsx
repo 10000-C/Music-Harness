@@ -1,3 +1,6 @@
+import { useState, useEffect, useRef } from 'react';
+import { SlidersHorizontalIcon } from '@phosphor-icons/react/SlidersHorizontal';
+import { XIcon } from '@phosphor-icons/react/X';
 import type { TrackId } from '../b-contracts/index.js';
 import { trackPresentation } from './timeline/track-palette.js';
 
@@ -65,7 +68,42 @@ export const ToneConsole = ({
   onToggleMute,
   onToggleSolo,
 }: ToneConsoleProps) => {
+  const [collapsed, setCollapsed] = useState(false);
+  const lastTrackIdRef = useRef(trackId);
+
+  // Automatically reopen when user focuses a different track
+  useEffect(() => {
+    if (lastTrackIdRef.current !== trackId) {
+      lastTrackIdRef.current = trackId;
+      setCollapsed(false);
+    }
+  }, [trackId]);
+
   const track = trackPresentation[trackId];
+
+  if (collapsed) {
+    return (
+      <aside className="tone-console-dock" aria-label="Sound character docked">
+        <button
+          type="button"
+          className="tone-console-dock__pill"
+          onClick={() => {
+            setCollapsed(false);
+          }}
+          title="Expand sound character inspector"
+        >
+          <span className="tone-console-dock__icon">
+            <SlidersHorizontalIcon weight="bold" />
+          </span>
+          <span className="tone-console-dock__title">
+            Sound character · <strong>{track.label}</strong>
+          </span>
+          <span className="tone-console-dock__badge">Show</span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <section className="tone-console" aria-labelledby="tone-console-title">
       <header className="tone-console__header">
@@ -82,21 +120,34 @@ export const ToneConsole = ({
         >
           <button
             type="button"
+            aria-label={muted ? 'Unmute track' : 'Mute track'}
             aria-pressed={muted}
             onClick={() => {
               onToggleMute(trackId);
             }}
           >
-            {muted ? 'Unmute' : 'Mute'}
+            Mute
           </button>
           <button
             type="button"
+            aria-label={soloed ? 'Soloed' : 'Solo track'}
             aria-pressed={soloed}
             onClick={() => {
               onToggleSolo(trackId);
             }}
           >
-            {soloed ? 'Unsolo' : 'Solo'}
+            Solo
+          </button>
+          <button
+            type="button"
+            className="tone-console__close-btn"
+            onClick={() => {
+              setCollapsed(true);
+            }}
+            aria-label="Close sound character inspector"
+            title="Close inspector"
+          >
+            <XIcon weight="bold" />
           </button>
         </div>
       </header>
@@ -108,7 +159,7 @@ export const ToneConsole = ({
             <i
               style={
                 {
-                  '--track-color': index === 0 ? track.color : undefined,
+                  '--track-color': track.color,
                   '--amount': `${String(42 + index * 13)}%`,
                 } as React.CSSProperties
               }

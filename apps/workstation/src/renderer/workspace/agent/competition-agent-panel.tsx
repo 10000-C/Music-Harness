@@ -59,7 +59,7 @@ export const CompetitionAgentPanel = ({
           </article>
         )}
         {candidateReady && (
-          <article className="agent-chat__message agent-chat__message--assistant">
+          <article className="agent-chat__message agent-chat__message--assistant agent-chat__message--candidate">
             <small>Variation ready</small>
             <p>
               It is waiting in the main workspace for you to listen and decide.

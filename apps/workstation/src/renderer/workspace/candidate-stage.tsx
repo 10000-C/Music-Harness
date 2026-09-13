@@ -36,7 +36,16 @@ export const CandidateStage = ({
           : `${String(details.changes.length)} musical adjustments, ready to audition.`}
       </p>
     </div>
-    <div className="candidate-stage__listen" aria-label="Candidate audition">
+    <div
+      className="candidate-stage__listen tactile-toggle"
+      role="group"
+      aria-label="Candidate audition"
+    >
+      <div
+        className="tactile-toggle__indicator"
+        data-active={previewingCandidate ? 'candidate' : 'current'}
+        aria-hidden="true"
+      />
       <button
         type="button"
         aria-pressed={!previewingCandidate}
@@ -55,17 +64,16 @@ export const CandidateStage = ({
         }
         onClick={onReviewCandidate}
       >
-        {candidateAuditionAvailable
-          ? 'Listen to Candidate'
-          : 'Candidate audition unavailable'}
+        {candidateAuditionAvailable ? 'Candidate' : 'Unavailable'}
       </button>
     </div>
     <div className="candidate-stage__actions">
-      <button type="button" onClick={onReject}>
+      <button type="button" className="ghost-action" onClick={onReject}>
         Discard
       </button>
       <button
         type="button"
+        className="primary-action"
         disabled={!candidateAcceptanceAvailable}
         title={
           candidateAcceptanceAvailable

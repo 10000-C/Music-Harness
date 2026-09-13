@@ -323,11 +323,14 @@ export const runSpessaSynthSpike = async (
 
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 2_048;
-    const silentOutput = audioContext.createGain();
-    silentOutput.gain.value = 0;
+    const output = audioContext.createGain();
+    output.gain.value =
+      new URLSearchParams(window.location.search).get('audible') === '1'
+        ? 1
+        : 0;
     synth.connect(analyser);
-    analyser.connect(silentOutput);
-    silentOutput.connect(audioContext.destination);
+    analyser.connect(output);
+    output.connect(audioContext.destination);
     await withTimeout(audioContext.resume(), 5_000, 'AudioContext resume');
     requireCheck(
       checks,
@@ -468,7 +471,7 @@ export const runSpessaSynthSpike = async (
     phase = 'adapter';
     const adapterAnalyser = audioContext.createAnalyser();
     adapterAnalyser.fftSize = 2_048;
-    adapterAnalyser.connect(silentOutput);
+    adapterAnalyser.connect(output);
     const adapter = new SpessaSynthRuntimeAdapter({
       processorUrl,
       soundFontBuffer: input.soundFontBuffer,

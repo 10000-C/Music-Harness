@@ -1,0 +1,166 @@
+- generic [ref=e3]:
+  - link "Skip to workspace":
+    - /url: "#workspace-main"
+  - complementary "Project navigation" [ref=e4]:
+    - generic [ref=e9]:
+      - strong [ref=e10]: MUSE
+      - generic [ref=e11]: Agent Music
+    - generic [ref=e12]:
+      - generic [ref=e13]: Project
+      - button "Midnight Sketch Current · v42 · Saved" [ref=e14] [cursor=pointer]:
+        - generic [ref=e15]:
+          - strong [ref=e16]: Midnight Sketch
+          - generic [ref=e17]: Current · v42 · Saved
+    - navigation "Workspace" [ref=e18]:
+      - button "Studio" [ref=e20] [cursor=pointer]
+      - button "Export Current" [ref=e24] [cursor=pointer]
+      - button "Recovery" [ref=e28] [cursor=pointer]
+      - button "Settings" [ref=e32] [cursor=pointer]
+    - generic [ref=e36]:
+      - generic [ref=e37]: L
+      - generic [ref=e38]:
+        - strong [ref=e39]: Local user
+        - generic [ref=e40]: Local workspace
+  - main [ref=e41]:
+    - generic [ref=e42]:
+      - generic [ref=e43]:
+        - strong [ref=e44]: AMW
+        - generic "Midnight Sketch" [ref=e45]
+      - generic "Master Transport" [ref=e46]:
+        - generic [ref=e47]:
+          - button "Previous section" [ref=e48] [cursor=pointer]
+          - button "Stop playback" [ref=e51] [cursor=pointer]
+        - button "Play" [ref=e54] [cursor=pointer]
+        - generic [ref=e57]:
+          - button "Next section" [ref=e58] [cursor=pointer]
+          - button "Loop selected scope" [disabled] [ref=e61] [cursor=pointer]
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - strong [ref=e67]: 00:07
+            - generic [ref=e68]: / 01:14
+          - generic [ref=e69]:
+            - generic "Beat pulse" [ref=e70]
+            - generic [ref=e71]: 120 BPM
+            - generic [ref=e72]: 4/4
+      - generic [ref=e73]:
+        - generic [ref=e74]: Current · Stable
+        - button "Export" [ref=e75] [cursor=pointer]
+    - generic [ref=e76]:
+      - region [ref=e77]:
+        - heading "Arrangement" [level=2] [ref=e79]
+        - generic [ref=e81]:
+          - generic [ref=e82]: "1"
+          - generic [ref=e83]: "5"
+          - generic [ref=e84]: "9"
+          - generic [ref=e85]: "13"
+          - generic [ref=e86]: "17"
+          - generic [ref=e87]: "21"
+          - generic [ref=e88]: "25"
+          - generic [ref=e89]: "29"
+          - generic [ref=e90]: "33"
+        - generic [ref=e91]:
+          - article [ref=e92]:
+            - button "Show Drums sound" [ref=e93] [cursor=pointer]:
+              - generic [ref=e94]: D
+              - strong [ref=e95]: Drums
+            - generic [ref=e96]:
+              - button "Mute Drums" [ref=e97] [cursor=pointer]: M
+              - button "Solo Drums" [ref=e98] [cursor=pointer]: S
+            - generic [ref=e99]:
+              - 'generic "Drums: Intro groove" [ref=e100]': Intro groove
+              - 'generic "Drums: Verse groove" [ref=e102]': Verse groove
+              - 'generic "Drums: Lift groove" [ref=e104]': Lift groove
+              - 'generic "Drums: Final groove" [ref=e106]': Final groove
+          - article [ref=e108]:
+            - button "Show Bass sound" [ref=e109] [cursor=pointer]:
+              - generic [ref=e110]: B
+              - strong [ref=e111]: Bass
+            - generic [ref=e112]:
+              - button "Mute Bass" [ref=e113] [cursor=pointer]: M
+              - button "Solo Bass" [ref=e114] [cursor=pointer]: S
+            - generic [ref=e115]:
+              - 'generic "Bass: D pedal" [ref=e116]': D pedal
+              - 'generic "Bass: Low motion" [ref=e118]': Low motion
+              - 'generic "Bass: Rising bass" [ref=e120]': Rising bass
+              - 'generic "Bass: Root and fifth" [ref=e122]': Root and fifth
+          - article [ref=e124]:
+            - button "Show Guitar sound" [pressed] [ref=e125] [cursor=pointer]:
+              - generic [ref=e126]: G
+              - strong [ref=e127]: Guitar
+            - generic [ref=e128]:
+              - button "Mute Guitar" [ref=e129] [cursor=pointer]: M
+              - button "Solo Guitar" [ref=e130] [cursor=pointer]: S
+            - generic [ref=e131]:
+              - 'generic "Guitar: Muted pulse" [ref=e132]': Muted pulse
+              - 'generic "Guitar: Dry rhythm" [ref=e134]': Dry rhythm
+              - 'generic "Guitar: Open voicings" [ref=e136]': Open voicings
+              - 'generic "Guitar: Wide voicings" [ref=e138]': Wide voicings
+          - article [ref=e140]:
+            - button "Show Piano sound" [ref=e141] [cursor=pointer]:
+              - generic [ref=e142]: P
+              - strong [ref=e143]: Piano
+            - generic [ref=e144]:
+              - button "Mute Piano" [ref=e145] [cursor=pointer]: M
+              - button "Solo Piano" [ref=e146] [cursor=pointer]: S
+            - generic [ref=e147]:
+              - 'generic "Piano: Verse keys" [ref=e148]': Verse keys
+              - 'generic "Piano: CHORUS" [ref=e150]': CHORUS
+              - 'generic "Piano: Chorus tail" [ref=e152]': Chorus tail
+              - 'generic "Piano: Chord echoes" [ref=e154]': Chord echoes
+              - 'generic "Piano: Wide chords" [ref=e156]': Wide chords
+              - 'generic "Piano: High release" [ref=e158]': High release
+          - article [ref=e160]:
+            - button "Show Strings sound" [ref=e161] [cursor=pointer]:
+              - generic [ref=e162]: S
+              - strong [ref=e163]: Strings
+            - generic [ref=e164]:
+              - button "Mute Strings" [ref=e165] [cursor=pointer]: M
+              - button "Solo Strings" [ref=e166] [cursor=pointer]: S
+            - generic [ref=e167]:
+              - 'generic "Strings: Low sustain" [ref=e168]': Low sustain
+              - 'generic "Strings: Long arc" [ref=e170]': Long arc
+              - 'generic "Strings: Upper lift" [ref=e172]': Upper lift
+          - article [ref=e174]:
+            - button "Show Winds sound" [ref=e175] [cursor=pointer]:
+              - generic [ref=e176]: WD
+              - strong [ref=e177]: Winds
+            - generic [ref=e178]:
+              - button "Mute Winds" [ref=e179] [cursor=pointer]: M
+              - button "Solo Winds" [ref=e180] [cursor=pointer]: S
+            - generic [ref=e181]:
+              - 'generic "Winds: Answer phrase" [ref=e182]': Answer phrase
+              - 'generic "Winds: Second answer" [ref=e184]': Second answer
+              - 'generic "Winds: Closing phrase" [ref=e186]': Closing phrase
+              - 'generic "Winds: Final breath" [ref=e188]': Final breath
+      - region [ref=e190]:
+        - generic [ref=e191]:
+          - heading "Sound character · Guitar" [level=2] [ref=e193]
+          - generic "Guitar controls" [ref=e194]:
+            - button "Mute track" [ref=e195] [cursor=pointer]: Mute
+            - button "Solo track" [ref=e196] [cursor=pointer]: Solo
+            - button "Close sound character inspector" [ref=e197] [cursor=pointer]
+        - generic [ref=e200]:
+          - article [ref=e201]:
+            - generic [ref=e202]: Clean Guitar
+            - strong [ref=e203]: Dreamy chorus
+          - article [ref=e205]:
+            - generic [ref=e206]: Tone
+            - strong [ref=e207]: Bright · 58%
+          - article [ref=e209]:
+            - generic [ref=e210]: Space
+            - strong [ref=e211]: Wide · 72%
+          - article [ref=e213]:
+            - generic [ref=e214]: Dynamics
+            - strong [ref=e215]: Present · 68%
+  - complementary "MUSE Agent chat" [ref=e217]:
+    - generic [ref=e222]:
+      - heading "MUSE" [level=2] [ref=e223]
+      - text: Creative collaborator
+    - article [ref=e225]:
+      - paragraph [ref=e226]: Tell me what you want to hear differently.
+    - generic [ref=e227]:
+      - generic [ref=e228]: Message MUSE
+      - textbox "Message MUSE Prepare a musical change Ctrl/⌘ ↵ to prepare a safe variation" [ref=e229]:
+        - /placeholder: Describe the sound you are after…
+      - button "Prepare a musical change" [disabled] [ref=e230]
+      - generic [ref=e233]: Ctrl/⌘ ↵ to prepare a safe variation

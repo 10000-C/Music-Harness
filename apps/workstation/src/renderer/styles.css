@@ -1,25 +1,29 @@
 :root {
   color-scheme: dark;
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', ui-sans-serif, sans-serif;
+    'Geist', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    ui-sans-serif, sans-serif;
   font-synthesis: none;
-  --canvas: #080b0f;
-  --navigation: #101318;
-  --surface: #171b21;
-  --raised: #1d222a;
-  --border: #282f39;
-  --border-soft: #1c222a;
-  --text: #f4f5f7;
+  --canvas: #050507;
+  --navigation: rgba(17, 20, 25, 0.65);
+  --surface: rgba(22, 26, 32, 0.65);
+  --raised: rgba(29, 34, 42, 0.7);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-soft: rgba(255, 255, 255, 0.04);
+  --text: #fdfdfe;
   --muted: #a0a7b4;
   --quiet: #687181;
   --action: #7776ff;
   --safe: #4ad2a5;
   --warning: #f0a936;
   --danger: #ff6f7d;
+  --glass-border: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --glass-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   --track-label-width: 160px;
   color: var(--text);
   background: var(--canvas);
 }
+
 
 * {
   box-sizing: border-box;
@@ -98,7 +102,7 @@ p {
   height: 100%;
   min-height: 720px;
   overflow: hidden;
-  background: var(--canvas);
+  background: radial-gradient(circle at 50% -20%, #17162b, #050507 80%);
 }
 
 /* Project navigation */
@@ -111,8 +115,11 @@ p {
   height: 100%;
   flex-direction: column;
   color: var(--muted);
-  background: var(--navigation);
-  border-right: 1px solid var(--border-soft);
+  background: rgba(20, 24, 32, 0.4);
+  border-right: 0;
+  backdrop-filter: blur(40px) saturate(150%);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+  box-shadow: var(--glass-border);
 }
 
 .brand-lockup {
@@ -167,10 +174,10 @@ p {
 .sidebar-eyebrow {
   display: block;
   margin: 0 8px 10px;
-  color: #737c8b;
+  color: var(--muted);
   font-size: 9px;
   font-weight: 600;
-  letter-spacing: 0.025em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -183,17 +190,20 @@ p {
   padding: 12px;
   color: var(--text);
   text-align: left;
-  background: #15191f;
-  border: 1px solid #252b34;
+  background: transparent;
+  border: 0;
   border-radius: 13px;
   transition:
-    border-color 140ms ease,
-    background-color 140ms ease;
+    background-color 140ms ease,
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .project-card:hover {
-  background: #191e25;
-  border-color: #343b47;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.project-card:active {
+  transform: scale(0.98);
 }
 
 .project-card img {
@@ -233,12 +243,17 @@ p {
   transition:
     color 140ms ease,
     background-color 140ms ease,
-    border-color 140ms ease;
+    border-color 140ms ease,
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .sidebar-navigation__item:hover {
   color: #d8dbe1;
   background: rgba(255, 255, 255, 0.025);
+}
+
+.sidebar-navigation__item:active {
+  transform: scale(0.98);
 }
 
 .sidebar-navigation__item[data-active='true'] {
@@ -282,7 +297,7 @@ p {
   min-width: 0;
   min-height: 0;
   grid-template-rows: 67px minmax(0, 1fr);
-  background: #090c10;
+  background: transparent;
 }
 
 .project-header {
@@ -542,10 +557,11 @@ p {
   align-items: center;
   gap: 16px;
   padding: 0 22px 0 15px;
-  background: linear-gradient(110deg, #181d24, #151a20);
-  border: 1px solid #29313b;
-  border-radius: 11px;
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.13);
+  background: rgba(20, 24, 30, 0.75);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: 999px;
+  box-shadow: var(--glass-shadow), var(--glass-border);
 }
 
 .transport-bar__controls {
@@ -560,6 +576,14 @@ p {
   background: #20262e;
   border: 1px solid transparent;
   border-radius: 8px;
+  transition:
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.transport-bar__controls button:active {
+  transform: scale(0.92);
 }
 
 .transport-bar__controls button:hover:not(:disabled) {
@@ -582,9 +606,11 @@ p {
 .transport-bar__play {
   width: 41px;
   height: 41px;
-  color: #0a0d11;
-  background: #f2f3f5 !important;
-  border-radius: 11px !important;
+  color: white;
+  background: linear-gradient(135deg, #787cff, #d066b2) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 4px 15px rgba(124, 105, 236, 0.35);
+  border: 0 !important;
 }
 
 .transport-bar__time {
@@ -837,7 +863,16 @@ p {
   border-radius: 8px;
   transition:
     background-color 140ms ease,
-    box-shadow 140ms ease;
+    box-shadow 140ms ease,
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.track-row__badge:hover {
+  filter: brightness(1.2);
+}
+
+.track-row__badge:active {
+  transform: scale(0.92);
 }
 
 .track-row__badge[aria-pressed='true'] {
@@ -896,7 +931,7 @@ p {
   overflow: hidden;
   border: 1px solid;
   border-radius: 6px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 4px rgba(0,0,0,0.2);
 }
 .timeline-clip {
   visibility: hidden;
@@ -913,8 +948,20 @@ p {
   background: #6e5cb6;
   border-radius: 4px;
 }
+@keyframes candidate-breathe {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(83, 190, 179, 0.4);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(83, 190, 179, 0.8);
+    filter: brightness(1.2);
+  }
+}
+
 .piano-notes i[data-tone='candidate'] {
   background: #53beb3;
+  animation: candidate-breathe 2s ease-in-out infinite;
 }
 .timeline-section {
   position: absolute;
@@ -1051,8 +1098,11 @@ kbd {
   min-height: 0;
   grid-template-rows: 67px 55px minmax(0, 1fr) auto;
   color: var(--text);
-  background: #111419;
-  border-left: 1px solid #222831;
+  background: rgba(20, 24, 32, 0.4);
+  border-left: 0;
+  backdrop-filter: blur(40px) saturate(150%);
+  -webkit-backdrop-filter: blur(40px) saturate(150%);
+  box-shadow: var(--glass-border);
 }
 
 .agent-panel__header {
@@ -1246,16 +1296,22 @@ kbd {
   min-height: 130px;
   resize: none;
   padding: 17px 15px 36px;
-  color: #dfe2e7;
+  color: var(--text);
   font-size: 10px;
   line-height: 1.55;
-  background: #17151a;
-  border: 1px solid #4d3524;
+  background: rgba(255, 255, 255, 0.03);
+  border: 0;
   border-radius: 14px;
+  transition: box-shadow 140ms ease;
 }
 
 .agent-prompt textarea::placeholder {
   color: #7f8794;
+}
+
+.agent-prompt textarea:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(119, 118, 255, 0.5), 0 0 0 3px rgba(119, 118, 255, 0.15);
+  outline: none;
 }
 
 .agent-prompt > svg {
@@ -1297,8 +1353,8 @@ kbd {
   flex-direction: column;
   gap: 12px;
   padding: 15px;
-  background: #0c1014;
-  border: 1px solid #20262e;
+  background: rgba(255, 255, 255, 0.03);
+  border: 0;
   border-radius: 13px;
 }
 
@@ -1476,6 +1532,11 @@ kbd {
   background: #0d1115;
   border: 1px solid #222933;
   border-radius: 11px;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), background-color 140ms ease;
+}
+
+.candidate-actions-summary > button:active {
+  transform: scale(0.96);
 }
 
 .candidate-actions-summary > button:hover {
@@ -1509,8 +1570,8 @@ kbd {
   gap: 11px;
   padding: 14px;
   color: var(--safe);
-  background: #0c1014;
-  border: 1px solid #20262e;
+  background: rgba(255, 255, 255, 0.03);
+  border: 0;
   border-radius: 11px;
 }
 
@@ -1558,7 +1619,7 @@ kbd {
 
 .primary-action:active,
 .secondary-action:active {
-  transform: translateY(1px);
+  transform: scale(0.98);
 }
 
 /* Confirmation, utility and loading states */
@@ -2005,7 +2066,7 @@ textarea {
   bottom: 24%;
   color: rgba(255, 255, 255, 0.78);
   border-color: color-mix(in srgb, var(--track-color) 68%, transparent);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 4px rgba(0,0,0,0.2);
 }
 
 .tone-console {
@@ -4600,5 +4661,1995 @@ body {
 .agent-chat__message--streaming {
   border-left: 2px solid #9d7bf6;
   padding-left: 10px;
+}
+
+/* ==========================================================================
+   IMPECCABLE & APPLE LIQUID GLASS SUPREME DESIGN SYSTEM OVERRIDES
+   ========================================================================== */
+
+/* 1. Global Shell & Ambient Mesh Depth */
+.workstation-shell {
+  background: radial-gradient(circle at 50% -15%, #1f1a3a 0%, #06070a 75%) !important;
+  color-scheme: dark;
+}
+
+.workspace-main {
+  background: transparent !important;
+}
+
+/* 2. Top Project Header */
+.project-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 0 24px !important;
+  height: 68px !important;
+  background: rgba(10, 12, 18, 0.4) !important;
+  backdrop-filter: blur(36px) saturate(170%) !important;
+  -webkit-backdrop-filter: blur(36px) saturate(170%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* 3. Left Navigation Sidebar */
+.project-sidebar {
+  background: rgba(12, 14, 20, 0.45) !important;
+  backdrop-filter: blur(40px) saturate(170%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(170%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02) !important;
+}
+
+.brand-lockup {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.sidebar-navigation__item {
+  border-radius: 10px !important;
+  transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.sidebar-navigation__item:active {
+  transform: scale(0.96) !important;
+}
+
+.sidebar-navigation__item[aria-current='page'] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* 4. Master Transport Island (Unified Top Center Musical Dynamic Island) */
+.master-transport-island {
+  position: relative;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 4px 14px 4px 10px !important;
+  border-radius: 999px !important;
+  background: rgba(22, 24, 34, 0.65) !important;
+  backdrop-filter: blur(36px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(36px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.09) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 0 0 1px rgba(167, 139, 250, 0.08) !important;
+  transition: all 180ms ease !important;
+}
+
+.master-transport-island:hover {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 0 16px rgba(167, 139, 250, 0.12) !important;
+}
+
+.master-transport-island__cluster {
+  display: flex !important;
+  align-items: center !important;
+  gap: 2px !important;
+}
+
+.master-transport-island__btn {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: transparent !important;
+  border: none !important;
+  color: #9499ab !important;
+  cursor: pointer !important;
+  transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.master-transport-island__btn:hover:not(:disabled) {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.master-transport-island__btn:active:not(:disabled) {
+  transform: scale(0.9) !important;
+}
+
+.master-transport-island__btn.is-active {
+  color: #c084fc !important;
+  background: rgba(192, 132, 252, 0.15) !important;
+}
+
+/* The Luminous Violet Orb Play Button */
+.master-transport-island__play {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #a78bfa, #f472b6) !important;
+  color: #090a0f !important;
+  border: none !important;
+  cursor: pointer !important;
+  box-shadow:
+    0 0 20px rgba(167, 139, 250, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+  transition:
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 150ms ease,
+    box-shadow 150ms ease !important;
+}
+
+.master-transport-island__play:hover:not(:disabled) {
+  filter: brightness(1.12) !important;
+  transform: scale(1.06) !important;
+  box-shadow:
+    0 0 26px rgba(167, 139, 250, 0.7),
+    0 0 10px rgba(244, 114, 182, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+
+.master-transport-island__play:active:not(:disabled) {
+  transform: scale(0.9) !important;
+}
+
+.master-transport-island__play[aria-pressed='true'] {
+  animation: orb-playing-glow 2s ease-in-out infinite alternate !important;
+}
+
+@keyframes orb-playing-glow {
+  0% {
+    box-shadow:
+      0 0 18px rgba(167, 139, 250, 0.45),
+      0 0 6px rgba(244, 114, 182, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+  }
+  100% {
+    box-shadow:
+      0 0 28px rgba(167, 139, 250, 0.75),
+      0 0 14px rgba(244, 114, 182, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+  }
+}
+
+.master-transport-island__divider {
+  width: 1px !important;
+  height: 20px !important;
+  margin: 0 4px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.master-transport-island__readout {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding-left: 2px !important;
+}
+
+.master-transport-island__time {
+  display: flex !important;
+  align-items: baseline !important;
+  gap: 4px !important;
+  font-feature-settings: 'tnum' !important;
+  font-variant-numeric: tabular-nums !important;
+  font-family: 'Geist', 'SF Pro Display', ui-sans-serif, sans-serif !important;
+}
+
+.master-transport-island__time strong {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #ffffff !important;
+  letter-spacing: -0.01em !important;
+}
+
+.master-transport-island__time small {
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  color: #787f92 !important;
+}
+
+.master-transport-island__metric {
+  display: flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  padding: 3px 8px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.master-transport-island__beat {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  background: #687084 !important;
+  transition: all 120ms ease !important;
+}
+
+.master-transport-island__beat.is-beating {
+  background: #a78bfa !important;
+  box-shadow: 0 0 8px #a78bfa !important;
+  animation: metronome-pulse 0.5s ease-in-out infinite alternate !important;
+}
+
+@keyframes metronome-pulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+}
+
+.master-transport-island__bpm {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #d1d5db !important;
+  letter-spacing: 0.02em !important;
+}
+
+.master-transport-island__meter {
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  color: #8b92a4 !important;
+}
+
+/* 5. Right Live Agent Panel */
+.agent-panel {
+  background: rgba(14, 16, 22, 0.48) !important;
+  backdrop-filter: blur(40px) saturate(170%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(170%) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.05) !important;
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.02) !important;
+}
+
+.agent-chat__header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+  background: transparent !important;
+}
+
+.agent-prompt textarea,
+.agent-chat__input textarea {
+  background: rgba(255, 255, 255, 0.035) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 14px !important;
+  color: #f1f2f6 !important;
+  transition: all 140ms ease !important;
+}
+
+.agent-prompt textarea:focus-visible,
+.agent-chat__input textarea:focus-visible {
+  border-color: rgba(167, 139, 250, 0.5) !important;
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+}
+
+/* 6. Candidate Staged Variation Banner (Apple Glass Distillation) */
+.candidate-stage,
+.workspace-content:has(.candidate-stage) .candidate-stage {
+  background: rgba(14, 12, 18, 0.45) !important;
+  backdrop-filter: blur(48px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(48px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  padding: 16px 24px !important;
+  margin-bottom: 12px !important;
+}
+
+.candidate-stage__glow {
+  opacity: 0.15 !important;
+  mix-blend-mode: screen !important;
+}
+
+/* Typography Hierarchy */
+.candidate-stage__summary h2 {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+  letter-spacing: -0.01em !important;
+  margin: 2px 0 0 0 !important;
+}
+.candidate-stage__summary small {
+  font-size: 10px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  color: #a78bfa !important;
+  font-weight: 700 !important;
+}
+.candidate-stage__summary p {
+  color: rgba(255, 255, 255, 0.45) !important;
+  font-size: 12px !important;
+  margin-top: 4px !important;
+}
+
+.candidate-stage button {
+  border-radius: 999px !important;
+  transition: transform 120ms ease, filter 120ms ease !important;
+}
+
+.candidate-stage button:active {
+  transform: scale(0.96) !important;
+}
+
+/* Fix: Only target the final action button in the actions group, not the listen toggle */
+.candidate-stage__actions button:last-child,
+.candidate-stage__actions .primary-action {
+  background: linear-gradient(135deg, #a78bfa, #f472b6) !important;
+  color: #0b0c10 !important;
+  font-weight: 600 !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(167, 139, 250, 0.4) !important;
+}
+
+
+/* 7. Sound Character & Tone Console */
+.tone-console {
+  background: rgba(16, 18, 26, 0.55) !important;
+  backdrop-filter: blur(32px) !important;
+  -webkit-backdrop-filter: blur(32px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+/* 8. Arrangement Map & 3D Tactile Clips */
+.arrangement-map {
+  background: rgba(12, 14, 18, 0.35) !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+.arrangement-map__clip {
+  border-radius: 7px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+  transition: filter 140ms ease, transform 140ms ease !important;
+}
+
+.arrangement-map__clip:hover {
+  filter: brightness(1.15) !important;
+}
+
+/* 9. Candidate Clip Pulse Animation */
+@keyframes candidate-glow-pulse {
+  0%, 100% {
+    opacity: 0.86;
+    filter: drop-shadow(0 0 2px rgba(167, 139, 250, 0.25));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(244, 114, 182, 0.5));
+  }
+}
+
+.arrangement-map__clip[data-candidate='true'],
+.timeline-clip--candidate {
+  animation: candidate-glow-pulse 2.8s ease-in-out infinite !important;
+}
+
+/* 10. Universal Tactile Feedback */
+button:active {
+  transform: scale(0.96) !important;
+}
+
+/* 11. Empty State Ambient Aurora Glow */
+.project-empty-state {
+  position: relative !important;
+}
+
+.project-empty-state::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 45% !important;
+  left: 50% !important;
+  width: 420px !important;
+  height: 320px !important;
+  transform: translate(-50%, -50%) !important;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.18) 0%, rgba(244, 114, 182, 0.08) 45%, transparent 70%) !important;
+  filter: blur(60px) !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+.project-empty-state > * {
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+.project-empty-state__primary {
+  background: linear-gradient(135deg, #a78bfa, #f472b6) !important;
+  color: #0b0c10 !important;
+  border: none !important;
+  box-shadow: 0 4px 20px rgba(167, 139, 250, 0.4) !important;
+  border-radius: 999px !important;
+}
+
+.project-empty-state__secondary {
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: CANDIDATE REVIEW (Phase 3)
+   ========================================================================== */
+
+/* 1. Atmospheric State Change */
+.workstation-shell[data-review-mode="true"]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 20%, rgba(150, 40, 180, 0.08), transparent 70%);
+  z-index: 0;
+  transition: opacity 1.5s ease;
+  opacity: 1;
+}
+.workstation-shell[data-review-mode="false"]::before {
+  opacity: 0;
+}
+
+/* 2. Apple Liquid Glass Segmented Control (Tactile Toggle) */
+.candidate-stage__listen.tactile-toggle {
+  position: relative !important;
+  display: inline-grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  align-items: center !important;
+  height: 32px !important;
+  padding: 2px !important;
+  gap: 0 !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-radius: 999px !important;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+.candidate-stage__listen.tactile-toggle .tactile-toggle__indicator {
+  position: absolute !important;
+  top: 2px !important;
+  bottom: 2px !important;
+  left: 2px !important;
+  width: calc(50% - 2px) !important;
+  border-radius: 999px !important;
+  pointer-events: none !important;
+  z-index: 1 !important;
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), background 260ms ease, box-shadow 260ms ease, border 260ms ease !important;
+}
+
+.candidate-stage__listen.tactile-toggle .tactile-toggle__indicator[data-active="current"] {
+  transform: translateX(0) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 1px 1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.candidate-stage__listen.tactile-toggle .tactile-toggle__indicator[data-active="candidate"] {
+  transform: translateX(100%) !important;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.35) 0%, rgba(244, 114, 182, 0.2) 100%) !important;
+  border: 1px solid rgba(167, 139, 250, 0.3) !important;
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.25) !important;
+}
+
+.candidate-stage__listen.tactile-toggle button,
+.candidate-stage__listen button {
+  position: relative !important;
+  z-index: 2 !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 16px !important;
+  min-width: 86px !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  cursor: pointer !important;
+  transition: color 200ms ease, transform 120ms ease !important;
+  white-space: nowrap !important;
+}
+
+.candidate-stage__listen.tactile-toggle button:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.8) !important;
+  background: transparent !important;
+}
+
+.candidate-stage__listen.tactile-toggle button[aria-pressed="true"] {
+  color: #ffffff !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+  background: transparent !important;
+}
+
+.candidate-stage__listen.tactile-toggle button:active {
+  transform: scale(0.96) !important;
+}
+
+/* 3. Action Hierarchy */
+.ghost-action {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: none !important;
+  transition: all 0.2s ease !important;
+}
+.ghost-action:hover {
+  color: #ff5555 !important;
+  background: rgba(255, 85, 85, 0.1) !important;
+}
+
+.primary-action {
+  background: linear-gradient(135deg, #a78bfa, #f472b6) !important;
+  color: #0b0c10 !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(167, 139, 250, 0.4) !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+.primary-action:hover {
+  filter: brightness(1.08) !important;
+  box-shadow: 0 6px 22px rgba(167, 139, 250, 0.6) !important;
+  transform: scale(1.02);
+}
+
+/* 4. Luminous Diff */
+.clip-candidate-diff {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), inset 0 0 15px rgba(180, 60, 160, 0.3) !important;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.03),
+    rgba(255, 255, 255, 0.03) 10px,
+    transparent 10px,
+    transparent 20px
+  ) !important;
+  animation: candidatePulse 3s infinite alternate;
+}
+
+@keyframes candidatePulse {
+  0% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), inset 0 0 10px rgba(180, 60, 160, 0.2) !important; }
+  100% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(180, 60, 160, 0.5) !important; }
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: DECLUTTER & TONE CONSOLE (Phase 5)
+   ========================================================================== */
+
+/* 1. Tone Console Precision UI */
+.tone-console__profile article {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.03) !important;
+  border-radius: 8px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
+}
+
+.tone-console__profile span {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 9px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  font-weight: 700 !important;
+}
+
+.tone-console__profile strong {
+  color: #fff !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  font-variant-numeric: tabular-nums !important;
+  letter-spacing: 0.02em !important;
+  margin-top: 3px !important;
+}
+
+/* 2. Precision Faders (FabFilter / Logic Pro style) */
+.tone-console__profile i {
+  height: 2px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  margin-top: 12px !important;
+  border-radius: 2px !important;
+  overflow: visible !important;
+}
+
+.tone-console__profile i::before {
+  background: var(--track-color, #a78bfa) !important;
+  box-shadow: 0 0 8px var(--track-color, rgba(167, 139, 250, 0.6)) !important;
+  border-radius: 2px !important;
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 6 (SPATIAL DECONSTRUCTION & SILKY UI)
+   ========================================================================== */
+
+/* 1. Eradicate Box-in-Box (No-Line Rule) */
+.workstation-shell {
+  background: #060608 !important; /* Deep abyss background */
+}
+.project-sidebar {
+  background: #0a0b0e !important;
+  border-right: none !important;
+  box-shadow: 1px 0 0 rgba(255,255,255,0.02) !important;
+}
+.agent-panel {
+  background: #0a0b0e !important;
+  border-left: none !important;
+  box-shadow: -1px 0 0 rgba(255,255,255,0.02) !important;
+}
+.arrangement-map {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 2. Transform Utility View (The Bulky Card) into Floating Actions */
+.workspace-content {
+  position: relative !important;
+}
+.utility-view {
+  position: absolute !important;
+  top: 16px !important;
+  right: 16px !important;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  z-index: 50 !important;
+}
+.utility-view h2,
+.utility-view > p {
+  display: none !important;
+}
+.utility-view .project-header__actions {
+  display: flex !important;
+  gap: 8px !important;
+}
+.utility-view .project-header__actions button {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  font-size: 10px !important;
+  padding: 4px 12px !important;
+  border-radius: 99px !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.utility-view .project-header__actions button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+  transform: scale(0.98) !important;
+}
+
+/* 3. Tone Console Component Tightening */
+.tone-console__profile article {
+  padding: 8px 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
+.tone-console__profile strong {
+  margin-top: 1px !important;
+}
+.tone-console__profile i {
+  margin-top: 8px !important;
+}
+
+/* 4. Arrangement Header Alignment */
+.arrangement-map__header {
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  align-items: baseline !important;
+}
+.arrangement-map__header p {
+  margin: 0 !important;
+  opacity: 0.5 !important;
+}
+
+/* 5. Chat Bubble Softening */
+.agent-chat__message {
+  border: 1px solid rgba(255,255,255,0.03) !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,0.03) !important;
+}
+.agent-chat__message--error {
+  background: rgba(255, 60, 100, 0.08) !important;
+  border-color: rgba(255, 60, 100, 0.15) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 7 (FLOATING HUD & DE-CLUTTER)
+   ========================================================================== */
+
+/* 1. Contextual HUD (Floating Tone Console) */
+.tone-console {
+  position: absolute !important;
+  bottom: 24px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: min(850px, calc(100% - 48px)) !important;
+  min-height: auto !important;
+  flex: none !important;
+  background: rgba(18, 18, 24, 0.45) !important;
+  backdrop-filter: blur(48px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 48px rgba(0, 0, 0, 0.5) !important;
+  z-index: 100 !important;
+}
+.tone-console__header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Prevent timeline tracks from being hidden permanently under HUD */
+.arrangement-map {
+  padding-bottom: 160px !important;
+}
+
+/* 2. Slop Copy Eradication (Delete verbose explanations) */
+.arrangement-map__header p,
+.tone-console__header p {
+  display: none !important;
+}
+
+/* 3. Action Bar Alignment & Toolbar Grouping (Phase 8 Upgrade) */
+.utility-view {
+  top: 18px !important;
+  right: 20px !important;
+}
+.utility-view .project-header__actions {
+  display: flex !important;
+  gap: 0 !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 99px !important;
+  padding: 2px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+}
+.utility-view .project-header__actions button {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 99px !important;
+  padding: 4px 14px !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+.utility-view .project-header__actions button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+  transform: none !important;
+}
+.utility-view .project-header__actions button:active {
+  transform: scale(0.96) !important;
+}
+.utility-view .project-header__actions button + button {
+  position: relative !important;
+}
+.utility-view .project-header__actions button + button::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 20% !important;
+  height: 60% !important;
+  width: 1px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+.utility-view .project-header__actions button:hover + button::before,
+.utility-view .project-header__actions button:hover::before {
+  opacity: 0 !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 8 (MATERIAL DEPTH & MICRO-INTERACTIONS)
+   ========================================================================== */
+
+
+
+/* 2. Sidebar Native macOS Active State */
+.sidebar-navigation__item {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.sidebar-navigation__item[data-active='true'] {
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+}
+.sidebar-navigation__item:active {
+  transform: scale(0.96) !important;
+}
+
+/* 3. Transport Island Polish */
+.master-transport-island {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+.master-transport-island__play {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.master-transport-island__play:active {
+  transform: scale(0.92) !important;
+  filter: brightness(1.2) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 9 (HARDWARE BUTTONS & TRUE WIDGET HUD)
+   ========================================================================== */
+
+/* 1. Hardware LED Mute/Solo Buttons */
+.arrangement-map__mix button {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 4px !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.05) !important;
+  color: rgba(255, 255, 255, 0.3) !important;
+  font-weight: 800 !important;
+  font-size: 9px !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.arrangement-map__mix button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+.arrangement-map__mix button:active {
+  transform: scale(0.85) !important;
+}
+.arrangement-map__mix button[aria-pressed='true']:first-child {
+  /* Mute Button Active */
+  background: rgba(217, 119, 6, 0.8) !important; /* Amber */
+  color: #fff !important;
+  box-shadow: 0 0 12px rgba(217, 119, 6, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
+}
+.arrangement-map__mix button[aria-pressed='true']:last-child {
+  /* Solo Button Active */
+  background: rgba(5, 150, 105, 0.8) !important; /* Emerald */
+  color: #fff !important;
+  box-shadow: 0 0 12px rgba(5, 150, 105, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* 2. Compact Widget HUD for Tone Console */
+.tone-console {
+  left: auto !important;
+  right: 24px !important;
+  transform: none !important;
+  width: 380px !important;
+  border-radius: 16px !important;
+}
+.tone-console__profile {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 12px !important;
+  padding: 16px !important;
+}
+.arrangement-map {
+  padding-bottom: 24px !important; /* Reset Phase 7 hack, let timeline stretch completely */
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 10 (GRID ALIGNMENT & WIDE HUD)
+   ========================================================================== */
+
+/* 1. Track Layout Realignment (Exact 200px Alignment) */
+.arrangement-map__ruler {
+  grid-template-columns: 200px minmax(0, 1fr) !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.arrangement-map__track {
+  grid-template-columns: 140px 60px minmax(0, 1fr) !important;
+}
+.arrangement-map__tracks {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* 2. Restore Wide Floating HUD */
+.tone-console {
+  left: 50% !important;
+  right: auto !important;
+  transform: translateX(-50%) !important;
+  width: min(850px, calc(100% - 48px)) !important;
+}
+.tone-console__profile {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 11 (VOLUME & SPATIAL POLISH)
+   ========================================================================== */
+
+/* 1. Tone Console Volume & VisionOS Glassmorphism */
+.tone-console {
+  backdrop-filter: blur(32px) saturate(180%) !important;
+  background: rgba(18, 15, 23, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  border-radius: 20px !important;
+}
+
+.tone-console__profile {
+  gap: 16px !important;
+  padding: 24px 28px !important;
+}
+
+.tone-console__profile article {
+  padding: 16px 18px !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+.tone-console__profile span {
+  font-size: 10px !important;
+  margin-bottom: 6px !important;
+  color: rgba(255, 255, 255, 0.5) !important;
+  letter-spacing: 0.5px !important;
+  text-transform: uppercase !important;
+}
+
+.tone-console__profile strong {
+  font-size: 14px !important;
+  margin-bottom: 12px !important;
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.tone-console__profile i {
+  height: 4px !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-radius: 2px !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+  margin-top: 14px !important;
+}
+
+.tone-console__profile i::before {
+  border-radius: 2px !important;
+  box-shadow: 0 0 10px var(--track-color, #a783ff) !important;
+  filter: brightness(1.2) saturate(1.2) !important;
+}
+
+
+
+/* 3. Right Agent Chat Polish */
+.agent-chat__message {
+  border-radius: 16px 16px 16px 4px !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.08) !important;
+  font-size: 12px !important;
+  padding: 12px 16px !important;
+}
+
+.agent-chat__message--error {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15), rgba(220, 38, 38, 0.05)) !important;
+  border-color: rgba(220, 38, 38, 0.2) !important;
+}
+
+.agent-composer textarea {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 16px !important;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  font-size: 12px !important;
+}
+
+.agent-composer textarea:focus-visible {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-color: rgba(155, 130, 255, 0.4) !important;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(155, 130, 255, 0.15) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 11 (COLLAPSIBLE DOCK & HARDWARE TONE CONSOLE)
+   ========================================================================== */
+
+/* 1. Tone Console Hardware Mute/Solo & Actions */
+.tone-console__actions {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.tone-console__actions button {
+  height: 24px !important;
+  min-width: 46px !important;
+  padding: 0 10px !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.05em !important;
+  border-radius: 6px !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4) !important;
+  color: rgba(255, 255, 255, 0.45) !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.tone-console__actions button:hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.tone-console__actions button:active {
+  transform: scale(0.92) !important;
+}
+
+/* Amber Mute Active */
+.tone-console__actions button:first-child[aria-pressed='true'] {
+  background: rgba(217, 119, 6, 0.85) !important;
+  color: #fff !important;
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  box-shadow: 0 0 14px rgba(217, 119, 6, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Emerald Solo Active */
+.tone-console__actions button:nth-child(2)[aria-pressed='true'] {
+  background: rgba(5, 150, 105, 0.85) !important;
+  color: #fff !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+  box-shadow: 0 0 14px rgba(5, 150, 105, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Tone Console Close Button */
+.tone-console__actions .tone-console__close-btn {
+  min-width: 24px !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  margin-left: 4px !important;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+  line-height: 1 !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.tone-console__actions .tone-console__close-btn:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  transform: scale(0.96) !important;
+}
+
+/* 2. Docked Miniature Floating Pill (When Collapsed) */
+.tone-console-dock {
+  position: absolute !important;
+  bottom: 20px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 100 !important;
+  pointer-events: auto !important;
+  animation: toneDockFloat 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+@keyframes toneDockFloat {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.tone-console-dock__pill {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  height: 34px !important;
+  padding: 0 12px 0 12px !important;
+  background: rgba(18, 18, 24, 0.75) !important;
+  backdrop-filter: blur(32px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(160%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 999px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.75) !important;
+  font-size: 11px !important;
+  cursor: pointer !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.tone-console-dock__pill:hover {
+  background: rgba(28, 28, 38, 0.9) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  color: #fff !important;
+  transform: scale(1.03) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+
+.tone-console-dock__pill:active {
+  transform: scale(0.97) !important;
+}
+
+.tone-console-dock__icon {
+  font-size: 12px !important;
+}
+
+.tone-console-dock__title strong {
+  color: #fff !important;
+  font-weight: 600 !important;
+}
+
+.tone-console-dock__badge {
+  margin-left: 4px !important;
+  padding: 2px 7px !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 15 (PREMIUM ICONS & SLEEK SCROLLBARS)
+   ========================================================================== */
+
+/* 1. Global Scrollbar Hiding (Invisible but scrollable) */
+.workspace-content ::-webkit-scrollbar,
+.agent-chat__messages::-webkit-scrollbar,
+.arrangement-map__tracks::-webkit-scrollbar,
+.project-sidebar::-webkit-scrollbar,
+::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+* {
+  scrollbar-width: none !important;
+}
+
+/* 2. Utility View Buttons (Top Right Actions) */
+.utility-view .project-header__actions button {
+  padding: 6px 14px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.75) !important;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.utility-view .project-header__actions button:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  transform: scale(1.03) !important;
+}
+
+.utility-view .project-header__actions button:active {
+  transform: scale(0.96) !important;
+}
+
+/* Fix Icon alignments */
+.tone-console-dock__icon svg,
+.tone-console__close-btn svg {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  font-size: 1.2em !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 16 (PANORAMIC POLISH)
+   ========================================================================== */
+
+/* 1. Empty State Animation (Breathing AI Signal) */
+@keyframes signal-pulse-pro {
+  0%, 100% {
+    transform: scaleY(0.75);
+    opacity: 0.6;
+    box-shadow: 0 0 0 transparent;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(167, 139, 250, 0.9);
+  }
+}
+
+.project-empty-state__signal i {
+  animation: signal-pulse-pro 2s ease-in-out infinite !important;
+  transform-origin: center !important;
+  background: #ffffff !important;
+  transition: none !important;
+}
+.project-empty-state__signal i:nth-child(1) {
+  animation-delay: 0s !important;
+}
+.project-empty-state__signal i:nth-child(2) {
+  animation-delay: 0.3s !important;
+}
+.project-empty-state__signal i:nth-child(3) {
+  animation-delay: 0.6s !important;
+}
+
+/* 2. Candidate & Empty State Primary Buttons: Crystal Glass instead of Flat Gradient */
+.primary-action,
+.candidate-stage__actions button:last-child,
+.candidate-stage__actions .primary-action,
+.project-empty-state__primary {
+  background: rgba(167, 139, 250, 0.15) !important;
+  color: #fff !important;
+  border: 1px solid rgba(167, 139, 250, 0.3) !important;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.3),
+    0 2px 12px rgba(167, 139, 250, 0.25) !important;
+  font-weight: 500 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(8px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(150%) !important;
+}
+
+.primary-action:hover:not(:disabled),
+.candidate-stage__actions button:last-child:hover:not(:disabled),
+.candidate-stage__actions .primary-action:hover:not(:disabled),
+.project-empty-state__primary:hover:not(:disabled) {
+  background: rgba(167, 139, 250, 0.25) !important;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.5),
+    0 4px 16px rgba(167, 139, 250, 0.4) !important;
+  border-color: rgba(167, 139, 250, 0.5) !important;
+  color: #fff !important;
+  filter: none !important;
+  transform: scale(1.03) !important;
+}
+
+.primary-action:active:not(:disabled),
+.candidate-stage__actions button:last-child:active:not(:disabled),
+.candidate-stage__actions .primary-action:active:not(:disabled),
+.project-empty-state__primary:active:not(:disabled) {
+  transform: scale(0.96) !important;
+}
+
+/* 3. Agent Unavailable Error State Polish */
+.agent-chat__message--error {
+  background: rgba(220, 38, 38, 0.1) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(220, 38, 38, 0.3) !important;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.1),
+    0 4px 12px rgba(220, 38, 38, 0.1) !important;
+}
+.agent-chat__message--error small {
+  color: #f87171 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+  text-shadow: 0 0 8px rgba(248, 113, 113, 0.4) !important;
+}
+.agent-chat__message--error p {
+  color: #fecaca !important;
+}
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 17 (CANDIDATE HIGHLIGHT & PREMIUM ERROR)
+   ========================================================================== */
+
+/* 1. Candidate Clip Luminous Highlight */
+.arrangement-map__clip[data-candidate="true"] {
+  box-shadow: 
+    inset 0 0 0 1px rgba(255, 255, 255, 0.6),
+    inset 0 2px 4px rgba(255, 255, 255, 0.3),
+    0 0 16px var(--track-color) !important;
+  filter: brightness(1.25) saturate(1.3) !important;
+  background-image: linear-gradient(135deg, rgba(255,255,255,0.25), transparent) !important;
+  animation: candidate-pulse 2s ease-in-out infinite alternate !important;
+  z-index: 10 !important;
+}
+
+@keyframes candidate-pulse {
+  from { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4), 0 0 8px var(--track-color); }
+  to { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.8), 0 0 24px var(--track-color); }
+}
+
+
+
+/* 2. Apple-Grade Error State (AGENT_UNAVAILABLE) */
+.agent-chat__message--error {
+  position: relative !important;
+  background: rgba(30, 10, 10, 0.6) !important; /* Deep dark crimson */
+  backdrop-filter: blur(24px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
+  border: 1px solid rgba(255, 50, 50, 0.15) !important;
+  border-top: 1px solid rgba(255, 50, 50, 0.25) !important;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 100, 100, 0.1),
+    0 8px 24px rgba(0, 0, 0, 0.4) !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+
+.agent-chat__message--error small {
+  display: block !important;
+  color: #ff453a !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.8px !important;
+  text-transform: uppercase !important;
+  margin-bottom: 4px !important;
+  text-shadow: 0 0 12px rgba(255, 69, 58, 0.5) !important;
+}
+
+.agent-chat__message--error p {
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 17 (CANDIDATE HIGHLIGHT & PREMIUM PLAYHEAD)
+   ========================================================================== */
+
+/* 1. Laser Playhead */
+.arrangement-map__playhead {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.4) 40%, rgba(255, 255, 255, 0) 100%) !important;
+  box-shadow: 0 0 16px rgba(255, 255, 255, 0.3) !important;
+}
+
+.arrangement-map__playhead::before {
+  box-shadow: 0 0 12px #fff, 0 0 24px rgba(167, 139, 250, 0.8) !important;
+}
+
+/* 2. Precision Timeline Ruler */
+.arrangement-map__ruler small {
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  letter-spacing: 0.05em !important;
+  padding-bottom: 8px !important;
+}
+
+.arrangement-map__ruler small::after {
+  content: '' !important;
+  position: absolute !important;
+  left: 50% !important;
+  bottom: 0 !important;
+  width: 1px !important;
+  height: 4px !important;
+  background: rgba(255, 255, 255, 0.15) !important;
+  transform: translateX(-50%) !important;
+}
+
+/* 3. Contextual Agent Bubble (Success / Candidate Ready) */
+.agent-chat__message--candidate {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15) 0%, rgba(244, 114, 182, 0.08) 100%) !important;
+  border: 1px solid rgba(167, 139, 250, 0.25) !important;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(167, 139, 250, 0.15) !important;
+}
+
+.agent-chat__message--candidate small {
+  color: #c4b5fd !important;
+  text-shadow: 0 0 8px rgba(167, 139, 250, 0.5) !important;
+}
+
+.agent-chat__message--candidate p {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 18 (ZEN EMPTY STATE)
+   ========================================================================== */
+
+/* 1. Hide Agent Panel when Project is Empty */
+.workstation-shell:has(.project-empty-state) {
+  grid-template-columns: 216px minmax(520px, 1fr) 0px !important;
+}
+
+.workstation-shell:has(.project-empty-state) .agent-panel {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 1280px) {
+  .workstation-shell:has(.project-empty-state) {
+    grid-template-columns: 184px minmax(460px, 1fr) 0px !important;
+  }
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 19 (EXPORT DELIVERY & ERROR STATE)
+   ========================================================================== */
+
+/* 1. Premium Export Delivery Cards */
+.export-current__source,
+.export-current__notice,
+.export-current__format {
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.export-current__format:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  transform: translateY(-2px) scale(1.01) !important;
+}
+
+.export-current__choose {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.export-current__choose:hover:not(:disabled) {
+  background: rgba(167, 139, 250, 0.15) !important;
+  border-color: rgba(167, 139, 250, 0.4) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(167, 139, 250, 0.2) !important;
+}
+
+.export-current__format-icon {
+  background: rgba(255, 255, 255, 0.05) !important;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.1) !important;
+}
+
+.export-current__format-copy h2 {
+  color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.export-current__notice[data-state="preparing"] {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%) !important;
+  border: 1px solid rgba(167, 139, 250, 0.2) !important;
+}
+
+/* 2. Overriding the Error Bubble once and for all */
+.agent-chat__message--error {
+  background: rgba(255, 59, 48, 0.08) !important;
+  backdrop-filter: blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border: 1px solid rgba(255, 59, 48, 0.25) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 24px rgba(255, 59, 48, 0.1) !important;
+}
+
+.agent-chat__message--error small {
+  color: #ff6b6b !important;
+  text-shadow: 0 0 12px rgba(255, 59, 48, 0.4) !important;
+}
+
+.agent-chat__message--error p {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 20 (EXPORT ALIGNMENT & MINIMAL ERROR BADGE)
+   ========================================================================== */
+
+/* 1. Fix Export Page Top Alignment */
+.export-current {
+  align-content: start !important;
+  align-items: start !important;
+  padding-top: 0px !important;
+}
+
+/* 2. Redesign Error Bubble (Vercel-style Minimal Badge) */
+.agent-chat__message--error {
+  position: relative !important;
+  background: rgba(80, 15, 20, 0.45) !important;
+  backdrop-filter: blur(48px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(48px) saturate(200%) !important;
+  border: 1px solid rgba(255, 69, 58, 0.2) !important;
+  border-radius: 14px !important;
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 100, 100, 0.2), 
+    inset 0 0 20px rgba(255, 69, 58, 0.1),
+    0 12px 32px rgba(255, 69, 58, 0.15) !important;
+  padding: 14px 16px !important;
+  overflow: hidden !important;
+}
+
+.agent-chat__message--error::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, rgba(255, 100, 100, 0.4), transparent) !important;
+}
+
+.agent-chat__message--error small {
+  display: block !important;
+  background: transparent !important;
+  color: #ff8a8a !important;
+  padding: 0 !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  margin-bottom: 6px !important;
+  text-shadow: 0 0 12px rgba(255, 69, 58, 0.6) !important;
+}
+
+.agent-chat__message--error p {
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 21 (THE FOCUSED WORKFLOW)
+   ========================================================================== */
+
+/* 1. Absolute Center Empty State (Theater Mode) */
+.workstation-shell:has(.project-empty-state) {
+  grid-template-columns: 0px minmax(520px, 1fr) 0px !important;
+}
+.workstation-shell:has(.project-empty-state) .project-sidebar,
+.workstation-shell:has(.project-empty-state) .agent-panel {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 2. Contextual Agent (Hide Agent in Export) */
+.workstation-shell:has(.export-current) {
+  grid-template-columns: 216px minmax(520px, 1fr) 0px !important;
+}
+.workstation-shell:has(.export-current) .agent-panel {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+@media (max-width: 1280px) {
+  .workstation-shell:has(.export-current) {
+    grid-template-columns: 184px minmax(460px, 1fr) 0px !important;
+  }
+}
+
+/* 3. Floating Master Header (Dynamic Pill) */
+.workspace-main {
+  grid-template-rows: 88px minmax(0, 1fr) !important;
+}
+.project-header {
+  position: relative !important;
+  margin: 16px 24px !important;
+  height: 56px !important;
+  border-radius: 999px !important;
+  background: rgba(18, 20, 28, 0.6) !important;
+  backdrop-filter: blur(48px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(48px) saturate(200%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+}
+
+/* 4. Track Header Tightening (Pro DAW look) */
+.arrangement-map__ruler {
+  grid-template-columns: 150px minmax(0, 1fr) !important;
+}
+.arrangement-map__track {
+  grid-template-columns: 110px 40px minmax(0, 1fr) !important;
+}
+.arrangement-map__identity {
+  margin-left: 8px !important;
+  padding: 6px 12px 6px 8px !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-radius: 8px !important;
+  border: 1px solid rgba(255, 255, 255, 0.02) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02) !important;
+}
+.arrangement-map__mix {
+  justify-content: flex-end !important;
+  padding-right: 12px !important;
+}
+.arrangement-map__mix button {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-radius: 4px !important;
+  transition: all 0.2s ease !important;
+}
+.arrangement-map__mix button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* 5. Minimal Agent Panel Header Close button hide */
+.agent-chat__header button,
+.agent-chat__header .icon-button {
+  opacity: 0.3 !important;
+  transition: opacity 0.2s ease !important;
+}
+.agent-chat__header button:hover,
+.agent-chat__header .icon-button:hover {
+  opacity: 1 !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 22 (PLAYHEAD PRECISION & TRACK RESTORE)
+   ========================================================================== */
+
+/* 1. Restore React's Hardcoded 164px Track Header Alignment for Playhead */
+.arrangement-map__ruler {
+  grid-template-columns: 164px minmax(0, 1fr) !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.arrangement-map__track {
+  grid-template-columns: 124px 40px minmax(0, 1fr) !important;
+}
+.arrangement-map__tracks {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* 2. Undo Phase 21 Cluttered Track Headers (Restore Airy Apple-grade Layout) */
+.arrangement-map__identity {
+  margin-left: 0 !important;
+  padding: 0 10px 0 6px !important;
+  background: transparent !important;
+  border-radius: 9px !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.arrangement-map__mix {
+  justify-content: flex-start !important;
+  padding-right: 0 !important;
+}
+.arrangement-map__mix button {
+  background: transparent !important;
+}
+.arrangement-map__mix button:hover {
+  background: transparent !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 23 (HARDWARE MUTE/SOLO PERFECT SQUARES)
+   ========================================================================== */
+
+/* 1. Track Header M/S Buttons (Absolute Square 24x24) */
+.arrangement-map__mix button {
+  width: 24px !important;
+  height: 24px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-radius: 2px !important;
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.05) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.arrangement-map__mix button:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.arrangement-map__mix button:active {
+  transform: scale(0.9) !important;
+}
+
+/* Amber Mute */
+.arrangement-map__mix button[aria-pressed='true']:first-child {
+  background: rgba(217, 119, 6, 0.85) !important;
+  color: #fff !important;
+  box-shadow: 0 0 12px rgba(217, 119, 6, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Emerald Solo */
+.arrangement-map__mix button[aria-pressed='true']:last-child {
+  background: rgba(5, 150, 105, 0.85) !important;
+  color: #fff !important;
+  box-shadow: 0 0 12px rgba(5, 150, 105, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 24 (SPATIAL BALANCE & SQUIRCLES)
+   ========================================================================== */
+
+/* 1. Track Header Grid Readjustment (Keep 164px total, give mix more space) */
+.arrangement-map__track {
+  grid-template-columns: 100px 64px minmax(0, 1fr) !important;
+}
+
+/* 2. Mute/Solo Squircle Buttons (Apple-grade rounded & breathing room) */
+.arrangement-map__mix {
+  justify-content: flex-end !important;
+  padding-right: 14px !important; /* Creates breathing room from playhead */
+  gap: 6px !important;
+}
+
+.arrangement-map__mix button {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 6px !important; /* Smooth, Apple-grade squircle */
+  font-size: 9px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 25 (EMPTY STATE PURITY & PILL REFINEMENT)
+   ========================================================================== */
+
+/* 1. Eradicate "No project open" Ghost Header in Empty State */
+.workstation-shell:has(.project-empty-state) .project-header {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.workspace-main:has(.project-empty-state) {
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+
+/* 2. Constrain Pill Header stretching on ultrawide monitors */
+.project-header {
+  max-width: 1400px !important;
+  width: calc(100% - 48px) !important;
+  margin: 16px auto !important; /* Centers the pill */
+}
+
+/* 3. Deep Ambient Glow for the Workspace background */
+.workspace-main {
+  position: relative !important;
+}
+.workspace-main::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 400px !important;
+  background: radial-gradient(ellipse at 50% -20%, rgba(155, 130, 255, 0.08) 0%, transparent 70%) !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 26 (EMPTY STATE GRID COLLAPSE FIX)
+   ========================================================================== */
+
+/* 1. Fix implicit grid row collapse caused by Phase 25 */
+.workspace-main:has(.project-empty-state) .workspace-content {
+  grid-row: 1 !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 27 (AMBIENT GLOW & FOCUSED TRACK)
+   ========================================================================== */
+
+/* 1. Amplify Ambient Glow in Main Workspace */
+.workspace-main::before {
+  background: radial-gradient(ellipse at 50% 0%, rgba(155, 130, 255, 0.2) 0%, rgba(155, 130, 255, 0.05) 45%, transparent 75%) !important;
+  height: 600px !important;
+}
+
+/* 2. Soften and enhance the Focused Track highlight (Squircle track glow) */
+.arrangement-map__track[data-focused='true'] {
+  background: linear-gradient(90deg, rgba(167, 139, 250, 0.12) 0%, rgba(167, 139, 250, 0.02) 100%) !important;
+  border-radius: 12px !important;
+  border-top-color: transparent !important;
+  box-shadow: inset 1px 1px 0 rgba(167, 139, 250, 0.15), inset -1px -1px 0 rgba(167, 139, 250, 0.05) !important;
+}
+.arrangement-map__track[data-focused='true'] + .arrangement-map__track {
+  border-top-color: transparent !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 28 (SUNO AURORA GLOW & ICON MARGIN)
+   ========================================================================== */
+
+/* 1. Track Identity Icon Breathing Room (Push away from highlight edge) */
+.arrangement-map__identity {
+  margin-left: 14px !important;
+}
+
+/* 2. Suno-style Luminous Mesh Gradient Ambient Glow */
+.workspace-main::before {
+  display: none !important; /* Eradicate the dirty mesh glow from Phase 28 */
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 29 (ATMOSPHERIC AURORA GLOW)
+   ========================================================================== */
+
+/* 1. Ultra-smooth, off-screen atmospheric wash */
+.workspace-main {
+  background-image: 
+    radial-gradient(100% 60% at 50% -15%, rgba(124, 58, 237, 0.12) 0%, transparent 100%),
+    radial-gradient(80% 60% at 100% -10%, rgba(56, 189, 248, 0.08) 0%, transparent 100%),
+    radial-gradient(80% 60% at 0% -10%, rgba(236, 72, 153, 0.06) 0%, transparent 100%) !important;
+  background-color: transparent !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 30 (UX AUDIT & REFINEMENT)
+   ========================================================================== */
+
+/* 1. Turn stray utility buttons into a sleek unified Ghost Toolbar */
+.utility-view {
+  position: fixed !important;
+  top: 22px !important;
+  right: 24px !important;
+  z-index: 100 !important;
+}
+.project-header__actions {
+  display: flex !important;
+  gap: 4px !important;
+  padding: 4px !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2) !important;
+}
+.project-header__actions button {
+  background: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  padding: 6px 14px !important;
+  font-size: 11px !important;
+  border-radius: 999px !important;
+  transition: all 0.2s ease !important;
+}
+.project-header__actions button:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+}
+
+/* 2. Fix Export Current Affordance (Fake input box -> Ghost button) */
+.export-current__choose {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+.export-current__choose:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* 3. Strip heavy container from Local User profile */
+.workspace-profile {
+  background: transparent !important;
+  border: none !important;
+  padding: 10px 18px !important;
+  margin: auto 0 24px !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 31 (TOOLBAR POSITION FIX)
+   ========================================================================== */
+
+/* 1. Revert global fixed positioning to keep it contained in the workspace */
+.utility-view {
+  position: absolute !important;
+  top: 16px !important;
+  right: 24px !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 32 (BORDERLESS WINDOW & WCO ALIGNMENT)
+   ========================================================================== */
+
+/* 1. Establish App Drag Regions */
+.project-sidebar .brand-lockup,
+.agent-panel__header,
+.project-header {
+  -webkit-app-region: drag;
+}
+
+/* Exempt interactive elements from drag */
+button, 
+a, 
+input, 
+textarea,
+.transport-bar, 
+.project-header__actions,
+.workspace-content {
+  -webkit-app-region: no-drag;
+}
+
+/* 2. Top Padding to clear Windows Controls Overlay (WCO) on the right */
+.agent-panel {
+  grid-template-rows: 104px minmax(0, 1fr) !important;
+}
+.agent-panel__header {
+  padding-top: 38px !important;
+}
+
+/* Symmetrical top padding for the left sidebar */
+.project-sidebar {
+  padding-top: 38px !important;
+}
+
+/* Push Ghost Toolbar down slightly to clear WCO when Agent Panel is closed */
+.utility-view {
+  top: 48px !important;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: PHASE 38 (REVERT OVER-ENGINEERING & FIX ORB COLOR)
+   ========================================================================== */
+
+/* 1. Restore right-side padding to prevent playhead cutoff */
+.arrangement-map__tracks {
+  padding-right: 24px !important;
+}
+
+/* 2. Re-elevate the Ghost Toolbar so it doesn't block the timeline */
+.utility-view {
+  top: 16px !important;
+}
+
+/* 3. The One True Fix: Simply change the Luminous Orb's color to Nebula Aurora */
+.master-transport-island__play {
+  background: linear-gradient(135deg, #a783ff 0%, #00e5ff 100%) !important;
+}
+
+/* 4. Nebula Aurora hover glow */
+.master-transport-island__play:hover:not(:disabled) {
+  box-shadow:
+    0 0 26px rgba(167, 131, 255, 0.7),
+    0 0 10px rgba(0, 229, 255, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+
+/* 5. Nebula Aurora playing glow */
+@keyframes orb-playing-glow {
+  0% {
+    box-shadow:
+      0 0 18px rgba(167, 131, 255, 0.45),
+      0 0 6px rgba(0, 229, 255, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+  }
+  100% {
+    box-shadow:
+      0 0 28px rgba(167, 131, 255, 0.75),
+      0 0 14px rgba(0, 229, 255, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+  }
 }
 

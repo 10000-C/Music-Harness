@@ -13,7 +13,6 @@ interface ArrangementMapProps {
   readonly mutedTrackIds: ReadonlySet<TrackId>;
   readonly soloTrackIds: ReadonlySet<TrackId>;
   readonly reviewMode?: boolean;
-  readonly previewingCandidate?: boolean;
   readonly onFocusTrack: (trackId: TrackId) => void;
   readonly onToggleMute: (trackId: TrackId) => void;
   readonly onToggleSolo: (trackId: TrackId) => void;
@@ -28,7 +27,6 @@ export const ArrangementMap = ({
   mutedTrackIds,
   soloTrackIds,
   reviewMode = false,
-  previewingCandidate = false,
   onFocusTrack,
   onToggleMute,
   onToggleSolo,
@@ -37,9 +35,15 @@ export const ArrangementMap = ({
 
   const bars = createBarBoundaryLabels(timeline, undefined, 9);
   const playhead = Math.min(
-    100,
     Math.max(0, (playbackTick / timeline.totalTicks) * 100),
+    100,
   );
+  const TRACK_HEADER_WIDTH_PX = 164;
+  const TRACK_HEADER_WIDTH_CSS = `${String(TRACK_HEADER_WIDTH_PX)}px`;
+  const playheadStyleLeft =
+    playhead === 0
+      ? TRACK_HEADER_WIDTH_CSS
+      : `calc(${TRACK_HEADER_WIDTH_CSS} + (100% - ${TRACK_HEADER_WIDTH_CSS}) * ${String(playhead / 100)})`;
 
   return (
     <section
@@ -47,23 +51,37 @@ export const ArrangementMap = ({
       data-review-mode={reviewMode || undefined}
       aria-labelledby="arrangement-map-title"
     >
-      <header className="arrangement-map__header">
-        <span>
-          <h2 id="arrangement-map-title">
-            {reviewMode ? 'Candidate review' : 'Arrangement'}
-          </h2>
+      <header
+        className="arrangement-map__header"
+        style={
+          reviewMode ? { padding: 0, height: 0, overflow: 'hidden' } : undefined
+        }
+      >
+        <h2
+          id="arrangement-map-title"
+          className={reviewMode ? 'candidate-stage__sr-only' : undefined}
+          style={
+            reviewMode
+              ? {
+                  position: 'absolute',
+                  width: 1,
+                  height: 1,
+                  padding: 0,
+                  margin: -1,
+                  overflow: 'hidden',
+                  clip: 'rect(0, 0, 0, 0)',
+                  whiteSpace: 'nowrap',
+                  border: 0,
+                }
+              : undefined
+          }
+        >
+          {reviewMode ? 'Candidate review' : 'Arrangement'}
+        </h2>
+        {!reviewMode && (
           <p>
-            {reviewMode
-              ? 'Audition the staged version against Current at the same moment.'
-              : 'A listening map of the complete arrangement — not a MIDI editor.'}
+            A listening map of the complete arrangement — not a MIDI editor.
           </p>
-        </span>
-        {reviewMode && (
-          <span className="arrangement-map__mode">
-            {previewingCandidate
-              ? 'Listening to Candidate'
-              : 'Listening to Current'}
-          </span>
         )}
       </header>
       <div className="arrangement-map__ruler" aria-hidden="true">
@@ -83,7 +101,7 @@ export const ArrangementMap = ({
         <div
           className="arrangement-map__playhead"
           style={{
-            left: `calc(164px + (100% - 164px) * ${String(playhead / 100)})`,
+            left: playheadStyleLeft,
           }}
           aria-hidden="true"
         />
@@ -103,7 +121,9 @@ export const ArrangementMap = ({
                 type="button"
                 aria-pressed={focusedTrackId === track.trackId}
                 aria-label={`Show ${presentation.label} sound`}
-                onClick={() => onFocusTrack(track.trackId)}
+                onClick={() => {
+                  onFocusTrack(track.trackId);
+                }}
               >
                 <span
                   style={
@@ -121,7 +141,9 @@ export const ArrangementMap = ({
                   type="button"
                   aria-label={`${muted ? 'Unmute' : 'Mute'} ${presentation.label}`}
                   aria-pressed={muted}
-                  onClick={() => onToggleMute(track.trackId)}
+                  onClick={() => {
+                    onToggleMute(track.trackId);
+                  }}
                 >
                   M
                 </button>
@@ -129,35 +151,43 @@ export const ArrangementMap = ({
                   type="button"
                   aria-label={`${soloed ? 'Unsolo' : 'Solo'} ${presentation.label}`}
                   aria-pressed={soloed}
-                  onClick={() => onToggleSolo(track.trackId)}
+                  onClick={() => {
+                    onToggleSolo(track.trackId);
+                  }}
                 >
                   S
                 </button>
               </div>
               <div className="arrangement-map__clips">
-                {track.clips.map((clip, index) => (
-                  <span
-                    className="arrangement-map__clip"
-                    data-density={clip.density > 0.66 ? 'high' : undefined}
-                    key={`${track.trackId}-${String(index)}-${String(clip.startTick)}`}
-                    style={
-                      {
-                        '--track-color': presentation.color,
-                        left: percent(
-                          (clip.startTick / timeline.totalTicks) * 100,
-                        ),
-                        width: percent(
-                          ((clip.endTick - clip.startTick) /
-                            timeline.totalTicks) *
-                            100,
-                        ),
-                      } as React.CSSProperties
-                    }
-                    title={`${presentation.label}: ${clip.label}`}
-                  >
-                    <span>{clip.label}</span>
-                  </span>
-                ))}
+                {track.clips.map((clip, index) => {
+                  const isCandidate =
+                    reviewMode &&
+                    clip.label.toLowerCase().includes('candidate');
+                  return (
+                    <span
+                      className="arrangement-map__clip"
+                      data-density={clip.density > 0.66 ? 'high' : undefined}
+                      data-candidate={isCandidate ? 'true' : undefined}
+                      key={`${track.trackId}-${String(index)}-${String(clip.startTick)}`}
+                      style={
+                        {
+                          '--track-color': presentation.color,
+                          left: percent(
+                            (clip.startTick / timeline.totalTicks) * 100,
+                          ),
+                          width: percent(
+                            ((clip.endTick - clip.startTick) /
+                              timeline.totalTicks) *
+                              100,
+                          ),
+                        } as React.CSSProperties
+                      }
+                      title={`${presentation.label}: ${clip.label}`}
+                    >
+                      <span>{clip.label}</span>
+                    </span>
+                  );
+                })}
               </div>
             </article>
           );

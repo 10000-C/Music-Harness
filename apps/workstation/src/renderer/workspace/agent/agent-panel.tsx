@@ -414,6 +414,8 @@ export const AgentPanel = ({
                 </span>
                 <textarea
                   value={prompt}
+                  name="agent-prompt"
+                  autoComplete="off"
                   onChange={(event) => {
                     onPromptChange(event.currentTarget.value);
                   }}

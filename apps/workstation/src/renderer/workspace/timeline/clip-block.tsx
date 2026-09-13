@@ -35,7 +35,7 @@ export const ClipBlock = ({ clip, trackId, viewport }: ClipBlockProps) => {
 
   return (
     <div
-      className="timeline-clip"
+      className={`timeline-clip ${clip.label.includes('Candidate') ? 'clip-candidate-diff' : ''}`}
       style={style}
       title={`${presentation.label}: ${clip.label}`}
       data-track-id={trackId}
