@@ -15,6 +15,10 @@ import { DynamicOpenAiChatModel } from '../model/index.js';
 import { createStrandsSession } from '../session/index.js';
 import type { AgentModelConfig } from '../settings/index.js';
 import { AGENT_SYSTEM_PROMPT } from './agent-system-prompt.js';
+import {
+  createMusicStyleReferenceTool,
+  createMusicStyleSkillsPlugin,
+} from './music-style-skills.js';
 
 export interface ActiveModelSettingsPort {
   getActiveModelConfig(): Promise<AgentModelConfig>;
@@ -64,12 +68,15 @@ export class StrandsAgentRuntimeFactory {
       this.dependencies.storageRoot,
     );
     const mcpClient = createStrandsMcpClient(descriptor, options);
+    const musicStyleSkills = createMusicStyleSkillsPlugin();
+    const musicStyleReference = createMusicStyleReferenceTool();
     const agent = new Agent({
       model: new DynamicOpenAiChatModel(
         modelConfig,
         this.dependencies.settings,
       ),
-      tools: [mcpClient],
+      tools: [mcpClient, musicStyleReference],
+      plugins: [musicStyleSkills],
       systemPrompt:
         options.instructions === undefined
           ? AGENT_SYSTEM_PROMPT

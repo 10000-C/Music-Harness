@@ -70,6 +70,7 @@ describe('StrandsAgentRuntimeFactory', () => {
     expect(first.agent.systemPrompt).toContain('finishTask');
     expect(first.agent.systemPrompt).toContain('canonical fragment examples');
     expect(first.agent.systemPrompt).toContain('currentComposition');
+    expect(first.agent.toolRegistry.get('music_style_reference')).toBeDefined();
     expect(second.agent.sessionId).toBe(sessionId);
     expect(first.agent.model.getConfig().modelId).toBe('model-a');
     expect(second.agent.model.getConfig().modelId).toBe('model-b');
