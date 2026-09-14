@@ -35,6 +35,7 @@ const window = {
 };
 let snapshotListener: ((snapshot: unknown) => void) | undefined;
 let agentEventListener: ((event: unknown) => void) | undefined;
+let candidateEventListener: ((event: unknown) => void) | undefined;
 const supervisor = {
   getSnapshot: vi.fn(() => ({ core: 'ready', agent: 'ready' })),
   restart: vi.fn(async () => undefined),
@@ -44,6 +45,12 @@ const supervisor = {
     sequence: 1,
   })),
   dispatchCandidate: vi.fn(async () => []),
+  readCandidateState: vi.fn(async () => ({
+    projectId: '00000000-0000-4000-8000-000000000001',
+    sequence: 0,
+    candidate: null,
+    task: null,
+  })),
   dispatchAgent: vi.fn(async () => ({
     type: 'agent.session.created',
     requestId: 'agent-test',
@@ -55,6 +62,10 @@ const supervisor = {
   })),
   onAgentEvent: vi.fn((listener: (event: unknown) => void) => {
     agentEventListener = listener;
+    return vi.fn();
+  }),
+  onCandidateEvent: vi.fn((listener: (event: unknown) => void) => {
+    candidateEventListener = listener;
     return vi.fn();
   }),
   readCurrentPlayback: vi.fn(),
@@ -77,6 +88,7 @@ describe('shell Main IPC and dialogs', () => {
     vi.clearAllMocks();
     snapshotListener = undefined;
     agentEventListener = undefined;
+    candidateEventListener = undefined;
     registerShellIpc(window as never, supervisor);
   });
 
@@ -86,6 +98,7 @@ describe('shell Main IPC and dialogs', () => {
         channels.directory,
         channels.exportPath,
         channels.candidate,
+        channels.candidateState,
         channels.playback,
         channels.project,
         channels.restart,
@@ -137,6 +150,44 @@ describe('shell Main IPC and dialogs', () => {
       events: [],
     });
     expect(supervisor.dispatchCandidate).toHaveBeenCalledWith(command);
+  });
+
+  it('reads Candidate state and forwards only project-scoped Candidate notifications', async () => {
+    const projectId = '00000000-0000-4000-8000-000000000001';
+    await expect(invoke(channels.candidateState, projectId)).resolves.toEqual({
+      ok: true,
+      state: {
+        projectId,
+        sequence: 0,
+        candidate: null,
+        task: null,
+      },
+    });
+    expect(supervisor.readCandidateState).toHaveBeenCalledWith(projectId);
+
+    await expect(
+      invoke(channels.candidateState, 'not-a-project'),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'INVALID_PROJECT_ID',
+    });
+
+    const notification = {
+      type: 'candidateState.event' as const,
+      protocolVersion: 1 as const,
+      projectId,
+      event: {
+        type: 'candidate.changed' as const,
+        requestId: 'candidate-event-1',
+        sequence: 1,
+      },
+    };
+    candidateEventListener?.(notification);
+    candidateEventListener?.({ type: 'invalid.event' });
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      channels.candidateEvent,
+      notification,
+    );
   });
 
   it('forwards a validated Current playback bundle and fails closed otherwise', async () => {
@@ -246,9 +297,7 @@ describe('shell Main IPC and dialogs', () => {
   });
 
   it('forwards valid Agent commands and rejects invalid commands before supervisor', async () => {
-    await expect(
-      invoke(channels.agent, { invalid: true }),
-    ).resolves.toEqual({
+    await expect(invoke(channels.agent, { invalid: true })).resolves.toEqual({
       ok: false,
       code: 'INVALID_AGENT_COMMAND',
       userMessage: 'Invalid Agent command.',

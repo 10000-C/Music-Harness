@@ -4,7 +4,12 @@ export { projectCandidateEvents } from './candidate-event-projection.js';
 export {
   createLiveCandidateAdapter,
   reduceLiveCandidateState,
+  type LiveCandidateBridge,
 } from './live-candidate-adapter.js';
+export {
+  createFakeCandidateBridge,
+  type FakeCandidateBridge,
+} from './fake-candidate-bridge.js';
 export {
   createLiveAgentAdapter,
   type LiveAgentAdapter,

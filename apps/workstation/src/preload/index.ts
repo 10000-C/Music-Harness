@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { isServiceKind } from '../shared/service-lifecycle.js';
+import { isProjectId } from '../shared/candidate-bridge.js';
 import {
   isCommandResult,
   isDirectoryDialogResult,
@@ -9,6 +10,8 @@ import {
   isProjectCommandResult,
   isCandidateCommand,
   isCandidateCommandResult,
+  isCandidateEventNotification,
+  isCandidateStateResult,
   isCorePlaybackResponse,
   isAgentCommand,
   isAgentEvent,
@@ -18,6 +21,7 @@ import {
   type DirectoryDialogResult,
   type AgentEvent,
 } from '../shared/shell-contracts.js';
+import type { CoreCandidateEventNotification } from '../shared/candidate-bridge.js';
 import {
   isServiceFleetSnapshot,
   unavailableServiceSnapshot,
@@ -118,6 +122,32 @@ const bridge = {
           code: 'IPC_UNAVAILABLE',
           userMessage: 'The desktop service is unavailable. Try again.',
         };
+  },
+  async readCandidateState(projectId: unknown) {
+    if (!isProjectId(projectId))
+      return {
+        ok: false as const,
+        code: 'INVALID_PROJECT_ID',
+        userMessage: 'Invalid project identity.',
+      };
+    const value = await invoke(shellIpcChannels.candidateState, projectId);
+    return isCandidateStateResult(value)
+      ? value
+      : {
+          ok: false as const,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
+  },
+  onCandidateEvent: (
+    listener: (notification: CoreCandidateEventNotification) => void,
+  ) => {
+    const wrapped = (_event: unknown, notification: unknown) => {
+      if (isCandidateEventNotification(notification)) listener(notification);
+    };
+    ipcRenderer.on(shellIpcChannels.candidateEvent, wrapped);
+    return () =>
+      ipcRenderer.removeListener(shellIpcChannels.candidateEvent, wrapped);
   },
   async dispatchAgent(command: unknown) {
     if (!isAgentCommand(command))

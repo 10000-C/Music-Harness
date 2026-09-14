@@ -11,6 +11,7 @@ import {
   createLiveCandidateAdapter,
   reduceLiveCandidateState,
 } from '../src/renderer/core-client/live-candidate-adapter.js';
+import { createFakeCandidateBridge } from '../src/renderer/core-client/fake-candidate-bridge.js';
 
 const projectId = '00000000-0000-4000-8000-000000000101' as ProjectId;
 const candidateId = '00000000-0000-4000-8000-000000000102' as CandidateId;
@@ -39,9 +40,15 @@ const event = (value: CandidateEvent): CandidateEvent => value;
 
 describe('live Candidate adapter', () => {
   it('projects only genuine Candidate events and ignores another project', () => {
+    const bridge = createFakeCandidateBridge({
+      projectId,
+      sequence: 0,
+      candidate: null,
+      task: null,
+    });
     const initial = createLiveCandidateAdapter({
       projectId,
-      bridge: { dispatchCandidate: vi.fn() },
+      bridge,
     }).getState();
     const next = reduceLiveCandidateState(initial, {
       type: 'events',
@@ -111,7 +118,10 @@ describe('live Candidate adapter', () => {
       });
     const adapter = createLiveCandidateAdapter({
       projectId,
-      bridge: { dispatchCandidate },
+      bridge: createFakeCandidateBridge(
+        { projectId, sequence: 0, candidate: null, task: null },
+        dispatchCandidate,
+      ),
       createRequestId: (() => {
         let index = 0;
         return () => `request-${++index}`;
@@ -136,6 +146,79 @@ describe('live Candidate adapter', () => {
 
     await adapter.accept();
     expect(dispatchCandidate).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads one project snapshot, applies ordered notifications idempotently, and disposes cleanly', async () => {
+    const bridge = createFakeCandidateBridge({
+      projectId,
+      sequence: 2,
+      candidate,
+      task,
+    });
+    const adapter = createLiveCandidateAdapter({ projectId, bridge });
+    const listener = vi.fn();
+    adapter.subscribe(listener);
+
+    await adapter.ready();
+    listener.mockClear();
+    expect(adapter.getState()).toMatchObject({
+      status: 'ready',
+      candidate,
+      task,
+    });
+
+    bridge.emit({
+      type: 'candidateState.event',
+      protocolVersion: 1,
+      projectId: '00000000-0000-4000-8000-000000000199' as ProjectId,
+      event: {
+        type: 'candidate.changed',
+        requestId: 'other-project',
+        sequence: 3,
+        candidate,
+      },
+    });
+    expect(listener).not.toHaveBeenCalled();
+
+    bridge.emit({
+      type: 'candidateState.event',
+      protocolVersion: 1,
+      projectId,
+      event: {
+        type: 'candidate.changed',
+        requestId: 'update-1',
+        sequence: 3,
+        candidate: { ...candidate, state: 'active' },
+      },
+    });
+    bridge.emit({
+      type: 'candidateState.event',
+      protocolVersion: 1,
+      projectId,
+      event: {
+        type: 'candidate.changed',
+        requestId: 'duplicate-3',
+        sequence: 3,
+        candidate: { ...candidate, state: 'ready' },
+      },
+    });
+    expect(adapter.getState().candidate?.state).toBe('active');
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    adapter.dispose();
+    bridge.emit({
+      type: 'candidateState.event',
+      protocolVersion: 1,
+      projectId,
+      event: {
+        type: 'candidate.invalidated',
+        requestId: 'reject-1',
+        sequence: 4,
+        candidateId,
+      },
+    });
+    expect(adapter.getState().candidate?.state).toBe('active');
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it('clears Candidate after an authoritative commit and preserves its revision', () => {

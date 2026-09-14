@@ -9,6 +9,12 @@ import {
 } from '@agent-music/contracts';
 import { isProjectCommand, isProjectEvent } from './project-bridge.js';
 import { isCoreCandidateResponse } from './candidate-bridge.js';
+import {
+  isCoreCandidateEventNotification,
+  isCoreCandidateStateResponse,
+  type CandidateStateSnapshot,
+  type CoreCandidateEventNotification,
+} from './candidate-bridge.js';
 import { isCorePlaybackResponse } from './playback-bridge.js';
 import type { CorePlaybackResponse } from './playback-bridge.js';
 import {
@@ -30,9 +36,11 @@ export const shellIpcChannels = {
   exportPath: 'shell:export',
   project: 'shell:project',
   candidate: 'shell:candidate',
+  candidateState: 'shell:candidate:state',
   playback: 'shell:playback',
   agent: 'shell:agent',
   agentEvent: 'shell:agent:event',
+  candidateEvent: 'shell:candidate:event',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';
@@ -56,6 +64,9 @@ export type ProjectCommandResult =
   | Readonly<{ ok: false; code: string; userMessage: string }>;
 export type CandidateCommandResult =
   | Readonly<{ ok: true; events: readonly CandidateEvent[] }>
+  | Readonly<{ ok: false; code: string; userMessage: string }>;
+export type CandidateStateResult =
+  | Readonly<{ ok: true; state: CandidateStateSnapshot }>
   | Readonly<{ ok: false; code: string; userMessage: string }>;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -158,6 +169,29 @@ export const isCandidateCommandResult = (
     typeof value.code === 'string' && typeof value.userMessage === 'string'
   );
 };
+
+export const isCandidateStateResult = (
+  value: unknown,
+): value is CandidateStateResult => {
+  if (!isRecord(value) || typeof value.ok !== 'boolean') return false;
+  if (value.ok) {
+    return isCoreCandidateStateResponse({
+      type: 'candidateState.readResult',
+      protocolVersion: 1,
+      requestId: 'shell-candidate-state-result',
+      state: value.state,
+    });
+  }
+  return (
+    typeof value.code === 'string' && typeof value.userMessage === 'string'
+  );
+};
+
+export const isCandidateEventNotification = (
+  value: unknown,
+): value is CoreCandidateEventNotification => {
+  return isCoreCandidateEventNotification(value);
+};
 export { isServiceKind };
 export type { ServiceKind };
 export {
@@ -168,4 +202,3 @@ export {
   type AgentCommand,
   type AgentEvent,
 };
-

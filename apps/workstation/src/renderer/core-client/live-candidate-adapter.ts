@@ -7,7 +7,14 @@ import type {
   TaskContextView,
   TaskScope,
 } from '@agent-music/contracts';
-import type { CandidateCommandResult } from '../../shared/shell-contracts.js';
+import type {
+  CandidateStateSnapshot,
+  CoreCandidateEventNotification,
+} from '../../shared/candidate-bridge.js';
+import type {
+  CandidateCommandResult,
+  CandidateStateResult,
+} from '../../shared/shell-contracts.js';
 import type { DesktopBridge } from '../../shared/desktop-bridge.js';
 
 export type LiveCandidateStatus = 'none' | 'building' | 'ready' | 'failed';
@@ -140,6 +147,7 @@ export const reduceLiveCandidateState = (
 };
 
 export interface LiveCandidateAdapter {
+  ready(): Promise<void>;
   getState(): LiveCandidateState;
   subscribe(listener: (state: LiveCandidateState) => void): () => void;
   applyEvents(events: readonly CandidateEvent[]): void;
@@ -152,9 +160,15 @@ export interface LiveCandidateAdapter {
 
 export interface LiveCandidateAdapterOptions {
   readonly projectId: ProjectId;
-  readonly bridge: Pick<DesktopBridge, 'dispatchCandidate'>;
+  readonly bridge: LiveCandidateBridge;
   readonly createRequestId?: () => string;
 }
+
+/** Small Renderer-facing seam shared by the live adapter and its fake. */
+export type LiveCandidateBridge = Pick<
+  DesktopBridge,
+  'dispatchCandidate' | 'readCandidateState' | 'onCandidateEvent'
+>;
 
 const defaultRequestId = (): string => `candidate-${crypto.randomUUID()}`;
 
@@ -214,16 +228,77 @@ export const createLiveCandidateAdapter = ({
   createRequestId = defaultRequestId,
 }: LiveCandidateAdapterOptions): LiveCandidateAdapter => {
   let state = initialState(projectId);
+  let lastSequence = -1;
   let disposed = false;
   const listeners = new Set<(value: LiveCandidateState) => void>();
 
-  const publish = (events: readonly CandidateEvent[]): void => {
-    if (disposed || events.length === 0) return;
-    state = reduceLiveCandidateState(state, { type: 'events', events });
+  const publishState = (next: LiveCandidateState): void => {
+    state = next;
     for (const listener of [...listeners]) {
       if (listeners.has(listener)) listener(state);
     }
   };
+
+  const publish = (events: readonly CandidateEvent[]): void => {
+    if (disposed || events.length === 0) return;
+    const freshEvents = events.filter((event) => event.sequence > lastSequence);
+    if (freshEvents.length === 0) return;
+    lastSequence = Math.max(
+      lastSequence,
+      ...freshEvents.map((event) => event.sequence),
+    );
+    const next = reduceLiveCandidateState(state, {
+      type: 'events',
+      events: freshEvents,
+    });
+    if (next !== state) publishState(next);
+  };
+
+  const applySnapshot = (snapshot: CandidateStateSnapshot): void => {
+    if (
+      disposed ||
+      snapshot.projectId !== projectId ||
+      snapshot.sequence <= lastSequence
+    )
+      return;
+    lastSequence = snapshot.sequence;
+    publishState({
+      status:
+        snapshot.candidate === null
+          ? snapshot.task === null
+            ? 'none'
+            : 'building'
+          : candidateStatus(snapshot.candidate),
+      projectId,
+      candidate: snapshot.candidate,
+      task: snapshot.task,
+      error: null,
+      committedRevision: null,
+    });
+  };
+
+  let resolveReady: () => void = () => undefined;
+  const readyPromise = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
+  const unsubscribeFromCore = bridge.onCandidateEvent(
+    (notification: CoreCandidateEventNotification) => {
+      if (notification.projectId === projectId) publish([notification.event]);
+    },
+  );
+  const initialize = async (): Promise<void> => {
+    try {
+      const result: CandidateStateResult =
+        await bridge.readCandidateState(projectId);
+      if (result.ok) applySnapshot(result.state);
+    } catch {
+      // A Core read can race service startup. The event subscription remains
+      // active and a later project reconnect will bootstrap a fresh adapter.
+    } finally {
+      resolveReady();
+    }
+  };
+  void initialize();
 
   const execute = async (
     intent:
@@ -245,6 +320,7 @@ export const createLiveCandidateAdapter = ({
   };
 
   return {
+    ready: () => readyPromise,
     getState: () => state,
     subscribe: (listener) => {
       if (disposed) return () => undefined;
@@ -257,6 +333,7 @@ export const createLiveCandidateAdapter = ({
     accept: () => execute({ type: 'accept' }),
     reject: () => execute({ type: 'reject' }),
     dispose: () => {
+      unsubscribeFromCore();
       disposed = true;
       listeners.clear();
     },

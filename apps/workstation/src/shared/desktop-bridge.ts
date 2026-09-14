@@ -8,13 +8,16 @@ import type {
   ProjectDirectoryPurpose,
   ProjectCommandResult,
   CandidateCommandResult,
+  CandidateStateResult,
   DesktopAgentCommandResult,
 } from './shell-contracts.js';
 import type { CorePlaybackResponse } from './playback-bridge.js';
+import type { CoreCandidateEventNotification } from './candidate-bridge.js';
 import type {
   AgentCommand,
   AgentEvent,
   CandidateCommand,
+  ProjectId,
   ProjectCommand,
 } from '@agent-music/contracts';
 export interface DesktopBridge {
@@ -29,6 +32,10 @@ export interface DesktopBridge {
   chooseExportPath(request: ExportPathRequest): Promise<FileDialogResult>;
   dispatchProject(command: ProjectCommand): Promise<ProjectCommandResult>;
   dispatchCandidate(command: CandidateCommand): Promise<CandidateCommandResult>;
+  readCandidateState(projectId: ProjectId): Promise<CandidateStateResult>;
+  onCandidateEvent(
+    listener: (notification: CoreCandidateEventNotification) => void,
+  ): () => void;
   dispatchAgent(command: AgentCommand): Promise<DesktopAgentCommandResult>;
   onAgentEvent(listener: (event: AgentEvent) => void): () => void;
   readCurrentPlayback(): Promise<CorePlaybackResponse | null>;

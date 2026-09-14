@@ -21,7 +21,9 @@ it('exposes only the DesktopBridge allowlist and no raw Electron objects', async
     'dispatchProject',
     'getServiceSnapshot',
     'onAgentEvent',
+    'onCandidateEvent',
     'onServiceSnapshot',
+    'readCandidateState',
     'readCurrentPlayback',
     'restartService',
   ]);

@@ -18,7 +18,12 @@ import {
 } from '../../shared/project-bridge.js';
 import {
   isCoreCandidateResponse,
+  isCoreCandidateEventNotification,
+  isCoreCandidateStateResponse,
+  type CandidateStateSnapshot,
+  type CoreCandidateEventNotification,
   type CoreCandidateRequest,
+  type CoreCandidateStateRequest,
 } from '../../shared/candidate-bridge.js';
 import {
   isCorePlaybackResponse,
@@ -52,6 +57,12 @@ export interface ServiceSupervisor {
   dispatchCandidate(
     command: CoreCandidateRequest['command'],
   ): Promise<readonly CandidateEvent[]>;
+  readCandidateState(
+    projectId: CoreCandidateStateRequest['projectId'],
+  ): Promise<CandidateStateSnapshot>;
+  onCandidateEvent(
+    listener: (notification: CoreCandidateEventNotification) => void,
+  ): () => void;
   dispatchAgent(command: AgentCommand): Promise<AgentCommandResult>;
   onAgentEvent(listener: (event: AgentEvent) => void): () => void;
   readCurrentPlayback(): Promise<CorePlaybackResponse>;
@@ -129,6 +140,16 @@ export const createServiceSupervisor = (
       readonly timeout: ReturnType<typeof setTimeout>;
     }
   >();
+  const pendingCandidateStates = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly projectId: CoreCandidateStateRequest['projectId'];
+      readonly resolve: (state: CandidateStateSnapshot) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
   const pendingAgents = new Map<
     string,
     {
@@ -139,6 +160,9 @@ export const createServiceSupervisor = (
     }
   >();
   const agentEventListeners = new Set<(event: AgentEvent) => void>();
+  const candidateEventListeners = new Set<
+    (notification: CoreCandidateEventNotification) => void
+  >();
   const listeners = new Set<(value: ServiceFleetSnapshot) => void>();
   let stopping = false;
   let requestSequence = 0;
@@ -228,6 +252,12 @@ export const createServiceSupervisor = (
         cancel(pending.timeout);
         pending.reject(new Error('The Music Core process restarted.'));
         pendingCandidates.delete(requestId);
+      }
+      for (const [requestId, pending] of pendingCandidateStates) {
+        if (pending.generation !== generations.core) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Music Core process restarted.'));
+        pendingCandidateStates.delete(requestId);
       }
     }
     if (service === 'agent') {
@@ -444,6 +474,27 @@ export const createServiceSupervisor = (
         pendingCandidates.delete(message.requestId);
         pending.resolve(message.events);
       }
+      return;
+    }
+    if (service === 'core' && isCoreCandidateStateResponse(message)) {
+      const pending = pendingCandidateStates.get(message.requestId);
+      if (pending?.generation === generation) {
+        cancel(pending.timeout);
+        pendingCandidateStates.delete(message.requestId);
+        if (pending.projectId !== message.state.projectId) {
+          pending.reject(
+            new Error('Music Core returned the wrong project state.'),
+          );
+        } else {
+          pending.resolve(message.state);
+        }
+      }
+      return;
+    }
+    if (service === 'core' && isCoreCandidateEventNotification(message)) {
+      candidateEventListeners.forEach((listener) => {
+        listener(message);
+      });
       return;
     }
     if (service === 'agent' && isAgentProcessEvent(message)) {
@@ -712,6 +763,50 @@ export const createServiceSupervisor = (
       });
     },
 
+    readCandidateState(projectId) {
+      if (states.core !== 'ready') {
+        return Promise.reject(new Error('Music Core is not ready.'));
+      }
+      const process = processes.get('core');
+      if (process === undefined) {
+        return Promise.reject(new Error('Music Core is unavailable.'));
+      }
+      const requestId = `candidate-state-${String(++requestSequence)}`;
+      const generation = generations.core;
+      if (pendingCandidateStates.has(requestId)) {
+        return Promise.reject(
+          new Error('A matching Candidate state request is already pending.'),
+        );
+      }
+      return new Promise<CandidateStateSnapshot>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingCandidateStates.delete(requestId);
+          reject(new Error('Music Core did not return Candidate state.'));
+        }, 15_000);
+        pendingCandidateStates.set(requestId, {
+          generation,
+          projectId,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send({
+            type: 'candidateState.read',
+            protocolVersion: 1,
+            requestId,
+            projectId,
+          } satisfies CoreCandidateStateRequest);
+        } catch {
+          cancel(timeout);
+          pendingCandidateStates.delete(requestId);
+          reject(
+            new Error('Music Core could not receive Candidate state request.'),
+          );
+        }
+      });
+    },
+
     dispatchAgent(command) {
       if (states.agent !== 'ready') {
         return Promise.reject(new Error('Agent service is not ready.'));
@@ -751,6 +846,13 @@ export const createServiceSupervisor = (
       agentEventListeners.add(listener);
       return () => {
         agentEventListeners.delete(listener);
+      };
+    },
+
+    onCandidateEvent(listener) {
+      candidateEventListeners.add(listener);
+      return () => {
+        candidateEventListeners.delete(listener);
       };
     },
   };

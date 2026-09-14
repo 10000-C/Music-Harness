@@ -2,14 +2,13 @@ import type {
   MainToServiceMessage,
   ServiceKind,
 } from '../../shared/service-lifecycle.js';
-import type {
-  AgentCommand,
-  AgentProcessCommand,
-} from '@agent-music/contracts';
+import type { AgentCommand, AgentProcessCommand } from '@agent-music/contracts';
+import type { CoreCandidateStateRequest } from '../../shared/candidate-bridge.js';
 
 /** Messages accepted by a managed Core or Agent process transport. */
 export type ManagedProcessMessage =
   | MainToServiceMessage
+  | CoreCandidateStateRequest
   | AgentProcessCommand
   | AgentCommand;
 

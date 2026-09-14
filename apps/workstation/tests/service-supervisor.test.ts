@@ -19,8 +19,7 @@ const createServiceSupervisor: typeof createProductionServiceSupervisor = (
     ...options,
   });
 
-const agentProjectId =
-  '00000000-0000-4000-8000-000000000002' as ProjectId;
+const agentProjectId = '00000000-0000-4000-8000-000000000002' as ProjectId;
 
 const adapter = (): ManagedProcessAdapter & {
   emit(service: 'core' | 'agent', message: unknown): void;
@@ -190,6 +189,59 @@ describe('ServiceSupervisor', () => {
       events,
     });
     await expect(pending).resolves.toEqual(events);
+  });
+  it('reads Candidate state and publishes project-scoped Core notifications', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+
+    const notifications: unknown[] = [];
+    supervisor.onCandidateEvent((notification) => {
+      notifications.push(notification);
+    });
+    const pending = supervisor.readCandidateState(
+      '00000000-0000-4000-8000-000000000001' as ProjectId,
+    );
+    const request = processes.sent.find(
+      (message): message is { type: string; requestId: string } =>
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { type?: string }).type === 'candidateState.read',
+    );
+    expect(request).toBeDefined();
+    processes.emit('core', {
+      type: 'candidateState.readResult',
+      protocolVersion: 1,
+      requestId: request?.requestId,
+      state: {
+        projectId: '00000000-0000-4000-8000-000000000001',
+        sequence: 4,
+        candidate: null,
+        task: null,
+      },
+    });
+    await expect(pending).resolves.toMatchObject({
+      sequence: 4,
+      candidate: null,
+    });
+
+    const notification = {
+      type: 'candidateState.event' as const,
+      protocolVersion: 1 as const,
+      projectId: '00000000-0000-4000-8000-000000000001' as ProjectId,
+      event: {
+        type: 'candidate.changed' as const,
+        requestId: 'candidate-event-1',
+        sequence: 5,
+      },
+    };
+    processes.emit('core', notification);
+    expect(notifications).toEqual([notification]);
   });
   it('keeps an in-flight Core command when the Agent restarts', async () => {
     const processes = adapter();
@@ -685,4 +737,3 @@ describe('ServiceSupervisor', () => {
     expect(agentEvents.length).toBe(1);
   });
 });
-

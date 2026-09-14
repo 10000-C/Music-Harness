@@ -1,11 +1,14 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import { isServiceKind } from '../shared/service-lifecycle.js';
+import { isProjectId } from '../shared/candidate-bridge.js';
 import {
   isExportPathRequest,
   isProjectDirectoryPurpose,
   isProjectCommand,
   isCandidateCommand,
   isCandidateCommandResult,
+  isCandidateEventNotification,
+  isCandidateStateResult,
   isCorePlaybackResponse,
   isAgentCommand,
   isAgentEvent,
@@ -107,6 +110,37 @@ export const registerShellIpc = (
       }
     },
   );
+  ipcMain.handle(
+    shellIpcChannels.candidateState,
+    async (_event, projectId: unknown) => {
+      if (!isProjectId(projectId)) {
+        return {
+          ok: false,
+          code: 'INVALID_PROJECT_ID',
+          userMessage: 'Invalid project identity.',
+        };
+      }
+      try {
+        const result = {
+          ok: true as const,
+          state: await supervisor.readCandidateState(projectId),
+        };
+        return isCandidateStateResult(result)
+          ? result
+          : {
+              ok: false,
+              code: 'CORE_INVALID_RESPONSE',
+              userMessage: 'Music Core returned invalid Candidate state.',
+            };
+      } catch {
+        return {
+          ok: false,
+          code: 'CORE_UNAVAILABLE',
+          userMessage: 'Music Core is unavailable. Try again.',
+        };
+      }
+    },
+  );
   ipcMain.handle(shellIpcChannels.playback, async () => {
     try {
       const result = await supervisor.readCurrentPlayback();
@@ -148,7 +182,9 @@ export const registerShellIpc = (
       return { ok: true, result };
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : 'Agent service is unavailable.';
+        error instanceof Error
+          ? error.message
+          : 'Agent service is unavailable.';
       const code =
         error instanceof Error &&
         'code' in error &&
@@ -178,9 +214,18 @@ export const registerShellIpc = (
     )
       window.webContents.send(shellIpcChannels.agentEvent, event);
   });
+  const unsubscribeCandidate = supervisor.onCandidateEvent((notification) => {
+    if (
+      isCandidateEventNotification(notification) &&
+      !window.isDestroyed() &&
+      !window.webContents.isDestroyed()
+    )
+      window.webContents.send(shellIpcChannels.candidateEvent, notification);
+  });
   return () => {
     unsubscribeSnapshot();
     unsubscribeAgent();
+    unsubscribeCandidate();
     Object.values(shellIpcChannels).forEach((channel) => {
       ipcMain.removeHandler(channel);
     });
