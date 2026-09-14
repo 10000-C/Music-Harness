@@ -64,26 +64,31 @@ pnpm --filter @agent-music/workstation dev
 
 This starts electron-vite in dev mode: it builds the main/preload processes, serves the renderer at `http://localhost:5173`, and opens the Electron window.
 
-There are two service-fleet modes, selected by environment variables (see [`service-entry-resolver.ts`](apps/workstation/src/main/service-entry-resolver.ts)):
+There are three service-fleet modes, selected by environment variables (see [`service-entry-resolver.ts`](apps/workstation/src/main/service-entry-resolver.ts)):
 
-| Mode                    | Env vars                      | core (project) service | agent service |
-| ----------------------- | ----------------------------- | ---------------------- | ------------- |
-| UI-only (default `dev`) | `AGENT_MUSIC_FAKE_SERVICES=1` | fake stub              | fake stub     |
-| Real core + fake agent  | `AGENT_MUSIC_FAKE_AGENT=1`    | real project service   | fake stub     |
+| Mode                              | Env vars                      | core (project) service            | agent service                  |
+| --------------------------------- | ----------------------------- | --------------------------------- | ------------------------------ |
+| UI-only (default `pnpm dev`)      | `AGENT_MUSIC_FAKE_SERVICES=1` | fake stub                         | fake stub                      |
+| Real core + fake agent            | `AGENT_MUSIC_FAKE_AGENT=1`    | real project service + MCP server | fake stub                      |
+| Full real stack (`pnpm dev:real`) | _(none)_                      | real project service + MCP server | real Agent process via Strands |
 
-The default `dev` script uses `AGENT_MUSIC_FAKE_SERVICES=1`, so **both** services are stubs — the UI renders, but `project.create` and other core commands are silently dropped. To actually create and edit projects, run with the real core:
+The default `dev` script uses `AGENT_MUSIC_FAKE_SERVICES=1`, so **both** services are stubs — the UI renders, but `project.create` and other core commands are silently dropped.
+
+To run the **full production stack** with real Core (MCP server) and real Agent:
 
 ```bash
-# bash / zsh
-cd apps/workstation
-AGENT_MUSIC_FAKE_AGENT=1 AGENT_MUSIC_INCLUDE_FAKE_SERVICES=1 electron-vite dev
-
-# PowerShell
-cd apps/workstation
-$env:AGENT_MUSIC_FAKE_AGENT = "1"
-$env:AGENT_MUSIC_INCLUDE_FAKE_SERVICES = "1"
-electron-vite dev
+pnpm --filter @agent-music/workstation dev:real
+# or: cd apps/workstation && pnpm dev:real
 ```
+
+### Environment variables
+
+| Variable                    | Description                                                           | Default                           |
+| --------------------------- | --------------------------------------------------------------------- | --------------------------------- |
+| `AGENT_MUSIC_HOME`          | Root directory for runtime descriptor, settings, and session storage  | `~/.agent-music`                  |
+| `AGENT_MUSIC_AGENT_ENTRY`   | File path override for the Agent child process entry script           | `out/main/agent-service-entry.js` |
+| `AGENT_MUSIC_FAKE_SERVICES` | Set to `1` to run all services as lightweight stubs                   | _(unset)_                         |
+| `AGENT_MUSIC_FAKE_AGENT`    | Set to `1` to run only the Agent service as a stub while Core is real | _(unset)_                         |
 
 ### Known gotcha: VS Code terminal
 
@@ -115,14 +120,16 @@ Root:
 
 Workstation (`apps/workstation`):
 
-| Command                  | What it does                                   |
-| ------------------------ | ---------------------------------------------- |
-| `pnpm dev`               | Launch the Electron app in dev mode            |
-| `pnpm dev:renderer`      | Run only the renderer dev server               |
-| `pnpm build`             | Production build via electron-vite             |
-| `pnpm test`              | Unit/integration tests                         |
-| `pnpm smoke:shell`       | Desktop-shell smoke test (builds first)        |
-| `pnpm smoke:spessasynth` | SpessaSynth playback smoke test (builds first) |
+| Command                  | What it does                                                    |
+| ------------------------ | --------------------------------------------------------------- |
+| `pnpm dev`               | Launch the Electron app in stub dev mode                        |
+| `pnpm dev:real`          | Launch with real Core (MCP server) and real Agent child process |
+| `pnpm dev:renderer`      | Run only the renderer dev server                                |
+| `pnpm build`             | Production build via electron-vite                              |
+| `pnpm test`              | Unit/integration tests                                          |
+| `pnpm smoke:shell`       | Desktop-shell smoke test with fake services (builds first)      |
+| `pnpm smoke:real`        | Real dual-process smoke test with embedded MCP server           |
+| `pnpm smoke:spessasynth` | SpessaSynth playback smoke test (builds first)                  |
 
 ## License
 

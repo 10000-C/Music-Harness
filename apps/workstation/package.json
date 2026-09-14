@@ -6,12 +6,14 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "cross-env AGENT_MUSIC_FAKE_SERVICES=1 AGENT_MUSIC_INCLUDE_FAKE_SERVICES=1 electron-vite dev",
+    "dev:real": "electron-vite dev",
     "dev:renderer": "vite src/renderer --config renderer.vite.config.ts",
     "build": "electron-vite build",
     "typecheck": "tsc --project tsconfig.json && tsc --project tsconfig.renderer.json",
     "test": "vitest run --config vitest.config.ts",
     "build:smoke": "cross-env AGENT_MUSIC_INCLUDE_FAKE_SERVICES=1 electron-vite build",
     "smoke:shell": "pnpm build:smoke && vitest run tests/desktop-shell.smoke.test.ts --config vitest.smoke.config.ts",
+    "smoke:real": "pnpm build:smoke && vitest run tests/real-services.smoke.test.ts --config vitest.smoke.config.ts",
     "smoke:spessasynth": "pnpm build:smoke && vitest run tests/spessasynth.smoke.test.ts --config vitest.smoke.config.ts"
   },
   "dependencies": {

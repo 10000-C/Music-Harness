@@ -852,6 +852,30 @@ const LiveProjectWorkspace = () => {
   const [selectedExportPaths, setSelectedExportPaths] = useState<
     Partial<Record<ExportCurrentFormat, string>>
   >({});
+  const [serviceSnapshot, setServiceSnapshot] =
+    useState<ServiceFleetSnapshot | null>(null);
+
+  useEffect(() => {
+    const bridge = window.agentMusic;
+    if (bridge === undefined) return undefined;
+
+    let active = true;
+    void bridge
+      .getServiceSnapshot()
+      .then((snapshot) => {
+        if (active) setServiceSnapshot(snapshot);
+      })
+      .catch(() => {
+        if (active) setServiceSnapshot(unavailableServiceSnapshot());
+      });
+    const unsubscribe = bridge.onServiceSnapshot((snapshot) => {
+      if (active) setServiceSnapshot(snapshot);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -1116,11 +1140,17 @@ const LiveProjectWorkspace = () => {
     [project],
   );
 
+  const coreReady = serviceSnapshot?.core === 'ready';
+
   const selectAndDispatch = useCallback(
     async (purpose: 'create' | 'open' | 'saveAs') => {
       const bridge = window.agentMusic;
       if (bridge === undefined) {
         setMessage('The secure desktop bridge is unavailable.');
+        return;
+      }
+      if (serviceSnapshot?.core !== 'ready') {
+        setMessage('Music Core is starting. Please wait a moment...');
         return;
       }
       const chosen = await bridge.chooseProjectDirectory(purpose);
@@ -1288,15 +1318,15 @@ const LiveProjectWorkspace = () => {
                   <button
                     type="button"
                     className="project-empty-state__primary"
-                    disabled={busy}
+                    disabled={busy || !coreReady}
                     onClick={() => void selectAndDispatch('create')}
                   >
-                    Create Project
+                    {coreReady ? 'Create Project' : 'Starting Core...'}
                   </button>
                   <button
                     type="button"
                     className="project-empty-state__secondary"
-                    disabled={busy}
+                    disabled={busy || !coreReady}
                     onClick={() => void selectAndDispatch('open')}
                   >
                     Open Project
@@ -1305,8 +1335,14 @@ const LiveProjectWorkspace = () => {
                 <p className="project-empty-state__note">
                   Your Current stays local, isolated, and recoverable.
                 </p>
-                {message !== 'Ready.' && (
-                  <p className="project-empty-state__message">{message}</p>
+                {!coreReady ? (
+                  <p className="project-empty-state__message">
+                    Initializing Music Core engine...
+                  </p>
+                ) : (
+                  message !== 'Ready.' && (
+                    <p className="project-empty-state__message">{message}</p>
+                  )
                 )}
               </section>
             ) : (
@@ -1362,14 +1398,14 @@ const LiveProjectWorkspace = () => {
                   <div className="project-header__actions">
                     <button
                       type="button"
-                      disabled={busy}
+                      disabled={busy || !coreReady}
                       onClick={() => void selectAndDispatch('saveAs')}
                     >
                       Save As
                     </button>
                     <button
                       type="button"
-                      disabled={busy}
+                      disabled={busy || !coreReady}
                       onClick={() =>
                         void dispatch({
                           type: 'project.recoverCurrent',
@@ -1381,7 +1417,7 @@ const LiveProjectWorkspace = () => {
                     </button>
                     <button
                       type="button"
-                      disabled={busy}
+                      disabled={busy || !coreReady}
                       onClick={() =>
                         void dispatch({
                           type: 'project.close',

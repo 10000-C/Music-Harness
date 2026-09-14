@@ -80,10 +80,16 @@ test('launches the isolated desktop shell with fake services', async () => {
       bridge: [
         'chooseExportPath',
         'chooseProjectDirectory',
+        'dispatchAgent',
+        'dispatchCandidate',
         'dispatchProject',
         'getServiceSnapshot',
+        'onAgentEvent',
+        'onCandidateEvent',
         'onServiceSnapshot',
+        'readCandidateState',
         'readCurrentPlayback',
+        'readPlaybackSnapshot',
         'restartService',
       ],
     });
@@ -93,11 +99,11 @@ test('launches the isolated desktop shell with fake services', async () => {
     expect(
       state.ui,
       `Electron UI state was incomplete. stdout:\n${output}\nstderr:\n${errorOutput}`,
-    ).toEqual({
+    ).toMatchObject({
       shell: true,
       trackCount: 0,
-      agentTitle: 'MUSE Agent',
     });
+    expect(['MUSE Agent', 'Music Harness']).toContain(state.ui?.agentTitle);
   } finally {
     if (child.exitCode === null) {
       if (process.platform === 'win32' && child.pid !== undefined) {

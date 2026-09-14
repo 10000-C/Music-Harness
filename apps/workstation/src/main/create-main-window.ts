@@ -167,15 +167,19 @@ export const createMainWindow = (
           `(async () => {
             const bridge = globalThis.agentMusic;
             await new Promise((resolve) => {
-              const deadline = Date.now() + 5000;
-              const poll = () => {
-                if (document.querySelector('.live-project-workspace, .workstation-shell') !== null || Date.now() >= deadline) {
+              const deadline = Date.now() + 10000;
+              const poll = async () => {
+                const snapshot = await bridge?.getServiceSnapshot?.();
+                const domReady =
+                  document.querySelector('.live-project-workspace, .workstation-shell') !== null;
+                const coreReady = snapshot?.core === 'ready';
+                if ((domReady && coreReady) || Date.now() >= deadline) {
                   resolve(undefined);
                   return;
                 }
                 setTimeout(poll, 25);
               };
-              poll();
+              void poll();
             });
             const projectPath = ${JSON.stringify(process.env.AGENT_MUSIC_B2_SMOKE_PROJECT ?? '')};
             let projectFlow;
@@ -202,7 +206,10 @@ export const createMainWindow = (
               ui: {
                 shell: document.querySelector('.live-project-workspace, .workstation-shell') !== null,
                 trackCount: document.querySelectorAll('.track-row[data-track-id]').length,
-                agentTitle: document.querySelector('.agent-panel__header h2')?.textContent ?? null
+                agentTitle:
+                  document.querySelector(
+                    '.agent-panel__header h2, .agent-chat__header h2',
+                  )?.textContent ?? null,
               }
             };
           })()`,
