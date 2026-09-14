@@ -13,6 +13,7 @@ export default tseslint.config(
       '**/.turbo/**',
       '**/.agent-music/**',
       '**/.worktrees/**',
+      '**/.claude/**',
     ],
   },
   eslint.configs.recommended,

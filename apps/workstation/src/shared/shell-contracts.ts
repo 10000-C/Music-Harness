@@ -65,6 +65,8 @@ export const shellIpcChannels = {
   operationEvent: 'shell:operation:event',
   exportPrepare: 'shell:export:prepare',
   exportWrite: 'shell:export:write',
+  settingsRead: 'shell:settings:read',
+  settingsWrite: 'shell:settings:write',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';

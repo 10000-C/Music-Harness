@@ -9,10 +9,10 @@ export const formatScope = (
   const formatRange = (range: TickRange) =>
     timeline !== null
       ? formatBarRange(range, timeline)
-      : `Ticks ${range.startTick}–${range.endTick}`;
+      : `Ticks ${String(range.startTick)}–${String(range.endTick)}`;
 
   const label =
-    scope.type === 'wholeProject' ? '全工程 (Whole Project)' : formatRange(scope);
+    scope.type === 'wholeProject' ? '全工程' : formatRange(scope);
   const tracks =
     scope.trackIds.length === 0
       ? 'All tracks'

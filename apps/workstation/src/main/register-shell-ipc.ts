@@ -23,6 +23,7 @@ import {
 } from '../shared/export-bridge.js';
 import { chooseExportPath, chooseProjectDirectory } from './desktop-dialogs.js';
 import { AtomicExportFileWriter } from './export-file-writer.js';
+import { readAgentSettings, writeAgentSettings } from './settings-manager.js';
 import { isServiceFleetSnapshot } from '../shared/service-status.js';
 import type { ServiceSupervisor } from './service-supervisor/index.js';
 
@@ -295,6 +296,15 @@ export const registerShellIpc = (
       };
     }
   });
+  ipcMain.handle(shellIpcChannels.settingsRead, async () => {
+    return await readAgentSettings();
+  });
+  ipcMain.handle(
+    shellIpcChannels.settingsWrite,
+    async (_event, settings: unknown) => {
+      return await writeAgentSettings(settings);
+    }
+  );
   const unsubscribeSnapshot = supervisor.subscribe((snapshot) => {
     if (
       isServiceFleetSnapshot(snapshot) &&

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { isAgentSettings } from '../shared/settings-bridge.js';
 import { isServiceKind } from '../shared/service-lifecycle.js';
 import { isProjectId } from '../shared/candidate-bridge.js';
 import { isPlaybackSnapshotSource } from '../shared/playback-bridge.js';
@@ -277,6 +278,26 @@ const bridge = {
           ok: false as const,
           code: 'IPC_UNAVAILABLE',
           userMessage: 'The desktop export writer is unavailable. Try again.',
+        };
+  },
+  async readSettings() {
+    const value = await invoke(shellIpcChannels.settingsRead);
+    return isAgentSettings(value) ? value : null;
+  },
+  async writeSettings(settings: unknown) {
+    if (!isAgentSettings(settings))
+      return {
+        ok: false as const,
+        code: 'INVALID_SETTINGS',
+        userMessage: 'Invalid agent settings.',
+      };
+    const value = await invoke(shellIpcChannels.settingsWrite, settings);
+    return isCommandResult(value)
+      ? value
+      : {
+          ok: false as const,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'Settings manager is unavailable.',
         };
   },
 } satisfies DesktopBridge;

@@ -1,3 +1,4 @@
+import type { AgentSettings } from './settings-bridge.js';
 import type { ServiceKind } from '../shared/service-lifecycle.js';
 import type { ServiceFleetSnapshot } from './service-status.js';
 import type {
@@ -57,6 +58,8 @@ export interface DesktopBridge extends LiveOperationBridge {
   writeCurrentExport(
     command: ExportFileWriteCommand,
   ): Promise<ExportFileWriteResult>;
+  readSettings(): Promise<AgentSettings | null>;
+  writeSettings(settings: AgentSettings): Promise<CommandResult>;
 }
 declare global {
   interface Window {

@@ -1,6 +1,6 @@
 import type { GenerationPlanOperationView } from '@agent-music/contracts';
 import type { RendererTimelineViewModel as TimelineViewModel } from '../b-contracts/index.js';
-import { formatBarRange } from './timeline/timeline-labels.js';
+import { formatScope } from './format-scope.js';
 
 interface GenerationPlanStageProps {
   readonly operation: Extract<GenerationPlanOperationView, { state: 'pending' }>;
@@ -17,28 +17,32 @@ export const GenerationPlanStage = ({
   onApprove,
   onReject,
 }: GenerationPlanStageProps) => {
-  const { scope } = operation;
-  const timeLabel =
-    scope.type === 'wholeProject'
-      ? '全工程'
-      : timeline !== null
-        ? formatBarRange(scope, timeline)
-        : `Ticks ${scope.startTick}–${scope.endTick}`;
-  const trackLabel = scope.trackIds.length === 0 ? 'All tracks' : scope.trackIds.join(', ');
+  const { label: timeLabel, tracks: trackLabel } = formatScope(
+    operation.scope,
+    timeline,
+  );
 
   return (
-    <section className="candidate-stage" aria-labelledby="generation-plan-stage-title">
+    <section
+      className="candidate-stage"
+      aria-labelledby="generation-plan-stage-title"
+    >
       <span className="candidate-stage__glow" aria-hidden="true" />
       <div className="candidate-stage__summary">
         <small>Generation Plan Ready</small>
         <h2 id="generation-plan-stage-title">Approve generation plan?</h2>
         <p>{operation.summary}</p>
-        <div className="candidate-stage__scope" style={{ marginTop: '8px', fontSize: '11px', color: '#9994a5' }}>
+        <div className="candidate-stage__scope">
           <strong>Scope:</strong> {timeLabel} | {trackLabel}
         </div>
       </div>
       <div className="candidate-stage__actions">
-        <button type="button" className="ghost-action" onClick={onReject} disabled={busy}>
+        <button
+          type="button"
+          className="ghost-action"
+          onClick={onReject}
+          disabled={busy}
+        >
           Reject
         </button>
         <button
@@ -46,7 +50,7 @@ export const GenerationPlanStage = ({
           className="primary-action"
           onClick={onApprove}
           disabled={busy}
-          title={busy ? "Processing request..." : undefined}
+          title={busy ? 'Processing request...' : undefined}
         >
           Approve Plan
         </button>

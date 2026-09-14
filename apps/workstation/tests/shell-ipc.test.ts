@@ -107,6 +107,8 @@ describe('shell Main IPC and dialogs', () => {
         channels.playbackSnapshot,
         channels.project,
         channels.restart,
+        channels.settingsRead,
+        channels.settingsWrite,
         channels.snapshot,
         channels.agent,
       ].sort(),

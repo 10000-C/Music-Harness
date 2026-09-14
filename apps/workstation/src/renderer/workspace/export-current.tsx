@@ -10,7 +10,12 @@ import {
   type ExportCurrentFormat,
 } from './export-current-model.js';
 
-export type ExportDeliveryState = 'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled';
+export type ExportDeliveryState =
+  | 'preparing'
+  | 'exporting'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 interface ExportCurrentViewProps {
   readonly projectName: string;
@@ -18,7 +23,9 @@ interface ExportCurrentViewProps {
   readonly currentReady: boolean;
   readonly playbackInputReady: boolean;
   readonly selectedPaths: Readonly<Partial<Record<ExportCurrentFormat, string>>>;
-  readonly exportStates?: Readonly<Partial<Record<ExportCurrentFormat, ExportDeliveryState>>>;
+  readonly exportStates?: Readonly<
+    Partial<Record<ExportCurrentFormat, ExportDeliveryState>>
+  >;
   readonly onChoosePath: (format: ExportCurrentFormat) => void;
   readonly onStartExport?: (format: ExportCurrentFormat) => void;
 }
@@ -113,7 +120,7 @@ export const ExportCurrentView = ({
           const canChoosePath = currentReady && playbackInputReady;
           const status = exportStates[format];
           const isBusy = status === 'preparing' || status === 'exporting';
-          
+
           return (
             <article className="export-current__format" key={format}>
               <div className="export-current__format-icon" data-format={format}>
@@ -124,12 +131,12 @@ export const ExportCurrentView = ({
                 <h2>{title}</h2>
                 <p>{detail}</p>
                 {status !== undefined && (
-                  <p className={`export-status export-status--${status}`} style={{ marginTop: '8px', fontSize: '11px', fontWeight: 'bold' }}>
+                  <p className={`export-status export-status--${status}`}>
                     Status: {status.charAt(0).toUpperCase() + status.slice(1)}
                   </p>
                 )}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div className="export-current__actions">
                 <button
                   type="button"
                   className="export-current__choose"

@@ -57,6 +57,10 @@ import { GenerationPlanStage } from './workspace/generation-plan-stage.js';
 import { ProjectSwitchConfirmation } from './workspace/project-switch-confirmation.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
+import {
+  SettingsModal,
+  type AgentSettings,
+} from './workspace/settings-modal.js';
 import { ExportCurrentView } from './workspace/export-current.js';
 import {
   exportCurrentSuggestedName,
@@ -671,7 +675,14 @@ const DemoApp = () => {
         activeView={activeView}
         projectName={projectName}
         currentLabel={currentLabel}
+        isSettingsConfigured={true}
         onViewChange={setActiveView}
+        onSwitchProject={() => {
+          setActiveView('studio');
+        }}
+        onOpenSettings={() => {
+          // Dummy for demo
+        }}
       />
 
       <main className="workspace-main" id="workspace-main">
@@ -868,7 +879,17 @@ const LiveProjectWorkspace = () => {
     path: string;
   } | null>(null);
 
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings | undefined>(
+    undefined
+  );
+
   useEffect(() => {
+    void window.agentMusic?.readSettings().then((settings) => {
+      if (settings !== null) {
+        setAgentSettings(settings);
+      }
+    });
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -1296,6 +1317,9 @@ const LiveProjectWorkspace = () => {
         <ProjectSwitchConfirmation
           source={project.projectId}
           target={pendingSwitch.path}
+          sourceName={projectName}
+          targetName={displayName(pendingSwitch.path)}
+          canSuspend={false}
           activeExecution={agentState?.isExecuting ?? false}
           activeTask={
             generationPlanState?.operation?.state === 'pending' ||
@@ -1309,11 +1333,44 @@ const LiveProjectWorkspace = () => {
                   ? { type: 'project.create', requestId, projectPath: pendingSwitch.path }
                   : { type: 'project.open', requestId, projectPath: pendingSwitch.path }
               );
+              setActiveView('studio');
               setPendingSwitch(null);
             })();
           }}
           onCancel={() => {
             setPendingSwitch(null);
+          }}
+        />
+      )}
+      {isSettingsOpen && (
+        <SettingsModal
+          initialSettings={agentSettings}
+          onSave={(settings) => {
+            void (async () => {
+              setBusy(true);
+              try {
+                if (window.agentMusic) {
+                  const result = await window.agentMusic.writeSettings(settings);
+                  if (result.ok) {
+                    setAgentSettings(settings);
+                    setIsSettingsOpen(false);
+                  } else {
+                    setMessage(
+                      `Failed to save settings: ${result.userMessage ?? 'Unknown error'}`,
+                    );
+                  }
+                } else {
+                  // Fallback for browser mock
+                  setAgentSettings(settings);
+                  setIsSettingsOpen(false);
+                }
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+          onClose={() => {
+            setIsSettingsOpen(false);
           }}
         />
       )}
@@ -1325,7 +1382,17 @@ const LiveProjectWorkspace = () => {
         projectName={projectName}
         currentLabel={currentLabel}
         projectOpen={project !== null}
+        busy={busy}
+        isSettingsConfigured={
+          agentSettings !== undefined && agentSettings.apiKey.trim() !== ''
+        }
         onViewChange={setActiveView}
+        onSwitchProject={() => {
+          void selectAndDispatch('open');
+        }}
+        onOpenSettings={() => {
+          setIsSettingsOpen(true);
+        }}
         availableViews={project === null ? ['studio'] : ['studio', 'export']}
       />
       <main className="workspace-main" id="workspace-main">
@@ -1467,6 +1534,7 @@ const LiveProjectWorkspace = () => {
                 {pendingGenerationPlan !== null ? (
                   <GenerationPlanStage
                     operation={pendingGenerationPlan}
+                    timeline={timeline}
                     busy={busy}
                     onApprove={() => {
                       void (async () => {
@@ -1500,6 +1568,7 @@ const LiveProjectWorkspace = () => {
                 ) : candidateState?.pendingScopeExtension ? (
                   <ScopeExtensionStage
                     pendingScopeExtension={candidateState.pendingScopeExtension}
+                    timeline={timeline}
                     busy={busy}
                     onApprove={() => {
                       void (async () => {
