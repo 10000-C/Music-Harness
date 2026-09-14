@@ -15,6 +15,13 @@ export {
   type AgentProcessEventSink,
   type AgentProcessServicePort,
 } from './process/index.js';
+export {
+  HttpTaskRollback,
+  HttpTaskRollbackError,
+  RuntimeDescriptorDiscovery,
+  RuntimeDescriptorError,
+} from './mcp/index.js';
+export type { HttpTaskRollbackDependencies } from './mcp/index.js';
 export { AgentService, AgentServiceError } from './service/index.js';
 export type {
   AgentConversationReader,

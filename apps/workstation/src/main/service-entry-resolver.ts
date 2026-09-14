@@ -12,5 +12,8 @@ export const resolveServiceEntry = (
   if (service === 'agent' && process.env.AGENT_MUSIC_FAKE_AGENT === '1')
     return join(__dirname, 'fake-service-entry.js');
   if (service === 'core') return join(__dirname, 'project-service-entry.js');
-  return process.env.AGENT_MUSIC_AGENT_ENTRY;
+  return (
+    process.env.AGENT_MUSIC_AGENT_ENTRY ??
+    join(__dirname, 'agent-service-entry.js')
+  );
 };

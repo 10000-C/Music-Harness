@@ -9,6 +9,7 @@
     "electron.vite.config.ts",
     "renderer.vite.config.ts",
     "vitest*.config.ts",
+    "src/agent/**/*.ts",
     "src/core/**/*.ts",
     "src/dev/**/*.ts",
     "src/main/**/*.ts",
