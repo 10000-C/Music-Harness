@@ -1,136 +1,315 @@
-# Agent Music Workstation
+# Lie
 
-A **local-first, agent-first desktop music creation workstation**. You describe a musical idea in natural language; an agent, constrained by a local MCP tool surface, creates and edits a structured composition. The canonical [ABC](https://abcnotation.com/) file is the single source of truth, from which Standard MIDI, the openDAW runtime state, and audio export are all derived.
+### The Music Harness
 
-> **Status:** early development (`0.0.0`). The P0 product scope and architecture decisions are frozen in [`docs/`](docs/). The desktop shell, music core, timeline UI, and SpessaSynth playback are wired together; the agent runtime (`apps/agent`) is still a stub.
+An agent-first music workstation for structured, controllable, and editable composition.
 
-## How it works
+> **Think Claude Code for music:** describe an intent, let the agent edit a structured project, audition the candidate, then accept or reject the change.
 
-- **Electron desktop app** (Windows 10/11 first) with a **React + TypeScript** renderer.
-- The renderer talks to a **core service** (a separate child process) over typed IPC — not directly to the filesystem or Git.
-- The core service owns the music domain: compositions are stored as a single canonical `composition.abc`, and edits are staged through a **Candidate → Task → Git worktree** transaction model before being accepted as the new `Current`.
-- Playback runs in the renderer via **openDAW / SpessaSynth**.
-- The **agent service** (planned) will drive edits through a local **MCP** tool surface; it is currently stubbed behind a fake-services flag.
+<p align="left">
+  <a href="#license"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache-2.0" /></a>
+  <img src="https://img.shields.io/badge/Platform-Windows_10%2F11_First-0078D6?logo=windows&logoColor=white" alt="Platform: Windows First" />
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D24_%3C25-339933?logo=node.js&logoColor=white" alt="Node.js version" />
+  <img src="https://img.shields.io/badge/pnpm-%3E%3D9_%3C10-F69220?logo=pnpm&logoColor=white" alt="pnpm version" />
+  <img src="https://img.shields.io/badge/Architecture-Local--First_%7C_Agent--First-success" alt="Architecture" />
+</p>
 
-## Repository layout
+---
+
+<!-- DEMO PLACEHOLDER: Add walkthrough video, GIF, or screenshot here (e.g. ![Lie Walkthrough](docs/assets/demo.gif)) -->
+
+## The 10-Second Pitch: How Lie Works
+
+Lie brings explicit boundaries, validation, and transactional workflows inspired by modern software engineering into music composition.
 
 ```
-agent-music-workstation/
+User Intent (Natural Language)
+               │
+               ▼
+   Bounded Task Scope (UI-Selected Measures & Tracks)
+               │
+               ▼
+   Agent Runtime (Strands Engine + Music Style Skills)
+               │
+               ▼
+   Music Core MCP Tools (Constrained Musical Mutation Surface)
+               │
+               ▼
+   Candidate Workspace (Isolated Git Worktree)
+               │
+               ▼
+   Deterministic Validation (Barline, Meter & Velocity Diagnostics)
+               │
+               ▼
+   A/B Audition (Compare Stable Current vs Proposed Candidate)
+               │
+       ┌───────┴───────┐
+       ▼               ▼
+[ Accept Change ]  [ Reject Change ]
+(Advance Project)  (Clean Rollback)
+```
+
+---
+
+## What is Lie?
+
+### Comparison & Problem Space
+
+| Dimension | Traditional DAWs & DAW-MCPs (Ableton, Logic, Cubase) | End-to-End Generative AI (Suno, Udio) | **Lie (The Music Harness)** |
+| :--- | :--- | :--- | :--- |
+| **Representation** | Complex project state & plugin-specific formats | Primarily rendered audio outputs | **Project Canonical ABC Profile (structured text)** |
+| **AI Interaction** | External scripting overhead & GUI automation constraints | Prompt-in, flattened-waveform-out | **Constrained, domain-specific MCP tool surface** |
+| **Edit Control** | Manual routing overhead; high barrier to entry | Limited fine-grained structural editing | **UI Task Scope restricts edits to designated measures/tracks** |
+| **State Management**| Local undo history | Generation-oriented revision workflow | **Git-backed `Current` vs `Candidate` isolation** |
+| **Verification** | Manual auditioning for errors | Output-level issues often require regeneration or external audio editing | **Deterministic syntax & duration checks with agent self-repair** |
+| **Portability** | Proprietary project formats & plugin dependencies | Primarily rendered audio output | **Multi-track Standard MIDI (.mid) & rendered WAV export** |
+
+### Core Philosophy: The Music Harness
+
+Lie does not treat AI as a monolithic audio generator. Instead, it provides an **agentic music harness**:
+- The human creator directs **what** to compose via natural language and defines **where** to compose via timeline UI selection.
+- The language model reasons about harmony, arrangement, and groove, but is restricted to a **constrained MCP tool surface with explicit authorization boundaries**.
+- Project mutations are validated deterministically, audited in an isolated workspace, and merged into the project only upon explicit user acceptance.
+
+---
+
+## Key Features
+
+### 1. Project Canonical ABC Profile
+Musical compositions are stored in a canonicalized ABC profile defined by Lie. This structured, text-based representation serves as the single source of truth from which all downstream artifacts are deterministically derived:
+- Multi-track Standard MIDI (`.mid`) files
+- Playback engine runtime states (openDAW / SpessaSynth)
+- Rendered audio exports (`.wav`)
+
+### 2. Opinionated Six-Role Arrangement Model
+To maintain a clear, intentionally constrained arrangement model, the current workstation scope organizes projects around a fixed six-role ensemble:
+- 🥁 `track.drums`: Rhythmic foundation, groove, velocity dynamics, and fills
+- 🎸 `track.bass`: Harmonic root motion and rhythmic anchor
+- 🎸 `track.guitar`: Rhythmic comping, riffs, arpeggios, and lead lines
+- 🎹 `track.keys`: Chords, harmonic pad textures, and counter-melodies
+- 🎻 `track.strings`: Sustained pads, dynamic swells, and counterpoint
+- 🎷 `track.winds`: Melodic accents, solo lines, and horn stabs
+
+### 3. Scope-Constrained Editing (Bounded Task Scope)
+When the user highlights specific measures and tracks on the timeline, that selection establishes an explicit authorization boundary (**Task Scope**):
+- The Agent is authorized to modify *only* the designated tracks and time range.
+- The Agent cannot alter measures or tracks outside this active scope.
+- If broader modifications are required, the Agent must request a `requestScopeExtension` operation, which requires explicit user approval before execution.
+
+### 4. Candidate Transactions & A/B Audition
+- **Stable Current Baseline:** The verified baseline composition remains untouched during agent execution.
+- **Isolated Candidate:** The Agent stages mutations inside an isolated Git worktree branch (`Candidate`).
+- **A/B Audition:** The user can switch playback between the stable `Current` state and the proposed `Candidate` state inside the desktop shell.
+- **Accept / Reject Workflow:** Accepting advances the project to the new revision; rejecting cleanly discards the candidate worktree without project state leakage.
+
+### 5. Deterministic Validation & Autonomous Self-Repair
+Before a candidate reaches user audition, it passes through an automated validation engine:
+- **Barline & Duration Checks:** Verifies that every voice strictly matches the tick duration dictated by the project meter.
+- **Tie-Chain Integrity:** Confirms tied notes resolve to matching pitches across measure boundaries.
+- **MIDI Parameter Boundaries:** Enforces velocity bounds (`1–127`) and pitch ranges.
+- **Tick-0 Authority:** Verifies that global tempo (`Q:`) and time signature (`M:`) are established exclusively at Tick-0 to prevent voice desynchronization.
+- **Structured Error Feedback:** Syntax and tick discrepancy errors are returned to the Agent as structured diagnostics, enabling autonomous self-repair cycles before user evaluation.
+
+### 6. Portable Outputs
+- Export multi-track **Standard MIDI** files for further arrangement and production in external DAWs.
+- Export rendered **WAV** audio stems directly from the desktop workstation.
+
+---
+
+## System Architecture
+
+Lie is structured as a decoupled, multi-process desktop system to maintain responsive UI, clear process isolation, and fault boundaries.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                   Electron Main (Service Supervisor)                   │
+│  - Process Lifecycles, Supervision & Heartbeats                        │
+│  - Typed IPC Router & Security Boundaries                              │
+│  - Settings & API Key Storage                                          │
+└───────────────┬────────────────────────────────────────┬───────────────┘
+                │                                        │
+┌───────────────▼────────────────┐      ┌────────────────▼───────────────┐
+│       React 19 Renderer        │      │     Agent Runtime (Strands)    │
+│  - Multi-track Timeline UI     │      │  - Agentic Workflow Engine     │
+│  - Transport & A/B Audition    │      │  - LLM Prompt & Reasoning Loop │
+│  - openDAW / SpessaSynth SF2   │      │  - Style Skill Loader          │
+│  - Playback Engine             │      │  - MCP Client                  │
+└───────────────┬────────────────┘      └────────────────┬───────────────┘
+                │ Typed IPC                              │ Loopback HTTP / SSE
+┌───────────────▼────────────────────────────────────────▼───────────────┐
+│                       Music Core Utility Process                       │
+│  - Project State & Canonical ABC Engine                                │
+│  - Git Worktree Transaction Engine (Current vs Candidate)              │
+│  - Domain MCP Tools (Fail-closed authorization fences)                 │
+│  - Deterministic Barline, Meter & Velocity Validators                  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Agent Tool Surface
+
+The Agent is not exposed filesystem, shell, or raw Git tools. All queries and musical modifications occur exclusively through typed Model Context Protocol (MCP) tools exposed by the Music Core process.
+
+Authoritative schemas are defined in [`packages/contracts/src/mcp.ts`](packages/contracts/src/mcp.ts) and implemented in [`apps/workstation/src/core/mcp/music-core-mcp-server.ts`](apps/workstation/src/core/mcp/music-core-mcp-server.ts). The current implementation exposes 10 domain-specific tools:
+
+| MCP Tool Name | Functionality & Constraints |
+| :--- | :--- |
+| `getTaskContext` | Reads active candidate task context, task ID, and scope parameters. |
+| `getScopedComposition` | Returns canonical ABC fragments strictly inside the authorized Task Scope. |
+| `submitGenerationPlan` | Registers a multi-step composition roadmap for initial user review. |
+| `requestScopeExtension` | Submits an asynchronous operation to request expanded track/bar permissions. |
+| `getOperation` | Polls the authoritative status of long-running operations (plans/extensions). |
+| `cancelOperation` | Explicitly retracts a pending scope or plan operation. |
+| `replaceScopedMusic` | Writes validated voice fragments exclusively into the authorized track/time window. |
+| `updateMusicalProperties`| Updates global meter and initial tempo at Tick-0 authority. |
+| `resizeComposition` | Adjusts project measure count (decoupled from write authorization). |
+| `finishTask` | Runs final preflight validation and seals the Candidate for user audition. |
+
+---
+
+## Built-in Music Style Skills
+
+Lie includes modular musical craft guides located in `music-style-skills/`. These skills direct symbolic composition parameters—harmonic density, voicing, rhythm, register, dynamics, and arrangement roles:
+
+- 🎸 **Shoegaze (`shoegaze`):** Slow harmonic rhythm, extended chord voicings (`maj7`, `add9`, `sus2`), pedal tones across chord changes, sustained melodic beds, and understated vocal-role melodies.
+- 🌧️ **Midwest Emo (`midwest-emo`):** Clean arpeggiated figures, suspended intervals, angular dynamic contrasts (loud-quiet transitions), suspended chord voicings, and syncopated drumming.
+- ⚡ **Metal (`metal`):** Syncopated down-beat rhythms, pedal tones, rapid double-bass drum patterns, syncopated accents, and minor/phrygian voice-leading.
+- 🌌 **Post-Rock (`post-rock`):** Long-form dynamic arcs, repeated melodic motifs across expanding registers, and gradual multi-voice density builds.
+- 🎤 **Pop (`pop`):** Concise functional chord loops, syncopated four-on-the-floor kick grooves, transparent instrument register separation, and focused top-line phrases.
+- 🎧 **Rap / Trap (`rap`):** Syncopated sub-bass root motion, subdivided hi-hat divisions (triplets and 32nds), snare placements, and sparse harmonic counter-lines.
+
+---
+
+## Repository Layout
+
+```
+Music-Harness/
 ├── apps/
-│   ├── workstation/        # Electron app (main + preload + React renderer)
+│   ├── workstation/              # Electron desktop application
 │   │   └── src/
-│   │       ├── main/       # Electron main process, service supervisor
-│   │       ├── preload/    # context bridge
-│   │       ├── renderer/   # React UI (timeline, transport, agent panel, playback)
-│   │       ├── core/       # music domain: project, composition, candidate
-│   │       └── shared/     # typed bridges shared across process boundaries
-│   └── agent/              # agent runtime (Strands + MCP) — stub for now
-└── packages/
-    └── contracts/          # cross-boundary domain types & schemas
+│   │       ├── main/             # Electron main process & service supervisor
+│   │       ├── preload/          # Secure IPC context bridge
+│   │       ├── renderer/         # React 19 UI (timeline, transport, agent panel)
+│   │       ├── core/             # Music core: ABC engine, Git transactions, MCP tools
+│   │       └── shared/           # Typed IPC contracts and bridges
+│   └── agent/                    # Agent runtime (Strands framework + MCP client)
+├── packages/
+│   └── contracts/                # Cross-boundary domain schemas, IPC types & MCP schemas
+├── music-style-skills/           # Decoupled genre style knowledge bases
+├── docs/                         # Architecture specifications and product PRDs
+└── patches/                      # Locked pnpm patches (spessasynth_lib)
 ```
 
-Detailed process/module boundaries are specified in [`docs/architecture/Agent Music Workstation System Architecture.md`](docs/architecture/Agent%20Music%20Workstation%20System%20Architecture.md) and the product scope in [`docs/product/Agent Music Workstation PRD.md`](docs/product/Agent%20Music%20Workstation%20PRD.md).
+---
 
-## Requirements
+## Getting Started
 
-- **Node.js `>=24 <25`** (see `.node-version`)
-- **pnpm `>=9 <10`** (see `package.json` `packageManager`)
+### Prerequisites
 
-## Setup
+- **Operating System:** Windows 10/11 is the primary tested platform. macOS/Linux support is not yet officially validated.
+- **Node.js:** `>=24 <25` (enforced via `.node-version` and `.npmrc`)
+- **pnpm:** `>=9 <10` (enforced via `package.json`)
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/10000-C/Music-Harness.git
+   cd Music-Harness
+   ```
+
+2. **Install workspace dependencies:**
+   ```bash
+   pnpm install --frozen-lockfile
+   ```
+   > **Note:** `.npmrc` enforces `engine-strict=true`. Installation will fail if run on an unsupported Node.js version.
+   > The workspace includes a locked patch (`patches/spessasynth_lib@4.3.14.patch`) that reconciles `spessasynth_lib` type definitions with `BasicMIDI`.
+
+### Running the Desktop App
+
+To start the Electron application in development mode:
 
 ```bash
-pnpm install
-```
-
-`engine-strict` is on (`.npmrc`), so the install will refuse to run on the wrong Node version.
-
-The workstation keeps a small pnpm patch for `spessasynth_lib@4.3.14` in
-[`patches/spessasynth_lib@4.3.14.patch`](patches/spessasynth_lib@4.3.14.patch).
-It reconciles the package's `MIDIData.embeddedSoundBank` declaration with its
-`BasicMIDI` base type and does not change runtime code. If TypeScript reports
-`MIDIData`/`BasicMIDI` incompatibility after switching branches, reinstall the
-workspace with Node 24 so pnpm reapplies the locked patch:
-
-```bash
-pnpm install --frozen-lockfile
-```
-
-## Running the desktop app
-
-```bash
+# UI-only development (default stubs)
 pnpm --filter @agent-music/workstation dev
-# or: cd apps/workstation && pnpm dev
 ```
 
-This starts electron-vite in dev mode: it builds the main/preload processes, serves the renderer at `http://localhost:5173`, and opens the Electron window.
-
-There are three service-fleet modes, selected by environment variables (see [`service-entry-resolver.ts`](apps/workstation/src/main/service-entry-resolver.ts)):
-
-| Mode                              | Env vars                      | core (project) service            | agent service                  |
-| --------------------------------- | ----------------------------- | --------------------------------- | ------------------------------ |
-| UI-only (default `pnpm dev`)      | `AGENT_MUSIC_FAKE_SERVICES=1` | fake stub                         | fake stub                      |
-| Real core + fake agent            | `AGENT_MUSIC_FAKE_AGENT=1`    | real project service + MCP server | fake stub                      |
-| Full real stack (`pnpm dev:real`) | _(none)_                      | real project service + MCP server | real Agent process via Strands |
-
-The default `dev` script uses `AGENT_MUSIC_FAKE_SERVICES=1`, so **both** services are stubs — the UI renders, but `project.create` and other core commands are silently dropped.
-
-To run the **full production stack** with real Core (MCP server) and real Agent:
+To run with the **real Music Core service** (enabling project creation, Git worktrees, and ABC compilation):
 
 ```bash
-pnpm --filter @agent-music/workstation dev:real
-# or: cd apps/workstation && pnpm dev:real
+# Bash / Zsh
+cd apps/workstation
+AGENT_MUSIC_FAKE_AGENT=1 AGENT_MUSIC_INCLUDE_FAKE_SERVICES=1 electron-vite dev
+
+# PowerShell (Windows)
+cd apps/workstation
+$env:AGENT_MUSIC_FAKE_AGENT = "1"
+$env:AGENT_MUSIC_INCLUDE_FAKE_SERVICES = "1"
+electron-vite dev
 ```
 
-### Environment variables
+### Common Gotchas
 
-| Variable                    | Description                                                           | Default                           |
-| --------------------------- | --------------------------------------------------------------------- | --------------------------------- |
-| `AGENT_MUSIC_HOME`          | Root directory for runtime descriptor, settings, and session storage  | `~/.agent-music`                  |
-| `AGENT_MUSIC_AGENT_ENTRY`   | File path override for the Agent child process entry script           | `out/main/agent-service-entry.js` |
-| `AGENT_MUSIC_FAKE_SERVICES` | Set to `1` to run all services as lightweight stubs                   | _(unset)_                         |
-| `AGENT_MUSIC_FAKE_AGENT`    | Set to `1` to run only the Agent service as a stub while Core is real | _(unset)_                         |
-
-### Known gotcha: VS Code terminal
-
-If you launch the app from VS Code's integrated terminal and get:
-
+#### VS Code Terminal (`ELECTRON_RUN_AS_NODE`)
+If launching from VS Code's integrated terminal results in:
 ```
 SyntaxError: The requested module 'electron' does not provide an export named 'BrowserWindow'
 ```
-
-VS Code exports `ELECTRON_RUN_AS_NODE=1` into the environment, which makes the spawned Electron run in plain-Node mode. Unset it first:
-
+VS Code injects `ELECTRON_RUN_AS_NODE=1` into child terminal environments. Unset it before running:
 ```bash
-unset ELECTRON_RUN_AS_NODE   # bash/zsh
-# PowerShell: $env:ELECTRON_RUN_AS_NODE = $null
+# Bash / Zsh
+unset ELECTRON_RUN_AS_NODE
+pnpm --filter @agent-music/workstation dev
+
+# PowerShell
+$env:ELECTRON_RUN_AS_NODE = $null
 pnpm --filter @agent-music/workstation dev
 ```
 
-## Scripts
+---
 
-Root:
+## Scripts Reference
 
-| Command                             | What it does                     |
-| ----------------------------------- | -------------------------------- |
-| `pnpm typecheck`                    | TypeScript across the workspace  |
-| `pnpm lint`                         | ESLint                           |
-| `pnpm format` / `pnpm format:check` | Prettier write / check           |
-| `pnpm test`                         | Vitest (workspace)               |
-| `pnpm check`                        | format + lint + typecheck + test |
+### Root Workspace
 
-Workstation (`apps/workstation`):
+| Command | Description |
+| :--- | :--- |
+| `pnpm check` | Runs full CI checks (`format:check` + `lint` + `typecheck` + `test`) |
+| `pnpm typecheck` | TypeScript type checking across all workspace packages |
+| `pnpm lint` | Runs ESLint |
+| `pnpm format` | Auto-formats code with Prettier |
+| `pnpm test` | Executes workspace test suite via Vitest |
 
-| Command                  | What it does                                                    |
-| ------------------------ | --------------------------------------------------------------- |
-| `pnpm dev`               | Launch the Electron app in stub dev mode                        |
-| `pnpm dev:real`          | Launch with real Core (MCP server) and real Agent child process |
-| `pnpm dev:renderer`      | Run only the renderer dev server                                |
-| `pnpm build`             | Production build via electron-vite                              |
-| `pnpm test`              | Unit/integration tests                                          |
-| `pnpm smoke:shell`       | Desktop-shell smoke test with fake services (builds first)      |
-| `pnpm smoke:real`        | Real dual-process smoke test with embedded MCP server           |
-| `pnpm smoke:spessasynth` | SpessaSynth playback smoke test (builds first)                  |
+### Workstation (`apps/workstation`)
+
+| Command | Description |
+| :--- | :--- |
+| `pnpm dev` | Starts Electron workstation in dev mode |
+| `pnpm dev:renderer` | Runs only the Vite renderer server |
+| `pnpm build` | Production build via electron-vite |
+| `pnpm test` | Runs workstation unit and integration tests |
+| `pnpm smoke:shell` | Desktop shell smoke test suite |
+| `pnpm smoke:spessasynth` | SpessaSynth playback smoke test suite |
+
+---
+
+## Roadmap
+
+- [ ] **Acoustic / Neural Rendering:** Explore pairing Lie's structured ABC harness with open-weights neural acoustic decoders (e.g., yue2) for high-fidelity audio synthesis while maintaining full symbolic control.
+- [ ] **LLM-Programmable Timbre & DSP Effects:** Enable the Agent to author and modulate DSP effects (reverbs, delays, distortions, filter chains) directly through natural language.
+- [ ] **Hybrid Graphical & Symbolic Editing:** Add interactive **Piano Roll**, **Guitar Tablature**, and **Automation Curves** to the timeline alongside symbolic ABC generation.
+- [ ] **Community Style & SoundFont Ecosystem:** Standardize specifications for user-contributed musical style skills and SoundFont (SF2/SFZ) instrument banks.
+
+---
+
+## Contributing
+
+Contributions are welcome! Please ensure:
+1. All changes pass `pnpm check`.
+2. Any music mutation preserves the canonical ABC invariants and permission boundaries.
+3. Commit messages follow conventional commit guidelines.
+
+---
 
 ## License
 
-Open source, local-first. Compatible with the AGPL distribution model — see the product requirements document for the intended release terms.
+Lie (Music Harness) is licensed under the **Apache License, Version 2.0**. See the [LICENSE](LICENSE) file in the repository root for the full license text.
