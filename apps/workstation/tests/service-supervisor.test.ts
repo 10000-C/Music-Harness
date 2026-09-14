@@ -263,6 +263,7 @@ describe('ServiceSupervisor', () => {
         sequence: 4,
         candidate: null,
         task: null,
+        candidatePlaybackSnapshot: null,
       },
     });
     await expect(pending).resolves.toMatchObject({
@@ -274,6 +275,7 @@ describe('ServiceSupervisor', () => {
       type: 'candidateState.event' as const,
       protocolVersion: 1 as const,
       projectId: '00000000-0000-4000-8000-000000000001' as ProjectId,
+      candidatePlaybackSnapshot: null,
       event: {
         type: 'candidate.changed' as const,
         requestId: 'candidate-event-1',

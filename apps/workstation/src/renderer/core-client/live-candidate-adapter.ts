@@ -8,6 +8,7 @@ import type {
   TaskScope,
 } from '@agent-music/contracts';
 import type {
+  CandidatePlaybackSnapshotReference,
   CandidateStateSnapshot,
   CoreCandidateEventNotification,
 } from '../../shared/candidate-bridge.js';
@@ -24,6 +25,7 @@ export interface LiveCandidateState {
   readonly projectId: ProjectId;
   readonly candidate: CandidateView | null;
   readonly task: TaskContextView | null;
+  readonly candidatePlaybackSnapshot: CandidatePlaybackSnapshotReference | null;
   readonly error: Readonly<{ code: string; message: string }> | null;
   readonly committedRevision: string | null;
 }
@@ -31,6 +33,7 @@ export interface LiveCandidateState {
 export type LiveCandidateAction = Readonly<{
   type: 'events';
   events: readonly CandidateEvent[];
+  candidatePlaybackSnapshot?: CandidatePlaybackSnapshotReference | null;
 }>;
 
 const initialState = (projectId: ProjectId): LiveCandidateState => ({
@@ -38,6 +41,7 @@ const initialState = (projectId: ProjectId): LiveCandidateState => ({
   projectId,
   candidate: null,
   task: null,
+  candidatePlaybackSnapshot: null,
   error: null,
   committedRevision: null,
 });
@@ -48,7 +52,8 @@ const candidateStatus = (candidate: CandidateView): LiveCandidateStatus =>
 /**
  * Projects only the public Candidate events that belong to this project.
  * Candidate worktree contents and playback payloads intentionally never enter
- * this state; those remain separate authoritative Core contracts.
+ * this state; only the Core-owned playback snapshot reference is projected so
+ * playback can request the matching immutable payload.
  */
 export const reduceLiveCandidateState = (
   state: LiveCandidateState,
@@ -81,6 +86,10 @@ export const reduceLiveCandidateState = (
         next = {
           ...next,
           candidate: event.candidate ?? null,
+          // Without the Core-owned reference, never retain baseRevision as a
+          // playback identity. The next authoritative state/event can restore
+          // the reference when its compiled snapshot is available.
+          candidatePlaybackSnapshot: null,
           status:
             event.candidate === undefined
               ? 'none'
@@ -95,6 +104,7 @@ export const reduceLiveCandidateState = (
           status: 'none',
           candidate: null,
           task: null,
+          candidatePlaybackSnapshot: null,
           error: null,
           committedRevision: event.result.currentRevision,
         };
@@ -110,6 +120,7 @@ export const reduceLiveCandidateState = (
           status: 'none',
           candidate: null,
           task: null,
+          candidatePlaybackSnapshot: null,
           error: null,
         };
         break;
@@ -142,6 +153,15 @@ export const reduceLiveCandidateState = (
         };
         break;
     }
+  }
+  if (
+    action.candidatePlaybackSnapshot !== undefined &&
+    next.candidatePlaybackSnapshot !== action.candidatePlaybackSnapshot
+  ) {
+    next = {
+      ...next,
+      candidatePlaybackSnapshot: action.candidatePlaybackSnapshot,
+    };
   }
   return next;
 };
@@ -239,7 +259,10 @@ export const createLiveCandidateAdapter = ({
     }
   };
 
-  const publish = (events: readonly CandidateEvent[]): void => {
+  const publish = (
+    events: readonly CandidateEvent[],
+    candidatePlaybackSnapshot?: CandidatePlaybackSnapshotReference | null,
+  ): void => {
     if (disposed || events.length === 0) return;
     const freshEvents = events.filter((event) => event.sequence > lastSequence);
     if (freshEvents.length === 0) return;
@@ -250,6 +273,9 @@ export const createLiveCandidateAdapter = ({
     const next = reduceLiveCandidateState(state, {
       type: 'events',
       events: freshEvents,
+      ...(candidatePlaybackSnapshot === undefined
+        ? {}
+        : { candidatePlaybackSnapshot }),
     });
     if (next !== state) publishState(next);
   };
@@ -272,6 +298,7 @@ export const createLiveCandidateAdapter = ({
       projectId,
       candidate: snapshot.candidate,
       task: snapshot.task,
+      candidatePlaybackSnapshot: snapshot.candidatePlaybackSnapshot,
       error: null,
       committedRevision: null,
     });
@@ -283,7 +310,8 @@ export const createLiveCandidateAdapter = ({
   });
   const unsubscribeFromCore = bridge.onCandidateEvent(
     (notification: CoreCandidateEventNotification) => {
-      if (notification.projectId === projectId) publish([notification.event]);
+      if (notification.projectId === projectId)
+        publish([notification.event], notification.candidatePlaybackSnapshot);
     },
   );
   const initialize = async (): Promise<void> => {

@@ -50,6 +50,7 @@ const supervisor = {
     sequence: 0,
     candidate: null,
     task: null,
+    candidatePlaybackSnapshot: null,
   })),
   dispatchAgent: vi.fn(async () => ({
     type: 'agent.session.created',
@@ -163,6 +164,7 @@ describe('shell Main IPC and dialogs', () => {
         sequence: 0,
         candidate: null,
         task: null,
+        candidatePlaybackSnapshot: null,
       },
     });
     expect(supervisor.readCandidateState).toHaveBeenCalledWith(projectId);
@@ -178,6 +180,7 @@ describe('shell Main IPC and dialogs', () => {
       type: 'candidateState.event' as const,
       protocolVersion: 1 as const,
       projectId,
+      candidatePlaybackSnapshot: null,
       event: {
         type: 'candidate.changed' as const,
         requestId: 'candidate-event-1',

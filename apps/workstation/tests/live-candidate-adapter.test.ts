@@ -22,6 +22,14 @@ const candidate: CandidateView = {
   baseRevision: 'C0',
   state: 'ready',
 };
+const candidatePlaybackSnapshot = {
+  candidateId,
+  revision: 'candidate-snapshot-1',
+} as const;
+const updatedCandidatePlaybackSnapshot = {
+  candidateId,
+  revision: 'candidate-snapshot-2',
+} as const;
 const task: TaskContextView = {
   taskId,
   projectId,
@@ -45,6 +53,7 @@ describe('live Candidate adapter', () => {
       sequence: 0,
       candidate: null,
       task: null,
+      candidatePlaybackSnapshot: null,
     });
     const initial = createLiveCandidateAdapter({
       projectId,
@@ -119,7 +128,13 @@ describe('live Candidate adapter', () => {
     const adapter = createLiveCandidateAdapter({
       projectId,
       bridge: createFakeCandidateBridge(
-        { projectId, sequence: 0, candidate: null, task: null },
+        {
+          projectId,
+          sequence: 0,
+          candidate: null,
+          task: null,
+          candidatePlaybackSnapshot: null,
+        },
         dispatchCandidate,
       ),
       createRequestId: (() => {
@@ -154,6 +169,7 @@ describe('live Candidate adapter', () => {
       sequence: 2,
       candidate,
       task,
+      candidatePlaybackSnapshot,
     });
     const adapter = createLiveCandidateAdapter({ projectId, bridge });
     const listener = vi.fn();
@@ -165,12 +181,14 @@ describe('live Candidate adapter', () => {
       status: 'ready',
       candidate,
       task,
+      candidatePlaybackSnapshot,
     });
 
     bridge.emit({
       type: 'candidateState.event',
       protocolVersion: 1,
       projectId: '00000000-0000-4000-8000-000000000199' as ProjectId,
+      candidatePlaybackSnapshot: null,
       event: {
         type: 'candidate.changed',
         requestId: 'other-project',
@@ -184,6 +202,7 @@ describe('live Candidate adapter', () => {
       type: 'candidateState.event',
       protocolVersion: 1,
       projectId,
+      candidatePlaybackSnapshot: updatedCandidatePlaybackSnapshot,
       event: {
         type: 'candidate.changed',
         requestId: 'update-1',
@@ -195,6 +214,7 @@ describe('live Candidate adapter', () => {
       type: 'candidateState.event',
       protocolVersion: 1,
       projectId,
+      candidatePlaybackSnapshot,
       event: {
         type: 'candidate.changed',
         requestId: 'duplicate-3',
@@ -203,6 +223,9 @@ describe('live Candidate adapter', () => {
       },
     });
     expect(adapter.getState().candidate?.state).toBe('active');
+    expect(adapter.getState().candidatePlaybackSnapshot).toEqual(
+      updatedCandidatePlaybackSnapshot,
+    );
     expect(listener).toHaveBeenCalledTimes(1);
 
     adapter.dispose();
@@ -210,6 +233,7 @@ describe('live Candidate adapter', () => {
       type: 'candidateState.event',
       protocolVersion: 1,
       projectId,
+      candidatePlaybackSnapshot: null,
       event: {
         type: 'candidate.invalidated',
         requestId: 'reject-1',
@@ -227,6 +251,7 @@ describe('live Candidate adapter', () => {
       sequence: 0,
       candidate: null,
       task: null,
+      candidatePlaybackSnapshot: null,
     });
     const adapter = createLiveCandidateAdapter({ projectId, bridge });
     await adapter.ready();
@@ -245,6 +270,7 @@ describe('live Candidate adapter', () => {
       type: 'candidateState.event',
       protocolVersion: 1,
       projectId,
+      candidatePlaybackSnapshot: null,
       event: {
         type: 'candidate.invalidated',
         requestId: 'rejected-1',
@@ -256,12 +282,14 @@ describe('live Candidate adapter', () => {
       status: 'none',
       candidate: null,
       task: null,
+      candidatePlaybackSnapshot: null,
     });
 
     bridge.emit({
       type: 'candidateState.event',
       protocolVersion: 1,
       projectId,
+      candidatePlaybackSnapshot,
       event: {
         type: 'candidate.changed',
         requestId: 'created-2',
@@ -273,6 +301,7 @@ describe('live Candidate adapter', () => {
       type: 'candidateState.event',
       protocolVersion: 1,
       projectId,
+      candidatePlaybackSnapshot: null,
       event: {
         type: 'candidate.currentCommitted',
         requestId: 'accepted-1',
@@ -299,6 +328,7 @@ describe('live Candidate adapter', () => {
         projectId,
         candidate,
         task,
+        candidatePlaybackSnapshot,
         error: null,
         committedRevision: null,
       },
@@ -318,6 +348,7 @@ describe('live Candidate adapter', () => {
       status: 'none',
       candidate: null,
       task: null,
+      candidatePlaybackSnapshot: null,
       committedRevision: 'C1',
     });
   });

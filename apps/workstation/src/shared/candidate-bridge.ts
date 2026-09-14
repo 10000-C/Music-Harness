@@ -2,6 +2,7 @@ import {
   isCandidateCommand,
   type CandidateCommand,
   type CandidateEvent,
+  type CandidateId,
   type CandidateView,
   type ProjectId,
   type TaskContextView,
@@ -16,6 +17,21 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 export const isProjectId = (value: unknown): value is ProjectId =>
   typeof value === 'string' && UUID_PATTERN.test(value);
+export const isCandidatePlaybackSnapshotReference = (
+  value: unknown,
+): value is CandidatePlaybackSnapshotReference => {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.candidateId === 'string' &&
+    UUID_PATTERN.test(value.candidateId) &&
+    typeof value.revision === 'string' &&
+    value.revision.length > 0
+  );
+};
+const isCandidatePlaybackSnapshotReferenceOrNull = (
+  value: unknown,
+): value is CandidatePlaybackSnapshotReference | null =>
+  value === null || isCandidatePlaybackSnapshotReference(value);
 const isSequence = (value: unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 const hasOnlyKeys = (
@@ -122,6 +138,22 @@ export type CandidateStateSnapshot = Readonly<{
   sequence: number;
   candidate: CandidateView | null;
   task: TaskContextView | null;
+  /**
+   * Core-owned version of the compiled Candidate playback snapshot. This is
+   * intentionally separate from CandidateView.baseRevision: a Candidate may
+   * be regenerated while its base Current revision stays unchanged.
+   */
+  candidatePlaybackSnapshot: CandidatePlaybackSnapshotReference | null;
+}>;
+
+/**
+ * Renderer usage: build RuntimeSource from this reference, never from
+ * CandidateView.baseRevision. A null reference means the Candidate has no
+ * readable playback snapshot yet.
+ */
+export type CandidatePlaybackSnapshotReference = Readonly<{
+  candidateId: CandidateId;
+  revision: string;
 }>;
 
 export type CoreCandidateStateRequest = Readonly<{
@@ -144,6 +176,8 @@ export type CoreCandidateEventNotification = Readonly<{
   protocolVersion: 1;
   projectId: ProjectId;
   event: CandidateEvent;
+  /** Snapshot version after applying this event; null when no Candidate exists. */
+  candidatePlaybackSnapshot: CandidatePlaybackSnapshotReference | null;
 }>;
 
 export const isCoreCandidateStateRequest = (
@@ -168,7 +202,17 @@ export const isCoreCandidateStateResponse = (
     !isProjectId(value.state.projectId) ||
     !isSequence(value.state.sequence) ||
     !(value.state.candidate === null || isRecord(value.state.candidate)) ||
-    !(value.state.task === null || isRecord(value.state.task))
+    !(value.state.task === null || isRecord(value.state.task)) ||
+    !isCandidatePlaybackSnapshotReferenceOrNull(
+      value.state.candidatePlaybackSnapshot,
+    )
+  )
+    return false;
+  if (
+    value.state.candidatePlaybackSnapshot !== null &&
+    typeof value.state.candidate?.candidateId === 'string' &&
+    value.state.candidatePlaybackSnapshot.candidateId !==
+      value.state.candidate.candidateId
   )
     return false;
   return Object.keys(value).length === 4;
@@ -176,13 +220,29 @@ export const isCoreCandidateStateResponse = (
 
 export const isCoreCandidateEventNotification = (
   value: unknown,
-): value is CoreCandidateEventNotification =>
-  isRecord(value) &&
-  value.type === 'candidateState.event' &&
-  value.protocolVersion === 1 &&
-  isProjectId(value.projectId) &&
-  isCandidateEvent(value.event) &&
-  Object.keys(value).length === 4;
+): value is CoreCandidateEventNotification => {
+  if (
+    !isRecord(value) ||
+    value.type !== 'candidateState.event' ||
+    value.protocolVersion !== 1 ||
+    !isProjectId(value.projectId) ||
+    !isCandidateEvent(value.event) ||
+    !isCandidatePlaybackSnapshotReferenceOrNull(
+      value.candidatePlaybackSnapshot,
+    ) ||
+    Object.keys(value).length !== 5
+  )
+    return false;
+  if (
+    value.event.type === 'candidate.changed' &&
+    value.event.candidate !== undefined &&
+    value.candidatePlaybackSnapshot !== null &&
+    value.candidatePlaybackSnapshot.candidateId !==
+      value.event.candidate.candidateId
+  )
+    return false;
+  return true;
+};
 
 export const isCoreCandidateRequest = (
   value: unknown,

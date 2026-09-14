@@ -3,15 +3,9 @@ import {
   isCoreCandidateRequest,
   type CoreCandidateRequest,
 } from './candidate-bridge.js';
-import type {
-  CorePlaybackRequest,
-  CorePlaybackResponse,
-  CorePlaybackSnapshotRequest,
-} from './playback-bridge.js';
 import {
   isCorePlaybackRequest,
-  isCorePlaybackResponse,
-  isCorePlaybackSnapshotRequest,
+  type CorePlaybackRequest,
 } from './playback-bridge.js';
 
 export const SERVICE_LIFECYCLE_PROTOCOL_VERSION = 1 as const;
@@ -22,8 +16,7 @@ export type MainToServiceMessage =
   | Readonly<{ type: 'shutdown'; protocolVersion: 1; requestId: string }>
   | CoreProjectRequest
   | CoreCandidateRequest
-  | CorePlaybackRequest
-  | CorePlaybackSnapshotRequest;
+  | CorePlaybackRequest;
 export type ServiceToMainMessage =
   | Readonly<{ type: 'ready'; protocolVersion: 1; service: ServiceKind }>
   | Readonly<{ type: 'healthResult'; protocolVersion: 1; requestId: string }>
@@ -57,8 +50,6 @@ export const isMainToServiceMessage = (
   if (value.type === 'candidateCommand') return isCoreCandidateRequest(value);
   if (value.type === 'playback.readCurrent')
     return isCorePlaybackRequest(value);
-  if (value.type === 'playback.readSnapshot')
-    return isCorePlaybackSnapshotRequest(value);
   if (!isRequestId(value.requestId)) return false;
   return value.type === 'healthCheck' || value.type === 'shutdown';
 };
