@@ -3,6 +3,7 @@ import type {
   CandidateEvent,
   CandidateId,
   CandidateView,
+  PendingScopeExtensionView,
   ProjectId,
   TaskContextView,
   TaskScope,
@@ -25,6 +26,7 @@ export interface LiveCandidateState {
   readonly projectId: ProjectId;
   readonly candidate: CandidateView | null;
   readonly task: TaskContextView | null;
+  readonly pendingScopeExtension: PendingScopeExtensionView | null;
   readonly candidatePlaybackSnapshot: CandidatePlaybackSnapshotReference | null;
   readonly error: Readonly<{ code: string; message: string }> | null;
   readonly committedRevision: string | null;
@@ -41,6 +43,7 @@ const initialState = (projectId: ProjectId): LiveCandidateState => ({
   projectId,
   candidate: null,
   task: null,
+  pendingScopeExtension: null,
   candidatePlaybackSnapshot: null,
   error: null,
   committedRevision: null,
@@ -71,6 +74,7 @@ export const reduceLiveCandidateState = (
         next = {
           ...next,
           task: event.task ?? null,
+          pendingScopeExtension: event.task?.pendingScopeExtension ?? null,
           error: null,
           ...(event.task === undefined && next.candidate === null
             ? { status: 'none' as const }
@@ -104,6 +108,7 @@ export const reduceLiveCandidateState = (
           status: 'none',
           candidate: null,
           task: null,
+          pendingScopeExtension: null,
           candidatePlaybackSnapshot: null,
           error: null,
           committedRevision: event.result.currentRevision,
@@ -120,6 +125,7 @@ export const reduceLiveCandidateState = (
           status: 'none',
           candidate: null,
           task: null,
+          pendingScopeExtension: null,
           candidatePlaybackSnapshot: null,
           error: null,
         };
@@ -132,9 +138,19 @@ export const reduceLiveCandidateState = (
         };
         break;
       case 'candidate.scopeExtensionRequested':
+        if (
+          next.task === null ||
+          next.task.taskId !== event.request.taskId ||
+          next.task.projectId !== state.projectId
+        )
+          continue;
+        next = {
+          ...next,
+          pendingScopeExtension: event.request,
+          error: null,
+        };
+        break;
       case 'candidate.validationResult':
-        // Scope approval and validation detail remain out of the P0 UI. Keep
-        // the real Candidate state, but make the issue visible to the caller.
         next = {
           ...next,
           error:
@@ -175,6 +191,8 @@ export interface LiveCandidateAdapter {
   cancelTask(): Promise<readonly CandidateEvent[]>;
   accept(): Promise<readonly CandidateEvent[]>;
   reject(): Promise<readonly CandidateEvent[]>;
+  approveScopeExtension(): Promise<readonly CandidateEvent[]>;
+  rejectScopeExtension(): Promise<readonly CandidateEvent[]>;
   dispose(): void;
 }
 
@@ -199,7 +217,9 @@ const commandFor = (
     | Readonly<{ type: 'startTask'; scope: TaskScope }>
     | Readonly<{ type: 'cancelTask' }>
     | Readonly<{ type: 'accept' }>
-    | Readonly<{ type: 'reject' }>,
+    | Readonly<{ type: 'reject' }>
+    | Readonly<{ type: 'approveScopeExtension' }>
+    | Readonly<{ type: 'rejectScopeExtension' }>,
 ): CandidateCommand | null => {
   if (intent.type === 'startTask') {
     if (state.status !== 'none') return null;
@@ -215,6 +235,12 @@ const commandFor = (
       (state.candidate === null || state.task === null)) ||
     ((intent.type === 'accept' || intent.type === 'reject') &&
       (state.status !== 'ready' || state.candidate === null))
+  )
+    return null;
+  if (
+    (intent.type === 'approveScopeExtension' ||
+      intent.type === 'rejectScopeExtension') &&
+    state.pendingScopeExtension === null
   )
     return null;
   if (intent.type === 'cancelTask') {
@@ -237,6 +263,27 @@ const commandFor = (
       requestId,
       projectId: state.projectId,
       candidateId: candidate.candidateId,
+    };
+  }
+  if (
+    intent.type === 'approveScopeExtension' ||
+    intent.type === 'rejectScopeExtension'
+  ) {
+    const pending = state.pendingScopeExtension;
+    if (pending === null) return null;
+    if (intent.type === 'approveScopeExtension') {
+      return {
+        type: 'candidate.approveScopeExtension',
+        requestId,
+        taskId: pending.taskId,
+        requestIdToApprove: pending.requestId,
+      };
+    }
+    return {
+      type: 'candidate.rejectScopeExtension',
+      requestId,
+      taskId: pending.taskId,
+      requestIdToReject: pending.requestId,
     };
   }
   return null;
@@ -298,6 +345,7 @@ export const createLiveCandidateAdapter = ({
       projectId,
       candidate: snapshot.candidate,
       task: snapshot.task,
+      pendingScopeExtension: snapshot.task?.pendingScopeExtension ?? null,
       candidatePlaybackSnapshot: snapshot.candidatePlaybackSnapshot,
       error: null,
       committedRevision: null,
@@ -333,7 +381,9 @@ export const createLiveCandidateAdapter = ({
       | Readonly<{ type: 'startTask'; scope: TaskScope }>
       | Readonly<{ type: 'cancelTask' }>
       | Readonly<{ type: 'accept' }>
-      | Readonly<{ type: 'reject' }>,
+      | Readonly<{ type: 'reject' }>
+      | Readonly<{ type: 'approveScopeExtension' }>
+      | Readonly<{ type: 'rejectScopeExtension' }>,
   ): Promise<readonly CandidateEvent[]> => {
     if (disposed) throw new Error('Candidate adapter has been disposed.');
     const command = commandFor(state, createRequestId(), intent);
@@ -360,6 +410,8 @@ export const createLiveCandidateAdapter = ({
     cancelTask: () => execute({ type: 'cancelTask' }),
     accept: () => execute({ type: 'accept' }),
     reject: () => execute({ type: 'reject' }),
+    approveScopeExtension: () => execute({ type: 'approveScopeExtension' }),
+    rejectScopeExtension: () => execute({ type: 'rejectScopeExtension' }),
     dispose: () => {
       unsubscribeFromCore();
       disposed = true;

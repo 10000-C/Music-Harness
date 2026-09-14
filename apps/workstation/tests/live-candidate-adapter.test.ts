@@ -3,7 +3,10 @@ import {
   type CandidateEvent,
   type CandidateId,
   type CandidateView,
+  type OperationId,
+  type PendingScopeExtensionView,
   type ProjectId,
+  type ScopeExtensionRequestId,
   type TaskContextView,
 } from '@agent-music/contracts';
 import { describe, expect, it, vi } from 'vitest';
@@ -30,6 +33,14 @@ const updatedCandidatePlaybackSnapshot = {
   candidateId,
   revision: 'candidate-snapshot-2',
 } as const;
+const pendingScopeExtension: PendingScopeExtensionView = {
+  operationId: '00000000-0000-4000-8000-000000000104' as OperationId,
+  taskId,
+  requestId: '00000000-0000-4000-8000-000000000105' as ScopeExtensionRequestId,
+  fromScopeRevision: 0,
+  requestedScope: { type: 'wholeProject', trackIds: TRACK_IDS },
+  createdAt: '2026-09-09T00:00:01.000Z',
+};
 const task: TaskContextView = {
   taskId,
   projectId,
@@ -328,6 +339,7 @@ describe('live Candidate adapter', () => {
         projectId,
         candidate,
         task,
+        pendingScopeExtension,
         candidatePlaybackSnapshot,
         error: null,
         committedRevision: null,
@@ -351,5 +363,123 @@ describe('live Candidate adapter', () => {
       candidatePlaybackSnapshot: null,
       committedRevision: 'C1',
     });
+  });
+
+  it('projects a matching scope extension request and exposes typed approve/reject commands', async () => {
+    const dispatchCandidate = vi.fn().mockResolvedValue({
+      ok: true as const,
+      events: [] as readonly CandidateEvent[],
+    });
+    const adapter = createLiveCandidateAdapter({
+      projectId,
+      bridge: createFakeCandidateBridge(
+        {
+          projectId,
+          sequence: 1,
+          candidate,
+          task: { ...task, pendingScopeExtension },
+          candidatePlaybackSnapshot,
+        },
+        dispatchCandidate,
+      ),
+      createRequestId: () => 'scope-command-1',
+    });
+
+    await adapter.ready();
+    expect(adapter.getState().pendingScopeExtension).toEqual(
+      pendingScopeExtension,
+    );
+
+    await adapter.approveScopeExtension();
+    expect(dispatchCandidate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        type: 'candidate.approveScopeExtension',
+        taskId,
+        requestIdToApprove: pendingScopeExtension.requestId,
+      }),
+    );
+
+    await adapter.rejectScopeExtension();
+    expect(dispatchCandidate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        type: 'candidate.rejectScopeExtension',
+        taskId,
+        requestIdToReject: pendingScopeExtension.requestId,
+      }),
+    );
+  });
+
+  it('only accepts scope extension events for the active task and clears them authoritatively', () => {
+    const initial = reduceLiveCandidateState(
+      {
+        status: 'building',
+        projectId,
+        candidate,
+        task,
+        pendingScopeExtension: null,
+        candidatePlaybackSnapshot: null,
+        error: null,
+        committedRevision: null,
+      },
+      {
+        type: 'events',
+        events: [
+          event({
+            type: 'candidate.scopeExtensionRequested',
+            requestId: 'scope-1',
+            sequence: 1,
+            request: pendingScopeExtension,
+          }),
+          event({
+            type: 'candidate.scopeExtensionRequested',
+            requestId: 'scope-other-task',
+            sequence: 2,
+            request: {
+              ...pendingScopeExtension,
+              taskId: '00000000-0000-4000-8000-000000000199' as never,
+            },
+          }),
+        ],
+      },
+    );
+    expect(initial.pendingScopeExtension).toEqual(pendingScopeExtension);
+    expect(initial.error).toBeNull();
+
+    const cleared = reduceLiveCandidateState(initial, {
+      type: 'events',
+      events: [
+        event({
+          type: 'task.changed',
+          requestId: 'task-cleared',
+          sequence: 3,
+          task: { ...task },
+        }),
+      ],
+    });
+    expect(cleared.pendingScopeExtension).toBeNull();
+  });
+
+  it('fails closed when scope confirmation is requested without a pending request', async () => {
+    const dispatchCandidate = vi.fn();
+    const adapter = createLiveCandidateAdapter({
+      projectId,
+      bridge: createFakeCandidateBridge(
+        {
+          projectId,
+          sequence: 0,
+          candidate,
+          task,
+          candidatePlaybackSnapshot: null,
+        },
+        dispatchCandidate,
+      ),
+    });
+    await adapter.ready();
+    await expect(adapter.approveScopeExtension()).rejects.toThrow(
+      'unavailable',
+    );
+    expect(dispatchCandidate).not.toHaveBeenCalled();
   });
 });

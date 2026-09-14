@@ -105,6 +105,7 @@ describe('Candidate Review UI audition wiring', () => {
           state: 'ready',
         },
         task: null,
+        pendingScopeExtension: null,
         candidatePlaybackSnapshot: null,
         error: null,
         committedRevision: null,
@@ -142,6 +143,7 @@ describe('Candidate Review UI audition wiring', () => {
           state: 'ready',
         },
         task: null,
+        pendingScopeExtension: null,
         candidatePlaybackSnapshot: {
           candidateId,
           revision: 'snapshot-rev-99',
@@ -167,6 +169,7 @@ describe('Candidate Review UI audition wiring', () => {
           state: 'ready',
         },
         task: null,
+        pendingScopeExtension: null,
         candidatePlaybackSnapshot: {
           candidateId,
           revision: 'candidate-actual-snapshot-rev-42',
