@@ -10,10 +10,57 @@ import type { CommandResult } from '../shared/shell-contracts.js';
 const getSettingsPath = (): string =>
   join(homedir(), '.agent-music', 'settings.json');
 
+interface CanonicalModelConfig {
+  readonly id: string;
+  readonly endpoint: string;
+  readonly apiKey: string;
+  readonly model: string;
+}
+
+interface CanonicalAgentSettings {
+  readonly formatVersion: 1;
+  readonly activeModelConfigId: string;
+  readonly modelConfigs: readonly CanonicalModelConfig[];
+  readonly agent: {
+    readonly maxRepairAttempts: number;
+  };
+}
+
+const isCanonicalSettings = (
+  value: unknown,
+): value is CanonicalAgentSettings => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const v = value as Record<string, unknown>;
+  return (
+    v.formatVersion === 1 &&
+    typeof v.activeModelConfigId === 'string' &&
+    Array.isArray(v.modelConfigs) &&
+    v.modelConfigs.length > 0 &&
+    typeof v.agent === 'object' &&
+    v.agent !== null
+  );
+};
+
 export const readAgentSettings = async (): Promise<AgentSettings | null> => {
   try {
     const raw = await fs.readFile(getSettingsPath(), 'utf8');
     const parsed: unknown = JSON.parse(raw);
+    if (isCanonicalSettings(parsed)) {
+      const active =
+        parsed.modelConfigs.find((c) => c.id === parsed.activeModelConfigId) ??
+        parsed.modelConfigs[0];
+      if (!active) return null;
+      return {
+        provider: active.endpoint.includes('api.openai.com')
+          ? 'openai'
+          : 'custom',
+        baseUrl: active.endpoint,
+        apiKey: active.apiKey,
+        model: active.model,
+      };
+    }
     if (isAgentSettings(parsed)) return parsed;
     return null;
   } catch (error: unknown) {
@@ -37,6 +84,22 @@ export const writeAgentSettings = async (
     };
   }
 
+  const canonical: CanonicalAgentSettings = {
+    formatVersion: 1,
+    activeModelConfigId: 'default',
+    modelConfigs: [
+      {
+        id: 'default',
+        endpoint: settings.baseUrl.trim(),
+        apiKey: settings.apiKey,
+        model: settings.model.trim(),
+      },
+    ],
+    agent: {
+      maxRepairAttempts: 2,
+    },
+  };
+
   const settingsPath = getSettingsPath();
   const dirPath = join(homedir(), '.agent-music');
 
@@ -44,7 +107,7 @@ export const writeAgentSettings = async (
     await fs.mkdir(dirPath, { recursive: true });
     // Atomic write by writing to a .tmp file then renaming
     const tempPath = `${settingsPath}.tmp`;
-    await fs.writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf8');
+    await fs.writeFile(tempPath, JSON.stringify(canonical, null, 2), 'utf8');
     await fs.rename(tempPath, settingsPath);
 
     return { ok: true };

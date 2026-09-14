@@ -21,6 +21,7 @@ import {
   isExportFileWriteResult,
   isPreparedCurrentExport,
 } from '../shared/export-bridge.js';
+import { isOperationControlCommand } from '../shared/operation-bridge.js';
 import { chooseExportPath, chooseProjectDirectory } from './desktop-dialogs.js';
 import { AtomicExportFileWriter } from './export-file-writer.js';
 import { readAgentSettings, writeAgentSettings } from './settings-manager.js';
@@ -378,6 +379,43 @@ export const registerShellIpc = (
           userMessage: 'Music Core is unavailable. Try again.',
         };
       }
+    },
+  );
+  ipcMain.handle(
+    shellIpcChannels.operationState,
+    async (_event, projectId: unknown) => {
+      if (!isProjectId(projectId)) {
+        return {
+          ok: false as const,
+          code: 'INVALID_PROJECT_ID',
+          userMessage: 'Invalid project identity.',
+        };
+      }
+      return {
+        ok: true as const,
+        state: {
+          projectId,
+          sequence: 0,
+          operations: [],
+        },
+      };
+    },
+  );
+  ipcMain.handle(
+    shellIpcChannels.operation,
+    async (_event, command: unknown) => {
+      if (!isOperationControlCommand(command)) {
+        return {
+          ok: false as const,
+          code: 'INVALID_OPERATION_COMMAND',
+          userMessage: 'Invalid operation command.',
+        };
+      }
+      return {
+        ok: false as const,
+        code: 'OPERATION_NOT_FOUND',
+        userMessage: 'The requested operation was not found.',
+      };
     },
   );
   ipcMain.handle(shellIpcChannels.playback, async () => {

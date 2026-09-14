@@ -105,6 +105,8 @@ describe('shell Main IPC and dialogs', () => {
         channels.exportWrite,
         channels.candidate,
         channels.candidateState,
+        channels.operation,
+        channels.operationState,
         channels.playback,
         channels.playbackSnapshot,
         channels.project,
