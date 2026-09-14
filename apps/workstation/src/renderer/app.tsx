@@ -907,19 +907,43 @@ const LiveProjectWorkspace = () => {
     if (bridge === undefined) return undefined;
 
     let active = true;
-    void bridge
-      .getServiceSnapshot()
-      .then((snapshot) => {
-        if (active) setServiceSnapshot(snapshot);
-      })
-      .catch(() => {
-        if (active) setServiceSnapshot(unavailableServiceSnapshot());
-      });
+    let pollTimer: number | null = null;
+
+    const querySnapshot = () => {
+      void bridge
+        .getServiceSnapshot()
+        .then((snapshot) => {
+          if (!active) return;
+          setServiceSnapshot(snapshot);
+          if (snapshot.core !== 'ready' || snapshot.agent !== 'ready') {
+            pollTimer = window.setTimeout(querySnapshot, 500);
+          }
+        })
+        .catch(() => {
+          if (!active) return;
+          setServiceSnapshot(unavailableServiceSnapshot());
+          pollTimer = window.setTimeout(querySnapshot, 1000);
+        });
+    };
+
+    querySnapshot();
+
     const unsubscribe = bridge.onServiceSnapshot((snapshot) => {
-      if (active) setServiceSnapshot(snapshot);
+      if (active) {
+        setServiceSnapshot(snapshot);
+        if (
+          snapshot.core === 'ready' &&
+          snapshot.agent === 'ready' &&
+          pollTimer !== null
+        ) {
+          window.clearTimeout(pollTimer);
+          pollTimer = null;
+        }
+      }
     });
     return () => {
       active = false;
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
       unsubscribe();
     };
   }, []);
@@ -1311,7 +1335,12 @@ const LiveProjectWorkspace = () => {
         setMessage('The secure desktop bridge is unavailable.');
         return;
       }
-      if (serviceSnapshot?.core !== 'ready') {
+      let currentSnapshot = serviceSnapshot;
+      if (currentSnapshot?.core !== 'ready') {
+        currentSnapshot = await bridge.getServiceSnapshot();
+        setServiceSnapshot(currentSnapshot);
+      }
+      if (currentSnapshot?.core !== 'ready') {
         setMessage('Music Core is starting. Please wait a moment...');
         return;
       }

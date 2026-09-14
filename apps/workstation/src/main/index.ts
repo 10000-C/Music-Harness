@@ -32,9 +32,18 @@ const fakeAdapter = createAgentChildProcessAdapter((service) => {
   });
 });
 
-const coreAdapter = createCoreUtilityProcessAdapter((service) =>
-  utilityProcess.fork(requireServiceEntry(service), [service]),
-);
+const coreAdapter = createCoreUtilityProcessAdapter((service) => {
+  const child = utilityProcess.fork(requireServiceEntry(service), [service], {
+    stdio: 'pipe',
+  });
+  child.stdout?.on('data', (chunk: Buffer | string) => {
+    process.stdout.write(`[core] ${chunk.toString()}`);
+  });
+  child.stderr?.on('data', (chunk: Buffer | string) => {
+    process.stderr.write(`[core] ${chunk.toString()}`);
+  });
+  return child;
+});
 const agentAdapter = createAgentChildProcessAdapter((service) => {
   const child = fork(requireServiceEntry(service), [service], {
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
@@ -67,6 +76,12 @@ const supervisor = createServiceSupervisor(
       ? fakeAgentProductionCoreAdapter
       : productionAdapter,
 );
+
+supervisor.subscribe((snapshot) => {
+  console.log(
+    `[supervisor] fleet snapshot: core=${snapshot.core} agent=${snapshot.agent}`,
+  );
+});
 
 const wireShellIpc = (window: BrowserWindow): BrowserWindow => {
   const unregister = registerShellIpc(window, supervisor);

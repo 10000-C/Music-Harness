@@ -477,14 +477,24 @@ export const registerShellIpc = (
       return await writeAgentSettings(settings);
     },
   );
-  const unsubscribeSnapshot = supervisor.subscribe((snapshot) => {
+  const forwardSnapshot = (snapshot: unknown) => {
     if (
       isServiceFleetSnapshot(snapshot) &&
       !window.isDestroyed() &&
       !window.webContents.isDestroyed()
-    )
+    ) {
       window.webContents.send(shellIpcChannels.subscribe, snapshot);
+    }
+  };
+
+  const unsubscribeSnapshot = supervisor.subscribe((snapshot) => {
+    forwardSnapshot(snapshot);
   });
+
+  const onDidFinishLoad = () => {
+    forwardSnapshot(supervisor.getSnapshot());
+  };
+  window.webContents.on?.('did-finish-load', onDidFinishLoad);
   const unsubscribeAgent = supervisor.onAgentEvent((event) => {
     if (
       isAgentEvent(event) &&
@@ -502,6 +512,7 @@ export const registerShellIpc = (
       window.webContents.send(shellIpcChannels.candidateEvent, notification);
   });
   return () => {
+    window.webContents.off?.('did-finish-load', onDidFinishLoad);
     unsubscribeSnapshot();
     unsubscribeAgent();
     unsubscribeCandidate();
