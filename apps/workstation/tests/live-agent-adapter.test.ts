@@ -241,6 +241,55 @@ describe('LiveAgentAdapter', () => {
     ]);
   });
 
+  it('ignores late events from another execution or session', async () => {
+    const { bridge, dispatchAgent, emit } = createFakeBridge();
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.session.active',
+        requestId: 'req-active',
+        session: { sessionId, projectId, createdAt: '2026-09-11T00:00:00.000Z' },
+        messages: [],
+      },
+    });
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: { type: 'agent.session.listed', requestId: 'req-list', sessions: [] },
+    });
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.message.accepted',
+        requestId: 'req-send',
+        executionId,
+      },
+    });
+
+    const adapter = createLiveAgentAdapter({ projectId, bridge });
+    await adapter.initialize();
+    await adapter.sendMessage('Keep this execution isolated');
+
+    emit({
+      type: 'agent.textDelta',
+      projectId,
+      sessionId,
+      executionId: '00000000-0000-4000-8000-000000000099' as AgentExecutionId,
+      text: 'late text',
+    });
+    emit({
+      type: 'agent.executionFailed',
+      projectId,
+      sessionId: '00000000-0000-4000-8000-000000000098' as AgentSessionId,
+      executionId,
+      code: 'LATE',
+      message: 'late failure',
+    });
+
+    expect(adapter.getState().streamingText).toBe('');
+    expect(adapter.getState().error).toBeNull();
+    expect(adapter.getState().isExecuting).toBe(true);
+  });
+
   it('marks message as cancelled when execution is cancelled', async () => {
     const { bridge, dispatchAgent, emit } = createFakeBridge();
     dispatchAgent.mockResolvedValueOnce({

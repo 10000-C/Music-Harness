@@ -69,11 +69,13 @@ export const createLiveAgentAdapter = ({
   const handleAgentEvent = (event: AgentEvent): void => {
     if (event.projectId !== state.projectId) return;
     if (
-      state.activeSession !== null &&
-      event.sessionId !== state.activeSession.sessionId
-    ) {
+      state.activeSession === null ||
+      event.sessionId !== state.activeSession.sessionId ||
+      !state.isExecuting ||
+      state.activeExecutionId === null ||
+      event.executionId !== state.activeExecutionId
+    )
       return;
-    }
 
     switch (event.type) {
       case 'agent.textDelta':
