@@ -30,7 +30,7 @@ const task: TaskContextView = {
   scopeRevision: 0,
   state: 'editing',
   candidateState: 'ready',
-  allowedOperations: ['replaceScopedMusic', 'updateGlobalMeter'],
+  allowedOperations: ['replaceScopedMusic', 'updateMusicalProperties'],
   trackIds: TRACK_IDS,
   createdAt: '2026-09-09T00:00:00.000Z',
 };

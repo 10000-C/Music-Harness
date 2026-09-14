@@ -2,9 +2,19 @@ import type {
   MainToServiceMessage,
   ServiceKind,
 } from '../../shared/service-lifecycle.js';
+import type {
+  AgentCommand,
+  AgentProcessCommand,
+} from '@agent-music/contracts';
+
+/** Messages accepted by a managed Core or Agent process transport. */
+export type ManagedProcessMessage =
+  | MainToServiceMessage
+  | AgentProcessCommand
+  | AgentCommand;
 
 export interface ManagedProcess {
-  readonly send: (message: MainToServiceMessage) => void;
+  readonly send: (message: ManagedProcessMessage) => void;
   readonly terminate: () => void;
   readonly onMessage: (listener: (message: unknown) => void) => () => void;
   readonly onExit: (listener: () => void) => () => void;
@@ -15,8 +25,8 @@ export interface ManagedProcessAdapter {
 }
 
 interface ProcessLike {
-  postMessage?(message: MainToServiceMessage): void;
-  send?(message: MainToServiceMessage): void;
+  postMessage?(message: ManagedProcessMessage): void;
+  send?(message: ManagedProcessMessage): void;
   kill(): void;
   on(event: 'message' | 'exit', listener: (value?: unknown) => void): void;
   off?(event: 'message' | 'exit', listener: (value?: unknown) => void): void;

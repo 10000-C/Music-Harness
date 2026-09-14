@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServiceSupervisor as createProductionServiceSupervisor } from '../src/main/service-supervisor/index.js';
+import type { ProjectId } from '@agent-music/contracts';
 import type {
   ManagedProcess,
   ManagedProcessAdapter,
@@ -17,6 +18,9 @@ const createServiceSupervisor: typeof createProductionServiceSupervisor = (
     shutdownTimeoutMs: 0,
     ...options,
   });
+
+const agentProjectId =
+  '00000000-0000-4000-8000-000000000002' as ProjectId;
 
 const adapter = (): ManagedProcessAdapter & {
   emit(service: 'core' | 'agent', message: unknown): void;
@@ -619,7 +623,7 @@ describe('ServiceSupervisor', () => {
       active.dispatchAgent({
         type: 'agent.session.list',
         requestId: 'req-agent-1',
-        projectId: '00000000-0000-4000-8000-000000000002',
+        projectId: agentProjectId,
       }),
     ).rejects.toThrow('Agent service is not ready.');
 
@@ -634,7 +638,7 @@ describe('ServiceSupervisor', () => {
     const commandPromise = active.dispatchAgent({
       type: 'agent.session.list',
       requestId: 'req-agent-2',
-      projectId: '00000000-0000-4000-8000-000000000002',
+      projectId: agentProjectId,
     });
 
     expect(processes.sent).toContainEqual({

@@ -106,6 +106,12 @@ export class CandidateIpcHandler {
     } catch (error: unknown) {
       return [this.failed(command.requestId, error)];
     }
+    return [
+      this.failed(
+        command.requestId,
+        new CandidateError('CANDIDATE_TRANSACTION_FAILED', 'Unknown candidate command'),
+      ),
+    ];
   }
 
   public async reconcileProjectResources(
