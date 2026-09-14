@@ -6651,3 +6651,19 @@ textarea,
       inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
   }
 }
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: FIX NATIVE WINDOW DRAG (WCO)
+   ========================================================================== */
+
+/* 1. Make the main workspace container draggable. 
+   Because Impeccable Phase 20 changed .project-header to a floating pill with a 16px top margin,
+   the top 16px of the window edge fell back to .workspace-main which was not draggable. */
+.workspace-main {
+  -webkit-app-region: drag;
+}
+
+/* 2. Ensure ExportCurrent is no-drag so its contents are fully interactive */
+.export-current {
+  -webkit-app-region: no-drag;
+}
