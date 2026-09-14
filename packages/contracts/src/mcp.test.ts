@@ -5,10 +5,9 @@ import { isMcpRuntimeDescriptor } from './mcp.js';
 const projectId = '11111111-1111-4111-8111-111111111111';
 
 describe('MCP runtime descriptor contract', () => {
-  it('accepts a loopback Streamable HTTP descriptor', () => {
+  it('accepts a Core-process-scoped loopback Streamable HTTP descriptor', () => {
     expect(
       isMcpRuntimeDescriptor({
-        projectId,
         endpoint: 'http://127.0.0.1:43127/mcp',
         instanceToken: 'high-entropy-token',
         pid: 12345,
@@ -16,10 +15,20 @@ describe('MCP runtime descriptor contract', () => {
     ).toBe(true);
   });
 
-  it('rejects non-loopback or malformed descriptors', () => {
+  it('rejects the legacy Project-scoped descriptor shape', () => {
     expect(
       isMcpRuntimeDescriptor({
         projectId,
+        endpoint: 'http://127.0.0.1:43127/mcp',
+        instanceToken: 'high-entropy-token',
+        pid: 12345,
+      }),
+    ).toBe(false);
+  });
+
+  it('rejects non-loopback or malformed descriptors', () => {
+    expect(
+      isMcpRuntimeDescriptor({
         endpoint: 'https://example.com/mcp',
         instanceToken: 'token',
         pid: 12345,
@@ -27,7 +36,6 @@ describe('MCP runtime descriptor contract', () => {
     ).toBe(false);
     expect(
       isMcpRuntimeDescriptor({
-        projectId,
         endpoint: 'http://127.0.0.1:43127/not-mcp',
         instanceToken: 'token',
         pid: 12345,
@@ -35,15 +43,6 @@ describe('MCP runtime descriptor contract', () => {
     ).toBe(false);
     expect(
       isMcpRuntimeDescriptor({
-        projectId: 'not-a-uuid',
-        endpoint: 'http://127.0.0.1:43127/mcp',
-        instanceToken: 'token',
-        pid: 12345,
-      }),
-    ).toBe(false);
-    expect(
-      isMcpRuntimeDescriptor({
-        projectId,
         endpoint: 'http://127.0.0.1:43127/mcp',
         instanceToken: '',
         pid: 12345,
@@ -51,7 +50,6 @@ describe('MCP runtime descriptor contract', () => {
     ).toBe(false);
     expect(
       isMcpRuntimeDescriptor({
-        projectId,
         endpoint: 'http://127.0.0.1:43127/mcp',
         instanceToken: 'token',
         pid: 0,

@@ -2,7 +2,7 @@ import type {
   PendingScopeExtensionView,
   TaskContextView,
 } from './candidate.js';
-import type { ProjectId, TaskScope } from './domain.js';
+import type { TaskScope } from './domain.js';
 
 declare const operationIdBrand: unique symbol;
 
@@ -72,21 +72,19 @@ export type ScopeExtensionOperationView =
 export type OperationView =
   GenerationPlanOperationView | ScopeExtensionOperationView;
 
+/**
+ * Core-process-scoped runtime descriptor (Architecture V1.16). One Core
+ * process owns one MCP server whose lifetime is independent of Project
+ * close/open; Project selection is not connection discovery.
+ */
 export interface McpRuntimeDescriptor {
-  readonly projectId: ProjectId;
   readonly endpoint: string;
   readonly instanceToken: string;
   readonly pid: number;
 }
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-
-const isUuid = (value: unknown): value is string =>
-  typeof value === 'string' && UUID_PATTERN.test(value);
 
 const isLoopbackMcpEndpoint = (value: unknown): value is string => {
   if (typeof value !== 'string') {
@@ -111,11 +109,18 @@ const isLoopbackMcpEndpoint = (value: unknown): value is string => {
   }
 };
 
+const MCP_RUNTIME_DESCRIPTOR_KEYS = [
+  'endpoint',
+  'instanceToken',
+  'pid',
+] as const;
+
 export const isMcpRuntimeDescriptor = (
   value: unknown,
 ): value is McpRuntimeDescriptor =>
   isRecord(value) &&
-  isUuid(value.projectId) &&
+  Object.keys(value).length === MCP_RUNTIME_DESCRIPTOR_KEYS.length &&
+  MCP_RUNTIME_DESCRIPTOR_KEYS.every((key) => key in value) &&
   isLoopbackMcpEndpoint(value.endpoint) &&
   typeof value.instanceToken === 'string' &&
   value.instanceToken.length > 0 &&
