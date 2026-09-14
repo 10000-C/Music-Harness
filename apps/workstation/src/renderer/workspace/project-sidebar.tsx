@@ -4,7 +4,6 @@ import { SlidersHorizontalIcon } from '@phosphor-icons/react/SlidersHorizontal';
 import logoImg from '../logo.png';
 import { VinylRecordIcon } from '@phosphor-icons/react/VinylRecord';
 import projectCover from '../assets/midnight-sketch.png';
-
 export type WorkspaceView = 'studio' | 'export' | 'recovery' | 'settings';
 
 interface ProjectSidebarProps {
@@ -39,7 +38,6 @@ export const ProjectSidebar = ({
       </span>
       <span>
         <strong>Music Harness</strong>
-        
       </span>
     </div>
 

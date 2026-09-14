@@ -24,7 +24,6 @@
   background: var(--canvas);
 }
 
-
 * {
   box-sizing: border-box;
 }
@@ -5914,7 +5913,7 @@ button:active {
   background: rgba(167, 139, 250, 0.15) !important;
   color: #fff !important;
   border: 1px solid rgba(167, 139, 250, 0.3) !important;
-  box-shadow: 
+  box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.3),
     0 2px 12px rgba(167, 139, 250, 0.25) !important;
   font-weight: 500 !important;
@@ -5928,7 +5927,7 @@ button:active {
 .candidate-stage__actions .primary-action:hover:not(:disabled),
 .project-empty-state__primary:hover:not(:disabled) {
   background: rgba(167, 139, 250, 0.25) !important;
-  box-shadow: 
+  box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.5),
     0 4px 16px rgba(167, 139, 250, 0.4) !important;
   border-color: rgba(167, 139, 250, 0.5) !important;
@@ -5950,7 +5949,7 @@ button:active {
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1px solid rgba(220, 38, 38, 0.3) !important;
-  box-shadow: 
+  box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, 0.1),
     0 4px 12px rgba(220, 38, 38, 0.1) !important;
 }
@@ -5969,7 +5968,7 @@ button:active {
 
 /* 1. Candidate Clip Luminous Highlight */
 .arrangement-map__clip[data-candidate="true"] {
-  box-shadow: 
+  box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.6),
     inset 0 2px 4px rgba(255, 255, 255, 0.3),
     0 0 16px var(--track-color) !important;
@@ -5994,7 +5993,7 @@ button:active {
   -webkit-backdrop-filter: blur(24px) saturate(150%) !important;
   border: 1px solid rgba(255, 50, 50, 0.15) !important;
   border-top: 1px solid rgba(255, 50, 50, 0.25) !important;
-  box-shadow: 
+  box-shadow:
     inset 0 1px 0 rgba(255, 100, 100, 0.1),
     0 8px 24px rgba(0, 0, 0, 0.4) !important;
   border-radius: 12px !important;
@@ -6179,8 +6178,8 @@ button:active {
   -webkit-backdrop-filter: blur(48px) saturate(200%) !important;
   border: 1px solid rgba(255, 69, 58, 0.2) !important;
   border-radius: 14px !important;
-  box-shadow: 
-    inset 0 1px 1px rgba(255, 100, 100, 0.2), 
+  box-shadow:
+    inset 0 1px 1px rgba(255, 100, 100, 0.2),
     inset 0 0 20px rgba(255, 69, 58, 0.1),
     0 12px 32px rgba(255, 69, 58, 0.15) !important;
   padding: 14px 16px !important;
@@ -6497,7 +6496,7 @@ button:active {
 
 /* 1. Ultra-smooth, off-screen atmospheric wash */
 .workspace-main {
-  background-image: 
+  background-image:
     radial-gradient(100% 60% at 50% -15%, rgba(124, 58, 237, 0.12) 0%, transparent 100%),
     radial-gradient(80% 60% at 100% -10%, rgba(56, 189, 248, 0.08) 0%, transparent 100%),
     radial-gradient(80% 60% at 0% -10%, rgba(236, 72, 153, 0.06) 0%, transparent 100%) !important;
@@ -6582,11 +6581,11 @@ button:active {
 }
 
 /* Exempt interactive elements from drag */
-button, 
-a, 
-input, 
+button,
+a,
+input,
 textarea,
-.transport-bar, 
+.transport-bar,
 .project-header__actions,
 .workspace-content {
   -webkit-app-region: no-drag;
