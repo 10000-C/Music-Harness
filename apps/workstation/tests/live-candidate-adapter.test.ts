@@ -150,7 +150,7 @@ describe('live Candidate adapter', () => {
       ),
       createRequestId: (() => {
         let index = 0;
-        return () => `request-${++index}`;
+        return () => `request-${String(++index)}`;
       })(),
     });
 

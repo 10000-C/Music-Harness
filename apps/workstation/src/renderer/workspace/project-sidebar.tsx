@@ -34,7 +34,17 @@ export const ProjectSidebar = ({
   <aside className="project-sidebar" aria-label="Project navigation">
     <div className="brand-lockup">
       <span className="brand-lockup__mark" aria-hidden="true">
-        <img src={logoImg} alt="" style={{ width: '28px', height: '28px', transform: 'scale(2.2)', objectFit: 'contain', filter: 'invert(1)' }} />
+        <img
+          src={logoImg}
+          alt=""
+          style={{
+            width: '28px',
+            height: '28px',
+            transform: 'scale(2.2)',
+            objectFit: 'contain',
+            filter: 'invert(1)',
+          }}
+        />
       </span>
       <span>
         <strong>Music Harness</strong>

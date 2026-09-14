@@ -42,22 +42,24 @@ export const createFakePlaybackBridge = (
     get readCalls() {
       return calls;
     },
-    readPlaybackSnapshot: async (
+    readPlaybackSnapshot: (
       projectId: ProjectId,
       source: PlaybackSnapshotSource,
     ): Promise<PlaybackSnapshotResult> => {
       calls.push({ projectId, source });
       const snapshot = snapshots.get(keyFor(projectId, source));
-      return snapshot === undefined
-        ? {
-            ok: false,
-            code:
-              source.kind === 'current'
-                ? 'CURRENT_UNAVAILABLE'
-                : 'CANDIDATE_UNAVAILABLE',
-            userMessage: 'The requested playback snapshot is unavailable.',
-          }
-        : { ok: true, snapshot: structuredClone(snapshot) };
+      return Promise.resolve(
+        snapshot === undefined
+          ? {
+              ok: false,
+              code:
+                source.kind === 'current'
+                  ? 'CURRENT_UNAVAILABLE'
+                  : 'CANDIDATE_UNAVAILABLE',
+              userMessage: 'The requested playback snapshot is unavailable.',
+            }
+          : { ok: true, snapshot: structuredClone(snapshot) },
+      );
     },
     replaceSnapshot(snapshot) {
       snapshots.set(keyFor(snapshot.projectId, snapshot.source), snapshot);

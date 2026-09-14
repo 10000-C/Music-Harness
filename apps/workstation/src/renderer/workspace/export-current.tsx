@@ -24,12 +24,12 @@ interface ExportCurrentViewProps {
   readonly onChoosePath: (format: ExportCurrentFormat) => void;
 }
 
-const FORMATS: ReadonlyArray<{
+const FORMATS: readonly {
   readonly format: ExportCurrentFormat;
   readonly title: string;
   readonly detail: string;
   readonly icon: typeof FileCodeIcon;
-}> = [
+}[] = [
   {
     format: 'abc',
     title: 'Canonical ABC',

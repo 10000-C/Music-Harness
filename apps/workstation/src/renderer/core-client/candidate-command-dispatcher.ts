@@ -78,7 +78,9 @@ export const dispatchCandidateRendererCommand = async (
     store.getState().authoritative,
     result.events,
   );
-  projection.events.forEach((event) => store.applyCoreEvent(event));
+  projection.events.forEach((event) => {
+    store.applyCoreEvent(event);
+  });
   return {
     handled: true,
     currentReloadRequired: projection.currentReloadRequired,

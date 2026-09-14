@@ -1,7 +1,6 @@
 import type {
   CandidateCommand,
   CandidateEvent,
-  CandidateId,
   CandidateView,
   PendingScopeExtensionView,
   ProjectId,
@@ -139,8 +138,7 @@ export const reduceLiveCandidateState = (
         break;
       case 'candidate.scopeExtensionRequested':
         if (
-          next.task === null ||
-          next.task.taskId !== event.request.taskId ||
+          next.task?.taskId !== event.request.taskId ||
           next.task.projectId !== state.projectId
         )
           continue;
@@ -153,19 +151,17 @@ export const reduceLiveCandidateState = (
       case 'candidate.validationResult':
         next = {
           ...next,
-          error:
-            event.type === 'candidate.validationResult' &&
-            event.validation.valid === false
-              ? {
-                  code: 'VALIDATION_FAILED',
-                  message:
-                    event.validation.issues[0]?.message ??
-                    'Candidate validation failed.',
-                }
-              : {
-                  code: 'CANDIDATE_REVIEW_REQUIRED',
-                  message: 'Candidate needs additional review.',
-                },
+          error: !event.validation.valid
+            ? {
+                code: 'VALIDATION_FAILED',
+                message:
+                  event.validation.issues[0]?.message ??
+                  'Candidate validation failed.',
+              }
+            : {
+                code: 'CANDIDATE_REVIEW_REQUIRED',
+                message: 'Candidate needs additional review.',
+              },
         };
         break;
     }
@@ -265,10 +261,7 @@ const commandFor = (
       candidateId: candidate.candidateId,
     };
   }
-  if (
-    intent.type === 'approveScopeExtension' ||
-    intent.type === 'rejectScopeExtension'
-  ) {
+  {
     const pending = state.pendingScopeExtension;
     if (pending === null) return null;
     if (intent.type === 'approveScopeExtension') {

@@ -28,8 +28,21 @@ describe('live generation-plan adapter', () => {
   it('reads the Core snapshot, filters generation plans, and resolves approve/reject through the typed seam', async () => {
     const dispatchOperation = vi
       .fn()
-      .mockResolvedValueOnce({ ok: true as const, operation: { ...pending, state: 'succeeded', result: { task: {} } } as unknown as GenerationPlanOperationView })
-      .mockResolvedValueOnce({ ok: true as const, operation: { ...pending, state: 'rejected' } as GenerationPlanOperationView });
+      .mockResolvedValueOnce({
+        ok: true as const,
+        operation: {
+          ...pending,
+          state: 'succeeded',
+          result: { task: {} },
+        } as unknown as GenerationPlanOperationView,
+      })
+      .mockResolvedValueOnce({
+        ok: true as const,
+        operation: {
+          ...pending,
+          state: 'rejected',
+        } as GenerationPlanOperationView,
+      });
     const bridge = createFakeOperationBridge(
       { projectId, sequence: 4, operations: operationList(pending) },
       dispatchOperation,

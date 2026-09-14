@@ -1,8 +1,13 @@
 :root {
   color-scheme: dark;
   font-family:
-    'Geist', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    ui-sans-serif, sans-serif;
+    'Geist',
+    'SF Pro Display',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    ui-sans-serif,
+    sans-serif;
   font-synthesis: none;
   --canvas: #050507;
   --navigation: rgba(17, 20, 25, 0.65);
@@ -17,7 +22,8 @@
   --safe: #4ad2a5;
   --warning: #f0a936;
   --danger: #ff6f7d;
-  --glass-border: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --glass-border:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(255, 255, 255, 0.03);
   --glass-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   --track-label-width: 160px;
   color: var(--text);
@@ -930,7 +936,9 @@ p {
   overflow: hidden;
   border: 1px solid;
   border-radius: 6px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 2px 4px rgba(0, 0, 0, 0.2);
 }
 .timeline-clip {
   visibility: hidden;
@@ -948,7 +956,8 @@ p {
   border-radius: 4px;
 }
 @keyframes candidate-breathe {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 4px rgba(83, 190, 179, 0.4);
     filter: brightness(1);
   }
@@ -1309,7 +1318,9 @@ kbd {
 }
 
 .agent-prompt textarea:focus-visible {
-  box-shadow: inset 0 0 0 1px rgba(119, 118, 255, 0.5), 0 0 0 3px rgba(119, 118, 255, 0.15);
+  box-shadow:
+    inset 0 0 0 1px rgba(119, 118, 255, 0.5),
+    0 0 0 3px rgba(119, 118, 255, 0.15);
   outline: none;
 }
 
@@ -1531,7 +1542,9 @@ kbd {
   background: #0d1115;
   border: 1px solid #222933;
   border-radius: 11px;
-  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), background-color 140ms ease;
+  transition:
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 140ms ease;
 }
 
 .candidate-actions-summary > button:active {
@@ -2065,7 +2078,9 @@ textarea {
   bottom: 24%;
   color: rgba(255, 255, 255, 0.78);
   border-color: color-mix(in srgb, var(--track-color) 68%, transparent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 4px rgba(0,0,0,0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .tone-console {
@@ -4668,7 +4683,11 @@ body {
 
 /* 1. Global Shell & Ambient Mesh Depth */
 .workstation-shell {
-  background: radial-gradient(circle at 50% -15%, #1f1a3a 0%, #06070a 75%) !important;
+  background: radial-gradient(
+    circle at 50% -15%,
+    #1f1a3a 0%,
+    #06070a 75%
+  ) !important;
   color-scheme: dark;
 }
 
@@ -4715,7 +4734,9 @@ body {
 .sidebar-navigation__item[aria-current='page'] {
   background: rgba(255, 255, 255, 0.08) !important;
   color: #fff !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.25) !important;
 }
 
 /* 4. Master Transport Island (Unified Top Center Musical Dynamic Island) */
@@ -4944,7 +4965,9 @@ body {
 .agent-prompt textarea:focus-visible,
 .agent-chat__input textarea:focus-visible {
   border-color: rgba(167, 139, 250, 0.5) !important;
-  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  box-shadow:
+    0 0 0 3px rgba(167, 139, 250, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
 }
 
 /* 6. Candidate Staged Variation Banner (Apple Glass Distillation) */
@@ -4955,7 +4978,9 @@ body {
   -webkit-backdrop-filter: blur(48px) saturate(150%) !important;
   border: 1px solid rgba(255, 255, 255, 0.05) !important;
   border-radius: 20px !important;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
   padding: 16px 24px !important;
   margin-bottom: 12px !important;
 }
@@ -4988,7 +5013,9 @@ body {
 
 .candidate-stage button {
   border-radius: 999px !important;
-  transition: transform 120ms ease, filter 120ms ease !important;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease !important;
 }
 
 .candidate-stage button:active {
@@ -5005,7 +5032,6 @@ body {
   box-shadow: 0 4px 16px rgba(167, 139, 250, 0.4) !important;
 }
 
-
 /* 7. Sound Character & Tone Console */
 .tone-console {
   background: rgba(16, 18, 26, 0.55) !important;
@@ -5013,7 +5039,9 @@ body {
   -webkit-backdrop-filter: blur(32px) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-radius: 16px !important;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 /* 8. Arrangement Map & 3D Tactile Clips */
@@ -5025,8 +5053,12 @@ body {
 
 .arrangement-map__clip {
   border-radius: 7px !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 2px 6px rgba(0, 0, 0, 0.4) !important;
-  transition: filter 140ms ease, transform 140ms ease !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 2px 6px rgba(0, 0, 0, 0.4) !important;
+  transition:
+    filter 140ms ease,
+    transform 140ms ease !important;
 }
 
 .arrangement-map__clip:hover {
@@ -5035,7 +5067,8 @@ body {
 
 /* 9. Candidate Clip Pulse Animation */
 @keyframes candidate-glow-pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.86;
     filter: drop-shadow(0 0 2px rgba(167, 139, 250, 0.25));
   }
@@ -5068,7 +5101,12 @@ button:active {
   width: 420px !important;
   height: 320px !important;
   transform: translate(-50%, -50%) !important;
-  background: radial-gradient(circle, rgba(167, 139, 250, 0.18) 0%, rgba(244, 114, 182, 0.08) 45%, transparent 70%) !important;
+  background: radial-gradient(
+    circle,
+    rgba(167, 139, 250, 0.18) 0%,
+    rgba(244, 114, 182, 0.08) 45%,
+    transparent 70%
+  ) !important;
   filter: blur(60px) !important;
   pointer-events: none !important;
   z-index: 0 !important;
@@ -5094,23 +5132,26 @@ button:active {
   backdrop-filter: blur(16px) !important;
 }
 
-
 /* ==========================================================================
    IMPECCABLE OVERRIDES: CANDIDATE REVIEW (Phase 3)
    ========================================================================== */
 
 /* 1. Atmospheric State Change */
-.workstation-shell[data-review-mode="true"]::before {
-  content: "";
+.workstation-shell[data-review-mode='true']::before {
+  content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at 50% 20%, rgba(150, 40, 180, 0.08), transparent 70%);
+  background: radial-gradient(
+    circle at 50% 20%,
+    rgba(150, 40, 180, 0.08),
+    transparent 70%
+  );
   z-index: 0;
   transition: opacity 1.5s ease;
   opacity: 1;
 }
-.workstation-shell[data-review-mode="false"]::before {
+.workstation-shell[data-review-mode='false']::before {
   opacity: 0;
 }
 
@@ -5126,7 +5167,9 @@ button:active {
   background: rgba(0, 0, 0, 0.45) !important;
   border: 1px solid rgba(255, 255, 255, 0.04) !important;
   border-radius: 999px !important;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(255, 255, 255, 0.04) !important;
   box-sizing: border-box !important;
   overflow: hidden !important;
 }
@@ -5140,19 +5183,31 @@ button:active {
   border-radius: 999px !important;
   pointer-events: none !important;
   z-index: 1 !important;
-  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), background 260ms ease, box-shadow 260ms ease, border 260ms ease !important;
+  transition:
+    transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
+    background 260ms ease,
+    box-shadow 260ms ease,
+    border 260ms ease !important;
 }
 
-.candidate-stage__listen.tactile-toggle .tactile-toggle__indicator[data-active="current"] {
+.candidate-stage__listen.tactile-toggle
+  .tactile-toggle__indicator[data-active='current'] {
   transform: translateX(0) !important;
   background: rgba(255, 255, 255, 0.12) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 1px 1px rgba(0, 0, 0, 0.1) !important;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.2),
+    0 1px 1px rgba(0, 0, 0, 0.1) !important;
 }
 
-.candidate-stage__listen.tactile-toggle .tactile-toggle__indicator[data-active="candidate"] {
+.candidate-stage__listen.tactile-toggle
+  .tactile-toggle__indicator[data-active='candidate'] {
   transform: translateX(100%) !important;
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.35) 0%, rgba(244, 114, 182, 0.2) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(167, 139, 250, 0.35) 0%,
+    rgba(244, 114, 182, 0.2) 100%
+  ) !important;
   border: 1px solid rgba(167, 139, 250, 0.3) !important;
   box-shadow: 0 4px 12px rgba(167, 139, 250, 0.25) !important;
 }
@@ -5176,7 +5231,9 @@ button:active {
   font-weight: 600 !important;
   letter-spacing: 0.02em !important;
   cursor: pointer !important;
-  transition: color 200ms ease, transform 120ms ease !important;
+  transition:
+    color 200ms ease,
+    transform 120ms ease !important;
   white-space: nowrap !important;
 }
 
@@ -5185,7 +5242,7 @@ button:active {
   background: transparent !important;
 }
 
-.candidate-stage__listen.tactile-toggle button[aria-pressed="true"] {
+.candidate-stage__listen.tactile-toggle button[aria-pressed='true'] {
   color: #ffffff !important;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
   background: transparent !important;
@@ -5224,7 +5281,9 @@ button:active {
 
 /* 4. Luminous Diff */
 .clip-candidate-diff {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), inset 0 0 15px rgba(180, 60, 160, 0.3) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 0 0 15px rgba(180, 60, 160, 0.3) !important;
   background-image: repeating-linear-gradient(
     45deg,
     rgba(255, 255, 255, 0.03),
@@ -5236,8 +5295,16 @@ button:active {
 }
 
 @keyframes candidatePulse {
-  0% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), inset 0 0 10px rgba(180, 60, 160, 0.2) !important; }
-  100% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 0 20px rgba(180, 60, 160, 0.5) !important; }
+  0% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+      inset 0 0 10px rgba(180, 60, 160, 0.2) !important;
+  }
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.3),
+      inset 0 0 20px rgba(180, 60, 160, 0.5) !important;
+  }
 }
 
 /* ==========================================================================
@@ -5296,12 +5363,12 @@ button:active {
 .project-sidebar {
   background: #0a0b0e !important;
   border-right: none !important;
-  box-shadow: 1px 0 0 rgba(255,255,255,0.02) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.02) !important;
 }
 .agent-panel {
   background: #0a0b0e !important;
   border-left: none !important;
-  box-shadow: -1px 0 0 rgba(255,255,255,0.02) !important;
+  box-shadow: -1px 0 0 rgba(255, 255, 255, 0.02) !important;
 }
 .arrangement-map {
   background: transparent !important;
@@ -5374,9 +5441,9 @@ button:active {
 
 /* 5. Chat Bubble Softening */
 .agent-chat__message {
-  border: 1px solid rgba(255,255,255,0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.03) !important;
   border-radius: 12px !important;
-  background: rgba(255,255,255,0.03) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
 }
 .agent-chat__message--error {
   background: rgba(255, 60, 100, 0.08) !important;
@@ -5400,7 +5467,9 @@ button:active {
   backdrop-filter: blur(48px) saturate(150%) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 20px !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 48px rgba(0, 0, 0, 0.5) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 24px 48px rgba(0, 0, 0, 0.5) !important;
   z-index: 100 !important;
 }
 .tone-console__header {
@@ -5469,15 +5538,15 @@ button:active {
    IMPECCABLE OVERRIDES: PHASE 8 (MATERIAL DEPTH & MICRO-INTERACTIONS)
    ========================================================================== */
 
-
-
 /* 2. Sidebar Native macOS Active State */
 .sidebar-navigation__item {
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 .sidebar-navigation__item[data-active='true'] {
   background: rgba(255, 255, 255, 0.08) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 2px 6px rgba(0, 0, 0, 0.2) !important;
   border-radius: 8px !important;
   color: #fff !important;
 }
@@ -5487,7 +5556,9 @@ button:active {
 
 /* 3. Transport Island Polish */
 .master-transport-island {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 32px rgba(0, 0, 0, 0.6) !important;
   border: 1px solid rgba(255, 255, 255, 0.04) !important;
 }
 .master-transport-island__play {
@@ -5508,7 +5579,9 @@ button:active {
   height: 22px !important;
   border-radius: 4px !important;
   background: rgba(0, 0, 0, 0.4) !important;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.05) !important;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
   color: rgba(255, 255, 255, 0.3) !important;
   font-weight: 800 !important;
   font-size: 9px !important;
@@ -5525,14 +5598,18 @@ button:active {
   /* Mute Button Active */
   background: rgba(217, 119, 6, 0.8) !important; /* Amber */
   color: #fff !important;
-  box-shadow: 0 0 12px rgba(217, 119, 6, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  box-shadow:
+    0 0 12px rgba(217, 119, 6, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
   text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
 }
 .arrangement-map__mix button[aria-pressed='true']:last-child {
   /* Solo Button Active */
   background: rgba(5, 150, 105, 0.8) !important; /* Emerald */
   color: #fff !important;
-  box-shadow: 0 0 12px rgba(5, 150, 105, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  box-shadow:
+    0 0 12px rgba(5, 150, 105, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
   text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
 }
 
@@ -5594,7 +5671,9 @@ button:active {
   background: rgba(18, 15, 23, 0.45) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-top: 1px solid rgba(255, 255, 255, 0.16) !important;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
   border-radius: 20px !important;
 }
 
@@ -5608,7 +5687,9 @@ button:active {
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
   border-radius: 12px !important;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.15) !important;
 }
 
 .tone-console__profile span {
@@ -5639,20 +5720,28 @@ button:active {
   filter: brightness(1.2) saturate(1.2) !important;
 }
 
-
-
 /* 3. Right Agent Chat Polish */
 .agent-chat__message {
   border-radius: 16px 16px 16px 4px !important;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.03)
+  ) !important;
   border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.08) !important;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.15),
+    inset 0 1px 1px rgba(255, 255, 255, 0.08) !important;
   font-size: 12px !important;
   padding: 12px 16px !important;
 }
 
 .agent-chat__message--error {
-  background: linear-gradient(135deg, rgba(220, 38, 38, 0.15), rgba(220, 38, 38, 0.05)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(220, 38, 38, 0.15),
+    rgba(220, 38, 38, 0.05)
+  ) !important;
   border-color: rgba(220, 38, 38, 0.2) !important;
 }
 
@@ -5668,7 +5757,9 @@ button:active {
 .agent-composer textarea:focus-visible {
   background: rgba(0, 0, 0, 0.4) !important;
   border-color: rgba(155, 130, 255, 0.4) !important;
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(155, 130, 255, 0.15) !important;
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.4),
+    0 0 0 2px rgba(155, 130, 255, 0.15) !important;
 }
 
 /* ==========================================================================
@@ -5712,7 +5803,9 @@ button:active {
   background: rgba(217, 119, 6, 0.85) !important;
   color: #fff !important;
   border-color: rgba(245, 158, 11, 0.5) !important;
-  box-shadow: 0 0 14px rgba(217, 119, 6, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  box-shadow:
+    0 0 14px rgba(217, 119, 6, 0.65),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
   text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
 }
 
@@ -5721,7 +5814,9 @@ button:active {
   background: rgba(5, 150, 105, 0.85) !important;
   color: #fff !important;
   border-color: rgba(16, 185, 129, 0.5) !important;
-  box-shadow: 0 0 14px rgba(5, 150, 105, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  box-shadow:
+    0 0 14px rgba(5, 150, 105, 0.65),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
   text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
 }
 
@@ -5780,7 +5875,9 @@ button:active {
   -webkit-backdrop-filter: blur(32px) saturate(160%) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: 999px !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
   color: rgba(255, 255, 255, 0.75) !important;
   font-size: 11px !important;
   cursor: pointer !important;
@@ -5792,7 +5889,9 @@ button:active {
   border-color: rgba(255, 255, 255, 0.18) !important;
   color: #fff !important;
   transform: scale(1.03) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
 }
 
 .tone-console-dock__pill:active {
@@ -5877,7 +5976,8 @@ button:active {
 
 /* 1. Empty State Animation (Breathing AI Signal) */
 @keyframes signal-pulse-pro {
-  0%, 100% {
+  0%,
+  100% {
     transform: scaleY(0.75);
     opacity: 0.6;
     box-shadow: 0 0 0 transparent;
@@ -5967,23 +6067,33 @@ button:active {
    ========================================================================== */
 
 /* 1. Candidate Clip Luminous Highlight */
-.arrangement-map__clip[data-candidate="true"] {
+.arrangement-map__clip[data-candidate='true'] {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.6),
     inset 0 2px 4px rgba(255, 255, 255, 0.3),
     0 0 16px var(--track-color) !important;
   filter: brightness(1.25) saturate(1.3) !important;
-  background-image: linear-gradient(135deg, rgba(255,255,255,0.25), transparent) !important;
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25),
+    transparent
+  ) !important;
   animation: candidate-pulse 2s ease-in-out infinite alternate !important;
   z-index: 10 !important;
 }
 
 @keyframes candidate-pulse {
-  from { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4), 0 0 8px var(--track-color); }
-  to { box-shadow: inset 0 0 0 1px rgba(255,255,255,0.8), 0 0 24px var(--track-color); }
+  from {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.4),
+      0 0 8px var(--track-color);
+  }
+  to {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+      0 0 24px var(--track-color);
+  }
 }
-
-
 
 /* 2. Apple-Grade Error State (AGENT_UNAVAILABLE) */
 .agent-chat__message--error {
@@ -5999,7 +6109,6 @@ button:active {
   border-radius: 12px !important;
   overflow: hidden !important;
 }
-
 
 .agent-chat__message--error small {
   display: block !important;
@@ -6024,12 +6133,19 @@ button:active {
 
 /* 1. Laser Playhead */
 .arrangement-map__playhead {
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.4) 40%, rgba(255, 255, 255, 0) 100%) !important;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(255, 255, 255, 0.4) 40%,
+    rgba(255, 255, 255, 0) 100%
+  ) !important;
   box-shadow: 0 0 16px rgba(255, 255, 255, 0.3) !important;
 }
 
 .arrangement-map__playhead::before {
-  box-shadow: 0 0 12px #fff, 0 0 24px rgba(167, 139, 250, 0.8) !important;
+  box-shadow:
+    0 0 12px #fff,
+    0 0 24px rgba(167, 139, 250, 0.8) !important;
 }
 
 /* 2. Precision Timeline Ruler */
@@ -6054,9 +6170,15 @@ button:active {
 
 /* 3. Contextual Agent Bubble (Success / Candidate Ready) */
 .agent-chat__message--candidate {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15) 0%, rgba(244, 114, 182, 0.08) 100%) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(167, 139, 250, 0.15) 0%,
+    rgba(244, 114, 182, 0.08) 100%
+  ) !important;
   border: 1px solid rgba(167, 139, 250, 0.25) !important;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(167, 139, 250, 0.15) !important;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    0 4px 12px rgba(167, 139, 250, 0.15) !important;
 }
 
 .agent-chat__message--candidate small {
@@ -6101,14 +6223,18 @@ button:active {
   backdrop-filter: blur(24px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .export-current__format:hover {
   background: rgba(255, 255, 255, 0.06) !important;
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
   transform: translateY(-2px) scale(1.01) !important;
 }
 
@@ -6136,8 +6262,12 @@ button:active {
   color: rgba(255, 255, 255, 0.95) !important;
 }
 
-.export-current__notice[data-state="preparing"] {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%) !important;
+.export-current__notice[data-state='preparing'] {
+  background: linear-gradient(
+    135deg,
+    rgba(167, 139, 250, 0.08) 0%,
+    rgba(255, 255, 255, 0.03) 100%
+  ) !important;
   border: 1px solid rgba(167, 139, 250, 0.2) !important;
 }
 
@@ -6147,7 +6277,9 @@ button:active {
   backdrop-filter: blur(16px) saturate(180%) !important;
   -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
   border: 1px solid rgba(255, 59, 48, 0.25) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 8px 24px rgba(255, 59, 48, 0.1) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 8px 24px rgba(255, 59, 48, 0.1) !important;
 }
 
 .agent-chat__message--error small {
@@ -6193,7 +6325,12 @@ button:active {
   left: 0 !important;
   right: 0 !important;
   height: 1px !important;
-  background: linear-gradient(90deg, transparent, rgba(255, 100, 100, 0.4), transparent) !important;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 100, 100, 0.4),
+    transparent
+  ) !important;
 }
 
 .agent-chat__message--error small {
@@ -6258,7 +6395,9 @@ button:active {
   backdrop-filter: blur(48px) saturate(200%) !important;
   -webkit-backdrop-filter: blur(48px) saturate(200%) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
 }
 
 /* 4. Track Header Tightening (Pro DAW look) */
@@ -6354,7 +6493,9 @@ button:active {
   color: rgba(255, 255, 255, 0.4) !important;
   font-size: 10px !important;
   font-weight: 800 !important;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.05) !important;
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
@@ -6371,7 +6512,9 @@ button:active {
 .arrangement-map__mix button[aria-pressed='true']:first-child {
   background: rgba(217, 119, 6, 0.85) !important;
   color: #fff !important;
-  box-shadow: 0 0 12px rgba(217, 119, 6, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  box-shadow:
+    0 0 12px rgba(217, 119, 6, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
   text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
 }
 
@@ -6379,7 +6522,9 @@ button:active {
 .arrangement-map__mix button[aria-pressed='true']:last-child {
   background: rgba(5, 150, 105, 0.85) !important;
   color: #fff !important;
-  box-shadow: 0 0 12px rgba(5, 150, 105, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
+  box-shadow:
+    0 0 12px rgba(5, 150, 105, 0.6),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4) !important;
   text-shadow: 0 0 4px rgba(255, 255, 255, 0.8) !important;
 }
 
@@ -6441,7 +6586,11 @@ button:active {
   left: 0 !important;
   right: 0 !important;
   height: 400px !important;
-  background: radial-gradient(ellipse at 50% -20%, rgba(155, 130, 255, 0.08) 0%, transparent 70%) !important;
+  background: radial-gradient(
+    ellipse at 50% -20%,
+    rgba(155, 130, 255, 0.08) 0%,
+    transparent 70%
+  ) !important;
   pointer-events: none !important;
   z-index: 0 !important;
 }
@@ -6461,16 +6610,27 @@ button:active {
 
 /* 1. Amplify Ambient Glow in Main Workspace */
 .workspace-main::before {
-  background: radial-gradient(ellipse at 50% 0%, rgba(155, 130, 255, 0.2) 0%, rgba(155, 130, 255, 0.05) 45%, transparent 75%) !important;
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    rgba(155, 130, 255, 0.2) 0%,
+    rgba(155, 130, 255, 0.05) 45%,
+    transparent 75%
+  ) !important;
   height: 600px !important;
 }
 
 /* 2. Soften and enhance the Focused Track highlight (Squircle track glow) */
 .arrangement-map__track[data-focused='true'] {
-  background: linear-gradient(90deg, rgba(167, 139, 250, 0.12) 0%, rgba(167, 139, 250, 0.02) 100%) !important;
+  background: linear-gradient(
+    90deg,
+    rgba(167, 139, 250, 0.12) 0%,
+    rgba(167, 139, 250, 0.02) 100%
+  ) !important;
   border-radius: 12px !important;
   border-top-color: transparent !important;
-  box-shadow: inset 1px 1px 0 rgba(167, 139, 250, 0.15), inset -1px -1px 0 rgba(167, 139, 250, 0.05) !important;
+  box-shadow:
+    inset 1px 1px 0 rgba(167, 139, 250, 0.15),
+    inset -1px -1px 0 rgba(167, 139, 250, 0.05) !important;
 }
 .arrangement-map__track[data-focused='true'] + .arrangement-map__track {
   border-top-color: transparent !important;
@@ -6497,9 +6657,21 @@ button:active {
 /* 1. Ultra-smooth, off-screen atmospheric wash */
 .workspace-main {
   background-image:
-    radial-gradient(100% 60% at 50% -15%, rgba(124, 58, 237, 0.12) 0%, transparent 100%),
-    radial-gradient(80% 60% at 100% -10%, rgba(56, 189, 248, 0.08) 0%, transparent 100%),
-    radial-gradient(80% 60% at 0% -10%, rgba(236, 72, 153, 0.06) 0%, transparent 100%) !important;
+    radial-gradient(
+      100% 60% at 50% -15%,
+      rgba(124, 58, 237, 0.12) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      80% 60% at 100% -10%,
+      rgba(56, 189, 248, 0.08) 0%,
+      transparent 100%
+    ),
+    radial-gradient(
+      80% 60% at 0% -10%,
+      rgba(236, 72, 153, 0.06) 0%,
+      transparent 100%
+    ) !important;
   background-color: transparent !important;
 }
 

@@ -4,7 +4,6 @@ import type {
   OperationView,
   ProjectId,
   TaskContextView,
-  TaskScope,
 } from '@agent-music/contracts';
 import type {
   CoreOperationEventNotification,
@@ -85,7 +84,10 @@ export const createLiveGenerationPlanAdapter = ({
     }
   };
 
-  const applySnapshot = (operations: readonly OperationView[], sequence: number): void => {
+  const applySnapshot = (
+    operations: readonly OperationView[],
+    sequence: number,
+  ): void => {
     if (disposed || sequence <= lastSequence) return;
     lastSequence = sequence;
     const operation = generationPlanFromOperations(operations);
@@ -96,7 +98,9 @@ export const createLiveGenerationPlanAdapter = ({
     });
   };
 
-  const applyOperationEvent = (notification: CoreOperationEventNotification): void => {
+  const applyOperationEvent = (
+    notification: CoreOperationEventNotification,
+  ): void => {
     if (
       disposed ||
       notification.projectId !== projectId ||
@@ -131,7 +135,8 @@ export const createLiveGenerationPlanAdapter = ({
     try {
       const result: OperationStateResult =
         await bridge.readOperationState(projectId);
-      if (result.ok) applySnapshot(result.state.operations, result.state.sequence);
+      if (result.ok)
+        applySnapshot(result.state.operations, result.state.sequence);
       else
         publishState({
           projectId,

@@ -66,10 +66,10 @@ This starts electron-vite in dev mode: it builds the main/preload processes, ser
 
 There are two service-fleet modes, selected by environment variables (see [`service-entry-resolver.ts`](apps/workstation/src/main/service-entry-resolver.ts)):
 
-| Mode | Env vars | core (project) service | agent service |
-| --- | --- | --- | --- |
-| UI-only (default `dev`) | `AGENT_MUSIC_FAKE_SERVICES=1` | fake stub | fake stub |
-| Real core + fake agent | `AGENT_MUSIC_FAKE_AGENT=1` | real project service | fake stub |
+| Mode                    | Env vars                      | core (project) service | agent service |
+| ----------------------- | ----------------------------- | ---------------------- | ------------- |
+| UI-only (default `dev`) | `AGENT_MUSIC_FAKE_SERVICES=1` | fake stub              | fake stub     |
+| Real core + fake agent  | `AGENT_MUSIC_FAKE_AGENT=1`    | real project service   | fake stub     |
 
 The default `dev` script uses `AGENT_MUSIC_FAKE_SERVICES=1`, so **both** services are stubs — the UI renders, but `project.create` and other core commands are silently dropped. To actually create and edit projects, run with the real core:
 
@@ -105,23 +105,23 @@ pnpm --filter @agent-music/workstation dev
 
 Root:
 
-| Command | What it does |
-| --- | --- |
-| `pnpm typecheck` | TypeScript across the workspace |
-| `pnpm lint` | ESLint |
-| `pnpm format` / `pnpm format:check` | Prettier write / check |
-| `pnpm test` | Vitest (workspace) |
-| `pnpm check` | format + lint + typecheck + test |
+| Command                             | What it does                     |
+| ----------------------------------- | -------------------------------- |
+| `pnpm typecheck`                    | TypeScript across the workspace  |
+| `pnpm lint`                         | ESLint                           |
+| `pnpm format` / `pnpm format:check` | Prettier write / check           |
+| `pnpm test`                         | Vitest (workspace)               |
+| `pnpm check`                        | format + lint + typecheck + test |
 
 Workstation (`apps/workstation`):
 
-| Command | What it does |
-| --- | --- |
-| `pnpm dev` | Launch the Electron app in dev mode |
-| `pnpm dev:renderer` | Run only the renderer dev server |
-| `pnpm build` | Production build via electron-vite |
-| `pnpm test` | Unit/integration tests |
-| `pnpm smoke:shell` | Desktop-shell smoke test (builds first) |
+| Command                  | What it does                                   |
+| ------------------------ | ---------------------------------------------- |
+| `pnpm dev`               | Launch the Electron app in dev mode            |
+| `pnpm dev:renderer`      | Run only the renderer dev server               |
+| `pnpm build`             | Production build via electron-vite             |
+| `pnpm test`              | Unit/integration tests                         |
+| `pnpm smoke:shell`       | Desktop-shell smoke test (builds first)        |
 | `pnpm smoke:spessasynth` | SpessaSynth playback smoke test (builds first) |
 
 ## License

@@ -38,10 +38,14 @@ export interface SourceAwarePlaybackAdapter {
   dispose(): Promise<void>;
 }
 
-const sameSlot = (left: RuntimeSource | null, right: RuntimeSource): boolean =>
-  left?.kind === right.kind &&
-  (right.kind === 'current' ||
-    (left?.kind === 'candidate' && left.candidateId === right.candidateId));
+const sameSlot = (
+  left: RuntimeSource | null,
+  right: RuntimeSource,
+): boolean => {
+  if (right.kind === 'current') return left?.kind === 'current';
+  if (left?.kind !== 'candidate') return false;
+  return left.candidateId === right.candidateId;
+};
 
 const failedRead = (
   message: string,

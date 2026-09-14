@@ -110,7 +110,7 @@ describe('Candidate Review UI audition wiring', () => {
         error: null,
         committedRevision: null,
       };
-      const busy = false;
+      const busy = false as boolean;
 
       const candidateAuditionAvailable =
         !busy && candidateState.candidatePlaybackSnapshot !== null;
@@ -151,7 +151,7 @@ describe('Candidate Review UI audition wiring', () => {
         error: null,
         committedRevision: null,
       };
-      const busy = true;
+      const busy = true as boolean;
 
       const candidateAuditionAvailable =
         !busy && candidateState.candidatePlaybackSnapshot !== null;
@@ -177,7 +177,7 @@ describe('Candidate Review UI audition wiring', () => {
         error: null,
         committedRevision: null,
       };
-      const busy = false;
+      const busy = false as boolean;
 
       const candidateAuditionAvailable =
         !busy && candidateState.candidatePlaybackSnapshot !== null;

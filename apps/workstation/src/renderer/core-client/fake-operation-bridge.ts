@@ -17,11 +17,12 @@ export const createFakeOperationBridge = (
   initialState: CoreOperationStateSnapshot,
   dispatchOperation: (
     command: OperationControlCommand,
-  ) => Promise<OperationControlResult> = async () => ({
-    ok: false,
-    code: 'NOT_IMPLEMENTED',
-    userMessage: 'Operation control is not configured.',
-  }),
+  ) => Promise<OperationControlResult> = () =>
+    Promise.resolve({
+      ok: false,
+      code: 'NOT_IMPLEMENTED',
+      userMessage: 'Operation control is not configured.',
+    }),
 ): FakeOperationBridge => {
   let state = structuredClone(initialState);
   const listeners = new Set<
@@ -29,16 +30,16 @@ export const createFakeOperationBridge = (
   >();
 
   return {
-    readOperationState: async (
-      projectId: ProjectId,
-    ): Promise<OperationStateResult> =>
-      state.projectId === projectId
-        ? { ok: true, state: structuredClone(state) }
-        : {
-            ok: false,
-            code: 'PROJECT_MISMATCH',
-            userMessage: 'Operation state belongs to another project.',
-          },
+    readOperationState: (projectId: ProjectId): Promise<OperationStateResult> =>
+      Promise.resolve(
+        state.projectId === projectId
+          ? { ok: true, state: structuredClone(state) }
+          : {
+              ok: false,
+              code: 'PROJECT_MISMATCH',
+              userMessage: 'Operation state belongs to another project.',
+            },
+      ),
     dispatchOperation,
     onOperationEvent(listener) {
       listeners.add(listener);

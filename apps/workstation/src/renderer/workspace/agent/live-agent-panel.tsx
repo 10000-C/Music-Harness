@@ -37,7 +37,17 @@ export const LiveAgentPanel = ({
     <aside className="agent-panel" aria-label="Music Harness Agent studio chat">
       <header className="agent-chat__header">
         <span className="agent-chat__avatar" aria-hidden="true">
-          <img src={logoImg} alt="" style={{ width: '22px', height: '22px', transform: 'scale(2.2)', objectFit: 'contain', filter: 'invert(1)' }} />
+          <img
+            src={logoImg}
+            alt=""
+            style={{
+              width: '22px',
+              height: '22px',
+              transform: 'scale(2.2)',
+              objectFit: 'contain',
+              filter: 'invert(1)',
+            }}
+          />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2>Music Harness</h2>

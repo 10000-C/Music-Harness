@@ -119,13 +119,21 @@ describe('LiveAgentAdapter', () => {
       result: {
         type: 'agent.session.active',
         requestId: 'req-active',
-        session: { sessionId, projectId, createdAt: '2026-09-11T00:00:00.000Z' },
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
         messages: [],
       },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
-      result: { type: 'agent.session.listed', requestId: 'req-list', sessions: [] },
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-list',
+        sessions: [],
+      },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
@@ -191,13 +199,21 @@ describe('LiveAgentAdapter', () => {
       result: {
         type: 'agent.session.active',
         requestId: 'req-active',
-        session: { sessionId, projectId, createdAt: '2026-09-11T00:00:00.000Z' },
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
         messages: [],
       },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
-      result: { type: 'agent.session.listed', requestId: 'req-list', sessions: [] },
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-list',
+        sessions: [],
+      },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
@@ -248,13 +264,21 @@ describe('LiveAgentAdapter', () => {
       result: {
         type: 'agent.session.active',
         requestId: 'req-active',
-        session: { sessionId, projectId, createdAt: '2026-09-11T00:00:00.000Z' },
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
         messages: [],
       },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
-      result: { type: 'agent.session.listed', requestId: 'req-list', sessions: [] },
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-list',
+        sessions: [],
+      },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
@@ -297,13 +321,21 @@ describe('LiveAgentAdapter', () => {
       result: {
         type: 'agent.session.active',
         requestId: 'req-active',
-        session: { sessionId, projectId, createdAt: '2026-09-11T00:00:00.000Z' },
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
         messages: [],
       },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
-      result: { type: 'agent.session.listed', requestId: 'req-list', sessions: [] },
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-list',
+        sessions: [],
+      },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
@@ -326,7 +358,12 @@ describe('LiveAgentAdapter', () => {
     });
     await Promise.resolve();
     expect(settled).toBe(false);
-    emit({ type: 'agent.executionCompleted', projectId, sessionId, executionId });
+    emit({
+      type: 'agent.executionCompleted',
+      projectId,
+      sessionId,
+      executionId,
+    });
     await barrier;
     expect(settled).toBe(true);
     expect(adapter.hasRunningExecution()).toBe(false);
@@ -339,13 +376,21 @@ describe('LiveAgentAdapter', () => {
       result: {
         type: 'agent.session.active',
         requestId: 'req-active',
-        session: { sessionId, projectId, createdAt: '2026-09-11T00:00:00.000Z' },
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
         messages: [],
       },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,
-      result: { type: 'agent.session.listed', requestId: 'req-list', sessions: [] },
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-list',
+        sessions: [],
+      },
     });
     dispatchAgent.mockResolvedValueOnce({
       ok: true,

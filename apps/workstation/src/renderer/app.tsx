@@ -35,7 +35,10 @@ import {
 } from './core-client/index.js';
 import { type PlaybackRuntimeState } from './opendaw-runtime/index.js';
 import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-playback-runtime.js';
-import { createSourceAwarePlaybackAdapter, type SourceAwarePlaybackAdapter } from './opendaw-runtime/index.js';
+import {
+  createSourceAwarePlaybackAdapter,
+  type SourceAwarePlaybackAdapter,
+} from './opendaw-runtime/index.js';
 import type { PlaybackCommand } from './opendaw-runtime/types.js';
 import { CompetitionAgentPanel } from './workspace/agent/competition-agent-panel.js';
 import { LiveAgentPanel } from './workspace/agent/live-agent-panel.js';
@@ -836,14 +839,19 @@ const LiveProjectWorkspace = () => {
   const playbackAdapter = useRef<SourceAwarePlaybackAdapter | null>(null);
 
   const [timeline, setTimeline] = useState<TimelineViewModel | null>(null);
-  const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(null);
+  const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(
+    null,
+  );
   const [focusedTrackId, setFocusedTrackId] = useState<TrackId>('track.guitar');
-  const [candidateState, setCandidateState] = useState<LiveCandidateState | null>(null);
+  const [candidateState, setCandidateState] =
+    useState<LiveCandidateState | null>(null);
   const candidateAdapter = useRef<LiveCandidateAdapter | null>(null);
   const [agentState, setAgentState] = useState<LiveAgentState | null>(null);
   const [agentPrompt, setAgentPrompt] = useState('');
   const agentAdapter = useRef<LiveAgentAdapter | null>(null);
-  const [selectedExportPaths, setSelectedExportPaths] = useState<Partial<Record<ExportCurrentFormat, string>>>({});
+  const [selectedExportPaths, setSelectedExportPaths] = useState<
+    Partial<Record<ExportCurrentFormat, string>>
+  >({});
 
   useEffect(() => {
     mounted.current = true;
@@ -874,11 +882,13 @@ const LiveProjectWorkspace = () => {
     const unsubscribe = adapter.subscribe((state) => {
       if (mounted.current) setRuntimeState(state);
     });
-    void adapter.load({ kind: 'current', revision: project.currentRevision }).then((result) => {
-      if (!mounted.current) return;
-      if (result.status === 'failed') setMessage(result.failure.message);
-      else setMessage('Current is loaded for playback.');
-    });
+    void adapter
+      .load({ kind: 'current', revision: project.currentRevision })
+      .then((result) => {
+        if (!mounted.current) return;
+        if (result.status === 'failed') setMessage(result.failure.message);
+        else setMessage('Current is loaded for playback.');
+      });
     return () => {
       unsubscribe();
       void adapter.dispose();
@@ -894,25 +904,29 @@ const LiveProjectWorkspace = () => {
       return;
     }
     let active = true;
-    void bridge.readPlaybackSnapshot(project.projectId, source).then((result) => {
-      if (!active) return;
-      if (result.ok) {
-        const view = createCurrentPlaybackViewModel(
-          result.snapshot.revision,
-          result.snapshot.timeline,
-          result.snapshot.compilation
-        );
-        if (view !== null) setTimeline(view);
-        else {
+    void bridge
+      .readPlaybackSnapshot(project.projectId, source)
+      .then((result) => {
+        if (!active) return;
+        if (result.ok) {
+          const view = createCurrentPlaybackViewModel(
+            result.snapshot.revision,
+            result.snapshot.timeline,
+            result.snapshot.compilation,
+          );
+          if (view !== null) setTimeline(view);
+          else {
+            setTimeline(null);
+            setMessage('Playback data did not pass the Renderer boundary.');
+          }
+        } else {
           setTimeline(null);
-          setMessage('Playback data did not pass the Renderer boundary.');
+          setMessage(result.userMessage);
         }
-      } else {
-        setTimeline(null);
-        setMessage(result.userMessage);
-      }
-    });
-    return () => { active = false; };
+      });
+    return () => {
+      active = false;
+    };
   }, [
     runtimeState?.activeSource?.kind,
     runtimeState?.activeSource?.revision,
@@ -995,7 +1009,7 @@ const LiveProjectWorkspace = () => {
 
   const sendPlayback = useCallback(async (command: PlaybackCommand) => {
     const outcome = await playbackAdapter.current?.send(command);
-    if (outcome === undefined || outcome === null) return;
+    if (outcome == null) return;
     if (outcome.status === 'failed') setMessage(outcome.failure.message);
   }, []);
 
@@ -1018,7 +1032,10 @@ const LiveProjectWorkspace = () => {
         } else {
           setMessage('Candidate discarded. Current is unchanged.');
           if (project?.state === 'ready') {
-            void playbackAdapter.current?.update({ kind: 'current', revision: project.currentRevision });
+            void playbackAdapter.current?.update({
+              kind: 'current',
+              revision: project.currentRevision,
+            });
           }
         }
       } catch (error: unknown) {
@@ -1133,8 +1150,7 @@ const LiveProjectWorkspace = () => {
       ? 'Choose a project folder to begin'
       : `Current · ${project.currentRevision.slice(0, 8)}`;
   const playback = runtimeState;
-  const playable =
-    timeline !== null && playback?.activeSource !== null;
+  const playable = timeline !== null && playback?.activeSource !== null;
   const mutedTrackIds = new Set(playback?.mutedTrackIds ?? []);
   const soloTrackIds = new Set(playback?.soloTrackIds ?? []);
   const bpm = timeline?.tempoMap[0]?.bpm ?? 0;
@@ -1299,29 +1315,42 @@ const LiveProjectWorkspace = () => {
                   <CandidateStage
                     title="Candidate ready to review"
                     details={undefined}
-                    previewingCandidate={runtimeState?.activeSource?.kind === 'candidate'}
+                    previewingCandidate={
+                      runtimeState?.activeSource?.kind === 'candidate'
+                    }
                     candidateAuditionAvailable={
                       !busy && candidateState.candidatePlaybackSnapshot !== null
                     }
                     candidateAcceptanceAvailable={!busy}
-                    onReviewCurrent={async () => {
-                      if (project.state === 'ready') {
-                        const outcome = await playbackAdapter.current?.update({ kind: 'current', revision: project.currentRevision });
-                        if (outcome?.status === 'failed') setMessage(outcome.failure.message);
-                      }
+                    onReviewCurrent={() => {
+                      void (async () => {
+                        if (project.state === 'ready') {
+                          const outcome = await playbackAdapter.current?.update(
+                            {
+                              kind: 'current',
+                              revision: project.currentRevision,
+                            },
+                          );
+                          if (outcome?.status === 'failed')
+                            setMessage(outcome.failure.message);
+                        }
+                      })();
                     }}
-                    onReviewCandidate={async () => {
-                      const ref = candidateState.candidatePlaybackSnapshot;
-                      if (ref === null) {
-                        unavailableCandidateAudition();
-                        return;
-                      }
-                      const outcome = await playbackAdapter.current?.update({
-                        kind: 'candidate',
-                        candidateId: ref.candidateId,
-                        revision: ref.revision,
-                      });
-                      if (outcome?.status === 'failed') setMessage(outcome.failure.message);
+                    onReviewCandidate={() => {
+                      void (async () => {
+                        const ref = candidateState.candidatePlaybackSnapshot;
+                        if (ref === null) {
+                          unavailableCandidateAudition();
+                          return;
+                        }
+                        const outcome = await playbackAdapter.current?.update({
+                          kind: 'candidate',
+                          candidateId: ref.candidateId,
+                          revision: ref.revision,
+                        });
+                        if (outcome?.status === 'failed')
+                          setMessage(outcome.failure.message);
+                      })();
                     }}
                     onAccept={() => void resolveCandidate('accept')}
                     onReject={() => void resolveCandidate('reject')}

@@ -22,10 +22,11 @@ export const createFakeCandidateBridge = (
   initialState: CandidateStateSnapshot,
   dispatchCandidate: (
     command: CandidateCommand,
-  ) => Promise<CandidateCommandResult> = async () => ({
-    ok: true,
-    events: [] as readonly CandidateEvent[],
-  }),
+  ) => Promise<CandidateCommandResult> = () =>
+    Promise.resolve({
+      ok: true,
+      events: [] as readonly CandidateEvent[],
+    }),
 ): FakeCandidateBridge => {
   let state = structuredClone(initialState);
   const listeners = new Set<
@@ -34,16 +35,16 @@ export const createFakeCandidateBridge = (
 
   return {
     dispatchCandidate,
-    readCandidateState: async (
-      projectId: ProjectId,
-    ): Promise<CandidateStateResult> =>
-      state.projectId === projectId
-        ? { ok: true, state: structuredClone(state) }
-        : {
-            ok: false,
-            code: 'PROJECT_MISMATCH',
-            userMessage: 'Candidate state belongs to another project.',
-          },
+    readCandidateState: (projectId: ProjectId): Promise<CandidateStateResult> =>
+      Promise.resolve(
+        state.projectId === projectId
+          ? { ok: true, state: structuredClone(state) }
+          : {
+              ok: false,
+              code: 'PROJECT_MISMATCH',
+              userMessage: 'Candidate state belongs to another project.',
+            },
+      ),
     onCandidateEvent(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

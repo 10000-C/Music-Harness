@@ -1,5 +1,4 @@
 import type {
-  AgentCommandResult,
   AgentConversationMessage,
   AgentEvent,
   AgentExecutionId,
@@ -66,14 +65,15 @@ export const createLiveAgentAdapter = ({
 
   const setState = (patch: Partial<LiveAgentState>): void => {
     state = Object.freeze({ ...state, ...patch });
-    listeners.forEach((listener) => listener(state));
+    listeners.forEach((listener) => {
+      listener(state);
+    });
   };
 
   const handleAgentEvent = (event: AgentEvent): void => {
     if (event.projectId !== state.projectId) return;
     if (
-      state.activeSession === null ||
-      event.sessionId !== state.activeSession.sessionId ||
+      event.sessionId !== state.activeSession?.sessionId ||
       !state.isExecuting ||
       state.activeExecutionId === null ||
       event.executionId !== state.activeExecutionId
@@ -89,9 +89,13 @@ export const createLiveAgentAdapter = ({
 
       case 'agent.executionCompleted': {
         const finishedText = state.streamingText.trim();
-        const updatedMessages = finishedText.length > 0
-          ? [...state.messages, { role: 'assistant' as const, text: finishedText }]
-          : state.messages;
+        const updatedMessages =
+          finishedText.length > 0
+            ? [
+                ...state.messages,
+                { role: 'assistant' as const, text: finishedText },
+              ]
+            : state.messages;
         setState({
           isExecuting: false,
           activeExecutionId: null,
@@ -104,9 +108,13 @@ export const createLiveAgentAdapter = ({
 
       case 'agent.executionFailed': {
         const finishedText = state.streamingText.trim();
-        const updatedMessages = finishedText.length > 0
-          ? [...state.messages, { role: 'assistant' as const, text: finishedText }]
-          : state.messages;
+        const updatedMessages =
+          finishedText.length > 0
+            ? [
+                ...state.messages,
+                { role: 'assistant' as const, text: finishedText },
+              ]
+            : state.messages;
         setState({
           isExecuting: false,
           activeExecutionId: null,
@@ -119,15 +127,16 @@ export const createLiveAgentAdapter = ({
 
       case 'agent.executionCancelled': {
         const finishedText = state.streamingText.trim();
-        const updatedMessages = finishedText.length > 0
-          ? [
-              ...state.messages,
-              {
-                role: 'assistant' as const,
-                text: `${finishedText} [Cancelled]`,
-              },
-            ]
-          : state.messages;
+        const updatedMessages =
+          finishedText.length > 0
+            ? [
+                ...state.messages,
+                {
+                  role: 'assistant' as const,
+                  text: `${finishedText} [Cancelled]`,
+                },
+              ]
+            : state.messages;
         setState({
           isExecuting: false,
           activeExecutionId: null,
@@ -163,7 +172,10 @@ export const createLiveAgentAdapter = ({
         projectId: state.projectId,
       });
 
-      if (activeOutcome.ok && activeOutcome.result.type === 'agent.session.active') {
+      if (
+        activeOutcome.ok &&
+        activeOutcome.result.type === 'agent.session.active'
+      ) {
         const session = activeOutcome.result.session;
         const messages = activeOutcome.result.messages ?? [];
         if (session !== undefined) {
