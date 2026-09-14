@@ -31,6 +31,8 @@ export interface LiveAgentAdapter {
   getState(): LiveAgentState;
   subscribe(listener: (state: LiveAgentState) => void): () => void;
   initialize(): Promise<void>;
+  hasRunningExecution(): boolean;
+  waitForExecutionSettled(): Promise<void>;
   createSession(): Promise<AgentSessionSummary | null>;
   openSession(sessionId: AgentSessionId): Promise<void>;
   sendMessage(
@@ -60,6 +62,7 @@ export const createLiveAgentAdapter = ({
   };
 
   const listeners = new Set<(current: LiveAgentState) => void>();
+  const settledWaiters = new Set<() => void>();
 
   const setState = (patch: Partial<LiveAgentState>): void => {
     state = Object.freeze({ ...state, ...patch });
@@ -333,13 +336,34 @@ export const createLiveAgentAdapter = ({
     }
   };
 
+  const waitForExecutionSettled = (): Promise<void> => {
+    if (!state.isExecuting) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const waiter = (): void => {
+        settledWaiters.delete(waiter);
+        resolve();
+      };
+      settledWaiters.add(waiter);
+      const listener = (next: LiveAgentState): void => {
+        if (!next.isExecuting) {
+          listeners.delete(listener);
+          waiter();
+        }
+      };
+      listeners.add(listener);
+    });
+  };
+
   const dispose = (): void => {
+    for (const waiter of [...settledWaiters]) waiter();
     listeners.clear();
     unsubscribeEvent();
   };
 
   return {
     getState: () => state,
+    hasRunningExecution: () => state.isExecuting,
+    waitForExecutionSettled,
     subscribe: (listener) => {
       listeners.add(listener);
       listener(state);

@@ -290,6 +290,48 @@ describe('LiveAgentAdapter', () => {
     expect(adapter.getState().isExecuting).toBe(true);
   });
 
+  it('exposes a settlement barrier for Project switching', async () => {
+    const { bridge, dispatchAgent, emit } = createFakeBridge();
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.session.active',
+        requestId: 'req-active',
+        session: { sessionId, projectId, createdAt: '2026-09-11T00:00:00.000Z' },
+        messages: [],
+      },
+    });
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: { type: 'agent.session.listed', requestId: 'req-list', sessions: [] },
+    });
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.message.accepted',
+        requestId: 'req-send',
+        executionId,
+      },
+    });
+
+    const adapter = createLiveAgentAdapter({ projectId, bridge });
+    await adapter.initialize();
+    expect(adapter.hasRunningExecution()).toBe(false);
+    await adapter.sendMessage('Wait for a safe project switch');
+    expect(adapter.hasRunningExecution()).toBe(true);
+
+    let settled = false;
+    const barrier = adapter.waitForExecutionSettled().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    emit({ type: 'agent.executionCompleted', projectId, sessionId, executionId });
+    await barrier;
+    expect(settled).toBe(true);
+    expect(adapter.hasRunningExecution()).toBe(false);
+  });
+
   it('marks message as cancelled when execution is cancelled', async () => {
     const { bridge, dispatchAgent, emit } = createFakeBridge();
     dispatchAgent.mockResolvedValueOnce({
