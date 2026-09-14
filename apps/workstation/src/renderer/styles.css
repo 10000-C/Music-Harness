@@ -6707,3 +6707,21 @@ select {
   -webkit-app-region: drag;
   z-index: 100;
 }
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: WINDOW CONTROLS OVERLAY (WCO) SAFE AREA IN EXPORT
+   ========================================================================== */
+
+/* 1. When the right Agent Panel is hidden in Export view, .workspace-main spans to the right edge.
+      Give .project-header a 150px right clearance so it never collides with or sits under WCO buttons. */
+.workstation-shell:has(.export-current) .project-header {
+  width: calc(100% - 174px) !important;
+  max-width: 1400px !important;
+  margin: 16px 150px 16px auto !important;
+}
+
+/* 2. Hide redundant "Export" button from header when user is already on the Export page */
+.workstation-shell:has(.export-current) .project-header__actions button {
+  display: none !important;
+}
+
