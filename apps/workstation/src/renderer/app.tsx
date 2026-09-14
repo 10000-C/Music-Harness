@@ -29,6 +29,11 @@ import {
   type LiveCandidateState,
 } from './core-client/live-candidate-adapter.js';
 import {
+  createLiveGenerationPlanAdapter,
+  type LiveGenerationPlanAdapter,
+  type LiveGenerationPlanState,
+} from './core-client/live-generation-plan-adapter.js';
+import {
   createLiveAgentAdapter,
   type LiveAgentAdapter,
   type LiveAgentState,
@@ -42,6 +47,8 @@ import { LiveAgentPanel } from './workspace/agent/live-agent-panel.js';
 import type { AgentSessionId } from '@agent-music/contracts';
 import { ArrangementMap } from './workspace/arrangement-map.js';
 import { CandidateStage } from './workspace/candidate-stage.js';
+import { ScopeExtensionStage } from './workspace/scope-extension-stage.js';
+import { GenerationPlanStage } from './workspace/generation-plan-stage.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
 import { ExportCurrentView } from './workspace/export-current.js';
@@ -840,6 +847,8 @@ const LiveProjectWorkspace = () => {
   const [focusedTrackId, setFocusedTrackId] = useState<TrackId>('track.guitar');
   const [candidateState, setCandidateState] = useState<LiveCandidateState | null>(null);
   const candidateAdapter = useRef<LiveCandidateAdapter | null>(null);
+  const [generationPlanState, setGenerationPlanState] = useState<LiveGenerationPlanState | null>(null);
+  const generationPlanAdapter = useRef<LiveGenerationPlanAdapter | null>(null);
   const [agentState, setAgentState] = useState<LiveAgentState | null>(null);
   const [agentPrompt, setAgentPrompt] = useState('');
   const agentAdapter = useRef<LiveAgentAdapter | null>(null);
@@ -939,6 +948,28 @@ const LiveProjectWorkspace = () => {
       unsubscribe();
       adapter.dispose();
       if (candidateAdapter.current === adapter) candidateAdapter.current = null;
+    };
+  }, [project?.projectId, project?.state]);
+
+  useEffect(() => {
+    const bridge = window.agentMusic;
+    const previous = generationPlanAdapter.current;
+    generationPlanAdapter.current = null;
+    previous?.dispose();
+    setGenerationPlanState(null);
+    if (project?.state !== 'ready' || bridge === undefined) return undefined;
+
+    const adapter = createLiveGenerationPlanAdapter({
+      projectId: project.projectId,
+      bridge: bridge as any, // Cast because we extended DesktopBridge loosely
+    });
+    generationPlanAdapter.current = adapter;
+    setGenerationPlanState(adapter.getState());
+    const unsubscribe = adapter.subscribe(setGenerationPlanState);
+    return () => {
+      unsubscribe();
+      adapter.dispose();
+      if (generationPlanAdapter.current === adapter) generationPlanAdapter.current = null;
     };
   }, [project?.projectId, project?.state]);
 
@@ -1295,7 +1326,57 @@ const LiveProjectWorkspace = () => {
               </section>
             ) : (
               <>
-                {candidateState?.status === 'ready' && (
+                {generationPlanState?.operation?.state === 'pending' ? (
+                  <GenerationPlanStage
+                    operation={generationPlanState.operation as any}
+                    busy={busy}
+                    onApprove={async () => {
+                      try {
+                        setBusy(true);
+                        await generationPlanAdapter.current?.approve();
+                      } catch (error: unknown) {
+                        setMessage(error instanceof Error ? error.message : 'Failed to approve plan.');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    onReject={async () => {
+                      try {
+                        setBusy(true);
+                        await generationPlanAdapter.current?.reject();
+                      } catch (error: unknown) {
+                        setMessage(error instanceof Error ? error.message : 'Failed to reject plan.');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  />
+                ) : candidateState?.pendingScopeExtension ? (
+                  <ScopeExtensionStage
+                    pendingScopeExtension={candidateState.pendingScopeExtension}
+                    busy={busy}
+                    onApprove={async () => {
+                      try {
+                        setBusy(true);
+                        await candidateAdapter.current?.approveScopeExtension();
+                      } catch (error: unknown) {
+                        setMessage(error instanceof Error ? error.message : 'Failed to approve scope extension.');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    onReject={async () => {
+                      try {
+                        setBusy(true);
+                        await candidateAdapter.current?.rejectScopeExtension();
+                      } catch (error: unknown) {
+                        setMessage(error instanceof Error ? error.message : 'Failed to reject scope extension.');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  />
+                ) : candidateState?.status === 'ready' ? (
                   <CandidateStage
                     title="Candidate ready to review"
                     details={undefined}
@@ -1326,7 +1407,7 @@ const LiveProjectWorkspace = () => {
                     onAccept={() => void resolveCandidate('accept')}
                     onReject={() => void resolveCandidate('reject')}
                   />
-                )}
+                ) : null}
                 <section className="utility-view" aria-label="Project controls">
                   <h2>{projectName}</h2>
                   <p>{message}</p>

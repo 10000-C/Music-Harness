@@ -199,5 +199,39 @@ const bridge = {
     const value = await invoke(shellIpcChannels.playback);
     return isCorePlaybackResponse(value) ? value : null;
   },
+  async readOperationState(projectId: unknown) {
+    if (!isProjectId(projectId))
+      return {
+        ok: false as const,
+        code: 'INVALID_PROJECT_ID',
+        userMessage: 'Invalid project identity.',
+      };
+    const value = await invoke(shellIpcChannels.operationState, projectId);
+    return (value as any)?.ok !== undefined
+      ? (value as any)
+      : {
+          ok: false as const,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
+  },
+  async dispatchOperation(command: unknown) {
+    const value = await invoke(shellIpcChannels.operation, command);
+    return (value as any)?.ok !== undefined
+      ? (value as any)
+      : {
+          ok: false as const,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
+  },
+  onOperationEvent: (listener: (notification: any) => void) => {
+    const wrapped = (_event: unknown, notification: unknown) => {
+      listener(notification);
+    };
+    ipcRenderer.on(shellIpcChannels.operationEvent, wrapped);
+    return () =>
+      ipcRenderer.removeListener(shellIpcChannels.operationEvent, wrapped);
+  },
 } satisfies DesktopBridge;
 contextBridge.exposeInMainWorld('agentMusic', bridge);

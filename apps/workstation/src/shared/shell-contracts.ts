@@ -46,6 +46,9 @@ export const shellIpcChannels = {
   agent: 'shell:agent',
   agentEvent: 'shell:agent:event',
   candidateEvent: 'shell:candidate:event',
+  operation: 'shell:operation',
+  operationState: 'shell:operation:state',
+  operationEvent: 'shell:operation:event',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';

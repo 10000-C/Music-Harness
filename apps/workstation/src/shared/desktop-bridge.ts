@@ -17,6 +17,7 @@ import type {
   PlaybackSnapshotSource,
 } from './playback-bridge.js';
 import type { CoreCandidateEventNotification } from './candidate-bridge.js';
+import type { LiveOperationBridge } from './operation-bridge.js';
 import type {
   AgentCommand,
   AgentEvent,
@@ -24,7 +25,7 @@ import type {
   ProjectId,
   ProjectCommand,
 } from '@agent-music/contracts';
-export interface DesktopBridge {
+export interface DesktopBridge extends LiveOperationBridge {
   getServiceSnapshot(): Promise<ServiceFleetSnapshot>;
   restartService(service: ServiceKind): Promise<CommandResult>;
   onServiceSnapshot(

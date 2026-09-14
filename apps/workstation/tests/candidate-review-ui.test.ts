@@ -91,6 +91,48 @@ describe('Candidate Review UI audition wiring', () => {
       expect(html).toContain('aria-pressed="true">Candidate</button>');
       expect(html).toContain('aria-pressed="false">Current</button>');
     });
+
+    it('disables acceptance and shows busy tooltip when candidateAcceptanceAvailable is false', () => {
+      const html = renderToStaticMarkup(
+        createElement(CandidateStage, {
+          title: 'Candidate ready to review',
+          details: undefined,
+          previewingCandidate: true,
+          candidateAuditionAvailable: true,
+          candidateAcceptanceAvailable: false,
+          onReviewCurrent: vi.fn(),
+          onReviewCandidate: vi.fn(),
+          onAccept: vi.fn(),
+          onReject: vi.fn(),
+        }),
+      );
+
+      expect(html).toContain('disabled=""');
+      expect(html).toContain(
+        'title="Candidate must be auditioned before it can be applied."',
+      );
+      expect(html).toContain('Apply unavailable until audition</button>');
+    });
+
+    it('renders enabled confirmation and cancellation actions when available', () => {
+      const html = renderToStaticMarkup(
+        createElement(CandidateStage, {
+          title: 'Candidate ready to review',
+          details: undefined,
+          previewingCandidate: true,
+          candidateAuditionAvailable: true,
+          candidateAcceptanceAvailable: true,
+          onReviewCurrent: vi.fn(),
+          onReviewCandidate: vi.fn(),
+          onAccept: vi.fn(),
+          onReject: vi.fn(),
+        }),
+      );
+
+      expect(html).toContain('Apply to Current</button>');
+      expect(html).not.toContain('Apply unavailable until audition</button>');
+      expect(html).toContain('Discard</button>');
+    });
   });
 
   describe('Audition action wiring logic', () => {
