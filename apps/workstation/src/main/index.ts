@@ -35,11 +35,18 @@ const fakeAdapter = createAgentChildProcessAdapter((service) => {
 const coreAdapter = createCoreUtilityProcessAdapter((service) =>
   utilityProcess.fork(requireServiceEntry(service), [service]),
 );
-const agentAdapter = createAgentChildProcessAdapter((service) =>
-  fork(requireServiceEntry(service), [service], {
-    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-  }),
-);
+const agentAdapter = createAgentChildProcessAdapter((service) => {
+  const child = fork(requireServiceEntry(service), [service], {
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+  child.stdout?.on('data', (chunk: Buffer | string) => {
+    process.stdout.write(`[agent] ${chunk.toString()}`);
+  });
+  child.stderr?.on('data', (chunk: Buffer | string) => {
+    process.stderr.write(`[agent] ${chunk.toString()}`);
+  });
+  return child;
+});
 const productionAdapter: ManagedProcessAdapter = {
   spawn: (service) =>
     service === 'core'

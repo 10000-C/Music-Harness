@@ -646,9 +646,9 @@ describe('ServiceSupervisor', () => {
       expect(calls).toEqual(['send', 'kill', 'message', 'exit']);
     },
   );
-  it('stops gracefully when both services acknowledge shutdown', async () => {
+  it('stops gracefully when both services acknowledge shutdown sequentially', async () => {
     const processes = adapter();
-    active = createServiceSupervisor(processes, { shutdownTimeoutMs: 10 });
+    active = createServiceSupervisor(processes, { shutdownTimeoutMs: 10_000 });
     await active.start();
     let settled = false;
     const shutdown = active.shutdown('appQuit').then(() => {
@@ -656,27 +656,52 @@ describe('ServiceSupervisor', () => {
     });
     await Promise.resolve();
     expect(settled).toBe(false);
-    const shutdowns = processes.sent.filter(
+
+    // Agent must receive shutdown first while Core is still untouched
+    const agentShutdown = processes.sent.find(
+      (value): value is { type: 'agent.process.shutdown'; requestId: string } =>
+        typeof value === 'object' &&
+        value !== null &&
+        (value as { type?: string }).type === 'agent.process.shutdown',
+    );
+    expect(agentShutdown).toBeDefined();
+    expect(
+      processes.sent.some(
+        (value) =>
+          typeof value === 'object' &&
+          value !== null &&
+          (value as { type?: string }).type === 'shutdown',
+      ),
+    ).toBe(false);
+
+    // Once Agent acknowledges stopped, Core is instructed to shut down
+    processes.emit('agent', {
+      type: 'agent.process.stopped',
+      requestId: agentShutdown?.requestId,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const coreShutdown = processes.sent.find(
       (value): value is { type: 'shutdown'; requestId: string } =>
         typeof value === 'object' &&
         value !== null &&
         (value as { type?: string }).type === 'shutdown',
     );
+    expect(coreShutdown).toBeDefined();
+
     processes.emit('core', {
       type: 'shutdownComplete',
       protocolVersion: 1,
-      requestId: shutdowns[0]?.requestId,
+      requestId: coreShutdown?.requestId,
     });
-    processes.emit('agent', {
-      type: 'shutdownComplete',
-      protocolVersion: 1,
-      requestId: shutdowns[1]?.requestId,
-    });
+
     await shutdown;
     expect(settled).toBe(true);
     expect(active.getSnapshot()).toEqual({ core: 'stopped', agent: 'stopped' });
   });
-  it('forces a non-acknowledging service to stop without restart', async () => {
+
+  it('forces non-acknowledging services to stop sequentially without restart', async () => {
     vi.useFakeTimers();
     let terminated = 0;
     const messages = new Map<string, (value: unknown) => void>();
@@ -702,9 +727,12 @@ describe('ServiceSupervisor', () => {
     );
     await active.start();
     const shutdown = active.shutdown('appQuit');
+    // Sequential shutdown: Agent times out after 10ms, then Core times out after 10ms
     await vi.advanceTimersByTimeAsync(10);
-    await shutdown;
+    expect(terminated).toBe(1);
+    await vi.advanceTimersByTimeAsync(10);
     expect(terminated).toBe(2);
+    await shutdown;
     expect(active.getSnapshot()).toEqual({ core: 'stopped', agent: 'stopped' });
   });
 

@@ -183,10 +183,10 @@ export const createServiceSupervisor = (
     (notification: CoreCandidateEventNotification) => void
   >();
   const listeners = new Set<(value: ServiceFleetSnapshot) => void>();
+  const stopResolvers = new Map<ServiceKind, () => void>();
   let stopping = false;
   let requestSequence = 0;
   let shutdownPromise: Promise<void> | undefined;
-  let finishShutdown: (() => void) | undefined;
 
   const emit = (): void => {
     const value = createSnapshot(states);
@@ -195,21 +195,9 @@ export const createServiceSupervisor = (
     });
   };
 
-  const completeShutdownIfSettled = (): void => {
-    if (
-      stopping &&
-      serviceKinds.every((service) => states[service] === 'stopped')
-    ) {
-      const finish = finishShutdown;
-      finishShutdown = undefined;
-      finish?.();
-    }
-  };
-
   const setState = (service: ServiceKind, state: ServiceState): void => {
     states[service] = state;
     emit();
-    completeShutdownIfSettled();
   };
 
   const addTimer = (
@@ -312,6 +300,11 @@ export const createServiceSupervisor = (
     if (generations[service] !== generation) return;
     invalidateGeneration(service, terminateProcess);
     setState(service, 'stopped');
+    const resolver = stopResolvers.get(service);
+    if (resolver !== undefined) {
+      stopResolvers.delete(service);
+      resolver();
+    }
   };
 
   const scheduleStableReset = (
@@ -611,11 +604,62 @@ export const createServiceSupervisor = (
     }
   };
 
+  const stopService = (service: ServiceKind): Promise<void> => {
+    clearTimers(service);
+    clearStableTimer(service);
+    Reflect.deleteProperty(pendingHealth, service);
+    const process = processes.get(service);
+    if (!process || states[service] === 'stopped') {
+      invalidateGeneration(service, false);
+      setState(service, 'stopped');
+      return Promise.resolve();
+    }
+
+    const generation = generations[service];
+    setState(service, 'stopping');
+    const requestId = `shutdown-${String(++requestSequence)}`;
+    pendingShutdown[service] = requestId;
+
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const settle = (): void => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      stopResolvers.set(service, settle);
+
+      addTimer(
+        service,
+        () => {
+          if (pendingShutdown[service] === requestId)
+            finalizeStopped(service, generation, true);
+        },
+        config.shutdownTimeoutMs,
+      );
+      try {
+        if (service === 'agent') {
+          process.send({
+            type: 'agent.process.shutdown',
+            requestId,
+          } satisfies AgentProcessCommand);
+        } else {
+          process.send({
+            type: 'shutdown',
+            protocolVersion: 1,
+            requestId,
+          });
+        }
+      } catch {
+        finalizeStopped(service, generation, true);
+      }
+    });
+  };
+
   return {
     start() {
       stopping = false;
       shutdownPromise = undefined;
-      finishShutdown = undefined;
       serviceKinds.forEach((service) => {
         if (states[service] === 'stopped' || states[service] === 'failed')
           launch(service);
@@ -634,51 +678,13 @@ export const createServiceSupervisor = (
     shutdown() {
       if (shutdownPromise) return shutdownPromise;
       stopping = true;
-      shutdownPromise = new Promise<void>((resolve) => {
-        finishShutdown = resolve;
-      });
-
-      serviceKinds.forEach((service) => {
-        clearTimers(service);
-        clearStableTimer(service);
-        Reflect.deleteProperty(pendingHealth, service);
-        const process = processes.get(service);
-        if (!process) {
-          invalidateGeneration(service, false);
-          setState(service, 'stopped');
-          return;
+      shutdownPromise = (async () => {
+        // Stop Agent first so its in-flight rollback HTTP requests can still
+        // reach Music Core's MCP HTTP server before Core stops.
+        for (const service of ['agent', 'core'] as const) {
+          await stopService(service);
         }
-
-        const generation = generations[service];
-        setState(service, 'stopping');
-        const requestId = `shutdown-${String(++requestSequence)}`;
-        pendingShutdown[service] = requestId;
-        addTimer(
-          service,
-          () => {
-            if (pendingShutdown[service] === requestId)
-              finalizeStopped(service, generation, true);
-          },
-          config.shutdownTimeoutMs,
-        );
-        try {
-          if (service === 'agent') {
-            process.send({
-              type: 'agent.process.shutdown',
-              requestId,
-            } satisfies AgentProcessCommand);
-          } else {
-            process.send({
-              type: 'shutdown',
-              protocolVersion: 1,
-              requestId,
-            });
-          }
-        } catch {
-          finalizeStopped(service, generation, true);
-        }
-      });
-      completeShutdownIfSettled();
+      })();
       return shutdownPromise;
     },
 
