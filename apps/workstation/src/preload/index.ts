@@ -31,6 +31,11 @@ import {
   isOperationStateResult,
 } from '../shared/operation-bridge.js';
 import {
+  isExportFileWriteCommand,
+  isExportFileWriteResult,
+  isExportPreparationResult,
+} from '../shared/export-bridge.js';
+import {
   isServiceFleetSnapshot,
   unavailableServiceSnapshot,
   type ServiceFleetSnapshot,
@@ -247,6 +252,32 @@ const bridge = {
     ipcRenderer.on(shellIpcChannels.operationEvent, wrapped);
     return () =>
       ipcRenderer.removeListener(shellIpcChannels.operationEvent, wrapped);
+  },
+  async prepareCurrentExport() {
+    const value = await invoke(shellIpcChannels.exportPrepare);
+    return isExportPreparationResult(value)
+      ? value
+      : {
+          ok: false as const,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'Current export preparation is unavailable. Try again.',
+        };
+  },
+  async writeCurrentExport(command: unknown) {
+    if (!isExportFileWriteCommand(command))
+      return {
+        ok: false as const,
+        code: 'INVALID_EXPORT_COMMAND',
+        userMessage: 'Invalid export command.',
+      };
+    const value = await invoke(shellIpcChannels.exportWrite, command);
+    return isExportFileWriteResult(value)
+      ? value
+      : {
+          ok: false as const,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop export writer is unavailable. Try again.',
+        };
   },
 } satisfies DesktopBridge;
 contextBridge.exposeInMainWorld('agentMusic', bridge);

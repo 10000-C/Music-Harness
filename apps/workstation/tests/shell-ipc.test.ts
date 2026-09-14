@@ -99,6 +99,8 @@ describe('shell Main IPC and dialogs', () => {
       [
         channels.directory,
         channels.exportPath,
+        channels.exportPrepare,
+        channels.exportWrite,
         channels.candidate,
         channels.candidateState,
         channels.playback,
@@ -232,6 +234,21 @@ describe('shell Main IPC and dialogs', () => {
     ).resolves.toMatchObject({ ok: false, code: 'INVALID_EXPORT_REQUEST' });
     expect(showOpenDialog).not.toHaveBeenCalled();
     expect(showSaveDialog).not.toHaveBeenCalled();
+  });
+
+  it('keeps export preparation unavailable until A5 is connected and validates file writes', async () => {
+    await expect(invoke(channels.exportPrepare)).resolves.toEqual({
+      ok: false,
+      code: 'A5_UNAVAILABLE',
+      userMessage: 'Current export preparation is not ready yet.',
+    });
+    await expect(
+      invoke(channels.exportWrite, { type: 'export.writeFile' }),
+    ).resolves.toEqual({
+      ok: false,
+      code: 'INVALID_EXPORT_COMMAND',
+      userMessage: 'Invalid export command.',
+    });
   });
 
   it('normalizes Main boundary failures without exposing raw errors', async () => {

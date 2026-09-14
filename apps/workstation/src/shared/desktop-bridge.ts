@@ -19,6 +19,11 @@ import type {
 import type { CoreCandidateEventNotification } from './candidate-bridge.js';
 import type { LiveOperationBridge } from './operation-bridge.js';
 import type {
+  ExportFileWriteCommand,
+  ExportFileWriteResult,
+  ExportPreparationResult,
+} from './export-bridge.js';
+import type {
   AgentCommand,
   AgentEvent,
   CandidateCommand,
@@ -48,6 +53,10 @@ export interface DesktopBridge extends LiveOperationBridge {
     projectId: ProjectId,
     source: PlaybackSnapshotSource,
   ): Promise<PlaybackSnapshotResult>;
+  prepareCurrentExport(): Promise<ExportPreparationResult>;
+  writeCurrentExport(
+    command: ExportFileWriteCommand,
+  ): Promise<ExportFileWriteResult>;
 }
 declare global {
   interface Window {

@@ -39,6 +39,12 @@ export {
   isOperationStateResult,
   isOperationView,
 } from './operation-bridge.js';
+export {
+  isExportFileWriteCommand,
+  isExportFileWriteResult,
+  isExportPreparationResult,
+  isPreparedCurrentExport,
+} from './export-bridge.js';
 
 export const shellIpcChannels = {
   snapshot: 'shell:snapshot',
@@ -57,6 +63,8 @@ export const shellIpcChannels = {
   operation: 'shell:operation',
   operationState: 'shell:operation:state',
   operationEvent: 'shell:operation:event',
+  exportPrepare: 'shell:export:prepare',
+  exportWrite: 'shell:export:write',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';
