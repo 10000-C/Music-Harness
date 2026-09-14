@@ -6667,3 +6667,25 @@ textarea,
 .export-current {
   -webkit-app-region: no-drag;
 }
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: FIX NATIVE WINDOW DRAG (SIDEBARS)
+   ========================================================================== */
+
+/* 1. Make left sidebar and right agent panel draggable to support their top paddings */
+.project-sidebar,
+.agent-panel,
+.agent-chat__header {
+  -webkit-app-region: drag;
+}
+
+/* 2. Exempt their interactive content regions from inheriting drag */
+.sidebar-section,
+.workspace-profile,
+.agent-chat__messages,
+.agent-composer,
+.agent-panel__tabs,
+.agent-panel__content,
+select {
+  -webkit-app-region: no-drag;
+}
