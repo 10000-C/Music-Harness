@@ -30,7 +30,7 @@ import type {
   CorePlaybackSnapshotResponse,
 } from '../../shared/playback-bridge.js';
 import { currentPlaybackFailure } from './current-playback-response.js';
-import { createFailClosedConfirmation } from '../mcp/fail-closed-confirmation.js';
+import { createAutoApproveConfirmation } from '../mcp/auto-approve-confirmation.js';
 import { MusicCoreMcpHttpServer } from '../mcp/music-core-mcp-server.js';
 import { MusicCoreToolHost } from '../mcp/music-core-tool-host.js';
 
@@ -57,7 +57,7 @@ const candidateHandler = new CandidateIpcHandler(candidateTransaction);
 const agentMusicHome =
   process.env.AGENT_MUSIC_HOME ?? join(homedir(), '.agent-music');
 
-const confirmation = createFailClosedConfirmation();
+const confirmation = createAutoApproveConfirmation();
 const toolHost = new MusicCoreToolHost({
   agent: candidateTransaction,
   control: candidateTransaction,
