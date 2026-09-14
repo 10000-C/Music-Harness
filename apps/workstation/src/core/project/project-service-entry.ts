@@ -11,6 +11,8 @@ import {
 } from '../candidate/index.js';
 import { CompositionPipeline } from '../composition/index.js';
 import { randomUUID } from 'node:crypto';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import {
   type CoreProjectRequest,
   type CoreProjectResponse,
@@ -28,6 +30,9 @@ import type {
   CorePlaybackSnapshotResponse,
 } from '../../shared/playback-bridge.js';
 import { currentPlaybackFailure } from './current-playback-response.js';
+import { createFailClosedConfirmation } from '../mcp/fail-closed-confirmation.js';
+import { MusicCoreMcpHttpServer } from '../mcp/music-core-mcp-server.js';
+import { MusicCoreToolHost } from '../mcp/music-core-tool-host.js';
 
 const service: ServiceKind = 'core';
 const foundation = new ProjectFoundation();
@@ -43,6 +48,29 @@ const candidateTransaction = new CandidateTransaction({
   now: () => new Date().toISOString(),
 });
 const candidateHandler = new CandidateIpcHandler(candidateTransaction);
+
+/**
+ * Shared user-level Agent Music home. The Agent process resolves the same
+ * root (settings, session storage, runtime descriptor discovery), so both
+ * sides must agree on the override and the default.
+ */
+const agentMusicHome =
+  process.env.AGENT_MUSIC_HOME ?? join(homedir(), '.agent-music');
+
+const confirmation = createFailClosedConfirmation();
+const toolHost = new MusicCoreToolHost({
+  agent: candidateTransaction,
+  control: candidateTransaction,
+  generationPlanConfirmation: confirmation.generationPlan,
+  scopeExtensionConfirmation: confirmation.scopeExtension,
+});
+const mcpServer = new MusicCoreMcpHttpServer({
+  resolveProjectId: () => foundation.getProjectId(),
+  runtimeDirectory: join(agentMusicHome, 'runtime'),
+  toolHost,
+  control: candidateTransaction,
+});
+
 let commandQueue = Promise.resolve();
 const utilityParentPort = (
   process as unknown as {
@@ -58,7 +86,45 @@ const send = (message: unknown): void => {
   process.send?.(message);
 };
 
-send({ type: 'ready', protocolVersion: 1, service });
+const failFatal = (code: string, message: string): void => {
+  send({ type: 'fatal', protocolVersion: 1, service, code, message });
+};
+
+const stopMcpServer = async (): Promise<void> => {
+  try {
+    await mcpServer.stop();
+  } catch (error: unknown) {
+    send({
+      type: 'fatal',
+      protocolVersion: 1,
+      service,
+      code: 'MCP_SERVER_STOP_FAILED',
+      message:
+        error instanceof Error ? error.message : 'MCP server cleanup failed',
+    });
+  }
+};
+
+process.on('message', (message: unknown) => void handle(message));
+utilityParentPort?.on('message', (message: unknown) => void handle(message));
+
+// The MCP server is Core-process-scoped: it starts before any Project is
+// open and stays alive across Project close/open. Core only reports ready
+// to the supervisor once the descriptor is published, so the Agent can
+// never observe a ready Core without a connectable endpoint.
+void mcpServer
+  .start()
+  .then(() => {
+    send({ type: 'ready', protocolVersion: 1, service });
+  })
+  .catch((error: unknown) => {
+    failFatal(
+      'MCP_SERVER_START_FAILED',
+      error instanceof Error ? error.message : 'MCP server failed to start',
+    );
+    process.exitCode = 1;
+    process.exit(1);
+  });
 
 const unwrapMessage = (message: unknown): unknown =>
   typeof message === 'object' && message !== null && 'data' in message
@@ -114,6 +180,9 @@ const handle = async (message: unknown): Promise<void> => {
         type: 'project.close',
         requestId: `shutdown-${message.requestId}`,
       });
+      // Stop the MCP server last so the Agent process retains its rollback
+      // control endpoint for as long as possible during its own shutdown.
+      await stopMcpServer();
       send({
         type: 'shutdownComplete',
         protocolVersion: 1,
@@ -180,6 +249,3 @@ const handle = async (message: unknown): Promise<void> => {
     return;
   }
 };
-
-process.on('message', (message: unknown) => void handle(message));
-utilityParentPort?.on('message', (message: unknown) => void handle(message));
