@@ -221,6 +221,77 @@ describe('live Candidate adapter', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('projects Candidate creation, rejection, and acceptance notifications', async () => {
+    const bridge = createFakeCandidateBridge({
+      projectId,
+      sequence: 0,
+      candidate: null,
+      task: null,
+    });
+    const adapter = createLiveCandidateAdapter({ projectId, bridge });
+    await adapter.ready();
+
+    adapter.applyEvents([
+      event({
+        type: 'candidate.changed',
+        requestId: 'created-1',
+        sequence: 1,
+        candidate,
+      }),
+    ]);
+    expect(adapter.getState()).toMatchObject({ status: 'ready', candidate });
+
+    bridge.emit({
+      type: 'candidateState.event',
+      protocolVersion: 1,
+      projectId,
+      event: {
+        type: 'candidate.invalidated',
+        requestId: 'rejected-1',
+        sequence: 2,
+        candidateId,
+      },
+    });
+    expect(adapter.getState()).toMatchObject({
+      status: 'none',
+      candidate: null,
+      task: null,
+    });
+
+    bridge.emit({
+      type: 'candidateState.event',
+      protocolVersion: 1,
+      projectId,
+      event: {
+        type: 'candidate.changed',
+        requestId: 'created-2',
+        sequence: 3,
+        candidate,
+      },
+    });
+    bridge.emit({
+      type: 'candidateState.event',
+      protocolVersion: 1,
+      projectId,
+      event: {
+        type: 'candidate.currentCommitted',
+        requestId: 'accepted-1',
+        sequence: 4,
+        result: {
+          projectId,
+          candidateId,
+          currentRevision: 'C2',
+        },
+      },
+    });
+    expect(adapter.getState()).toMatchObject({
+      status: 'none',
+      candidate: null,
+      committedRevision: 'C2',
+    });
+    adapter.dispose();
+  });
+
   it('clears Candidate after an authoritative commit and preserves its revision', () => {
     const state = reduceLiveCandidateState(
       {
