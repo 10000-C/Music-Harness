@@ -42,6 +42,11 @@ import { type PlaybackRuntimeState } from './opendaw-runtime/index.js';
 import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-playback-runtime.js';
 import { createSourceAwarePlaybackAdapter, type SourceAwarePlaybackAdapter } from './opendaw-runtime/index.js';
 import type { PlaybackCommand } from './opendaw-runtime/types.js';
+import {
+  createAbcjsWavRenderer,
+  createCurrentExportAdapter,
+  type CurrentExportAdapter,
+} from './export/index.js';
 import { CompetitionAgentPanel } from './workspace/agent/competition-agent-panel.js';
 import { LiveAgentPanel } from './workspace/agent/live-agent-panel.js';
 import type { AgentSessionId } from '@agent-music/contracts';
@@ -853,6 +858,8 @@ const LiveProjectWorkspace = () => {
   const [agentState, setAgentState] = useState<LiveAgentState | null>(null);
   const [agentPrompt, setAgentPrompt] = useState('');
   const agentAdapter = useRef<LiveAgentAdapter | null>(null);
+  const exportAdapter = useRef<CurrentExportAdapter | null>(null);
+  const exportAbortController = useRef<AbortController | null>(null);
   const [selectedExportPaths, setSelectedExportPaths] = useState<Partial<Record<ExportCurrentFormat, string>>>({});
   const [exportDeliveryStates, setExportDeliveryStates] = useState<Partial<Record<ExportCurrentFormat, 'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled'>>>({});
 
@@ -968,7 +975,7 @@ const LiveProjectWorkspace = () => {
 
     const adapter = createLiveGenerationPlanAdapter({
       projectId: project.projectId,
-      bridge: bridge as any, // Cast because we extended DesktopBridge loosely
+      bridge,
     });
     generationPlanAdapter.current = adapter;
     setGenerationPlanState(adapter.getState());
@@ -1002,6 +1009,29 @@ const LiveProjectWorkspace = () => {
       adapter.dispose();
       if (agentAdapter.current === adapter) agentAdapter.current = null;
     };
+  }, [project?.projectId, project?.state, project?.currentRevision]);
+
+  useEffect(() => {
+    exportAbortController.current?.abort();
+    exportAbortController.current = null;
+    exportAdapter.current = null;
+    setExportDeliveryStates({});
+
+    const bridge = window.agentMusic;
+    if (project?.state !== 'ready' || bridge === undefined) return undefined;
+
+    const adapter = createCurrentExportAdapter({
+      projectId: project.projectId,
+      preparation: bridge,
+      files: bridge,
+      wavRenderer: createAbcjsWavRenderer(),
+    });
+    exportAdapter.current = adapter;
+    return () => {
+      exportAbortController.current?.abort();
+      exportAbortController.current = null;
+      if (exportAdapter.current === adapter) exportAdapter.current = null;
+    };
   }, [project?.projectId, project?.state]);
 
   const handleSendAgentMessage = useCallback(() => {
@@ -1033,7 +1063,7 @@ const LiveProjectWorkspace = () => {
 
   const sendPlayback = useCallback(async (command: PlaybackCommand) => {
     const outcome = await playbackAdapter.current?.send(command);
-    if (outcome === undefined || outcome === null) return;
+    if (outcome === undefined) return;
     if (outcome.status === 'failed') setMessage(outcome.failure.message);
   }, []);
 
@@ -1131,10 +1161,71 @@ const LiveProjectWorkspace = () => {
         [format]: chosen.path,
       }));
       setMessage(
-        'Destination saved. Export will become available when A5 publishes the verified Current input.',
+        'Destination saved. Start the export when you are ready.',
       );
     },
     [project],
+  );
+
+  const startExport = useCallback(
+    async (format: ExportCurrentFormat) => {
+      if (format === 'abc') {
+        setMessage('Canonical ABC is an internal format and cannot be exported.');
+        return;
+      }
+      const path = selectedExportPaths[format];
+      if (path === undefined) {
+        setMessage('Choose an export destination first.');
+        return;
+      }
+      const adapter = exportAdapter.current;
+      if (adapter === null) {
+        setExportDeliveryStates((current) => ({
+          ...current,
+          [format]: 'failed',
+        }));
+        setMessage('Current export is unavailable until the desktop bridge is ready.');
+        return;
+      }
+      if (exportAbortController.current !== null) {
+        setMessage('Another Current export is already in progress.');
+        return;
+      }
+
+      const controller = new AbortController();
+      exportAbortController.current = controller;
+      setExportDeliveryStates((current) => ({
+        ...current,
+        [format]: 'preparing',
+      }));
+      const operation = adapter.exportCurrent(format, path, controller.signal);
+      setExportDeliveryStates((current) => ({
+        ...current,
+        [format]: 'exporting',
+      }));
+      try {
+        const outcome = await operation;
+        if (!mounted.current) return;
+        if (outcome.ok) {
+          setExportDeliveryStates((current) => ({
+            ...current,
+            [format]: 'completed',
+          }));
+          setMessage(`${format.toUpperCase()} exported to ${outcome.path}.`);
+        } else {
+          setExportDeliveryStates((current) => ({
+            ...current,
+            [format]: outcome.code === 'EXPORT_CANCELLED' ? 'cancelled' : 'failed',
+          }));
+          setMessage(outcome.userMessage);
+        }
+      } finally {
+        if (exportAbortController.current === controller) {
+          exportAbortController.current = null;
+        }
+      }
+    },
+    [selectedExportPaths],
   );
 
   const selectAndDispatch = useCallback(
@@ -1190,6 +1281,11 @@ const LiveProjectWorkspace = () => {
     timeline === null || playback === null
       ? 0
       : secondsAtTick(timeline, playback.positionTick);
+  const generationPlan = generationPlanState?.operation ?? null;
+  const pendingGenerationPlan =
+    generationPlan !== null && generationPlan.state === 'pending'
+      ? generationPlan
+      : null;
 
   return (
     <div
@@ -1199,11 +1295,11 @@ const LiveProjectWorkspace = () => {
       {pendingSwitch !== null && project !== null && (
         <ProjectSwitchConfirmation
           source={project.projectId}
-          target={pendingSwitch.path as any}
-          activeExecution={agentState?.status === 'executing'}
+          target={pendingSwitch.path}
+          activeExecution={agentState?.isExecuting ?? false}
           activeTask={
             generationPlanState?.operation?.state === 'pending' ||
-            candidateState?.pendingScopeExtension != null
+            (candidateState?.task !== null && candidateState?.task !== undefined)
           }
           onConfirm={() => {
             void (async () => {
@@ -1312,18 +1408,14 @@ const LiveProjectWorkspace = () => {
             projectName={projectName}
             currentRevision={project?.currentRevision ?? null}
             currentReady={project?.state === 'ready'}
-            playbackInputReady={playable}
+            playbackInputReady={project?.state === 'ready'}
             selectedPaths={selectedExportPaths}
             exportStates={exportDeliveryStates}
             onChoosePath={(format) => {
               void chooseExportPath(format);
             }}
             onStartExport={(format) => {
-              // Mock export process locally since IPC is not added
-              setExportDeliveryStates(prev => ({ ...prev, [format]: 'exporting' }));
-              setTimeout(() => {
-                setExportDeliveryStates(prev => ({ ...prev, [format]: 'completed' }));
-              }, 2000);
+              void startExport(format);
             }}
           />
         ) : (
@@ -1372,9 +1464,9 @@ const LiveProjectWorkspace = () => {
               </section>
             ) : (
               <>
-                {generationPlanState?.operation?.state === 'pending' ? (
+                {pendingGenerationPlan !== null ? (
                   <GenerationPlanStage
-                    operation={generationPlanState.operation as any}
+                    operation={pendingGenerationPlan}
                     busy={busy}
                     onApprove={() => {
                       void (async () => {

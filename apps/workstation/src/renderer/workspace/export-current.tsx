@@ -1,10 +1,8 @@
-import {
-  ArrowRightIcon,
-  CheckCircleIcon,
-  FileAudioIcon,
-  FileTextIcon,
-  LockKeyIcon,
-} from '@phosphor-icons/react';
+import { ArrowRightIcon } from '@phosphor-icons/react/dist/csr/ArrowRight';
+import { CheckCircleIcon } from '@phosphor-icons/react/dist/csr/CheckCircle';
+import { FileAudioIcon } from '@phosphor-icons/react/dist/csr/FileAudio';
+import { FileTextIcon } from '@phosphor-icons/react/dist/csr/FileText';
+import { LockKeyIcon } from '@phosphor-icons/react/dist/csr/LockKey';
 import {
   exportCurrentFormatLabel,
   exportCurrentSuggestedName,
@@ -19,22 +17,18 @@ interface ExportCurrentViewProps {
   readonly currentRevision: string | null;
   readonly currentReady: boolean;
   readonly playbackInputReady: boolean;
-  readonly selectedPaths: Readonly<
-    Partial<Record<ExportCurrentFormat, string>>
-  >;
-  readonly exportStates?: Readonly<
-    Partial<Record<ExportCurrentFormat, ExportDeliveryState>>
-  >;
+  readonly selectedPaths: Readonly<Partial<Record<ExportCurrentFormat, string>>>;
+  readonly exportStates?: Readonly<Partial<Record<ExportCurrentFormat, ExportDeliveryState>>>;
   readonly onChoosePath: (format: ExportCurrentFormat) => void;
   readonly onStartExport?: (format: ExportCurrentFormat) => void;
 }
 
-const FORMATS: ReadonlyArray<{
+const FORMATS: readonly {
   readonly format: ExportCurrentFormat;
   readonly title: string;
   readonly detail: string;
   readonly icon: typeof FileAudioIcon;
-}> = [
+}[] = [
   {
     format: 'midi',
     title: 'Standard MIDI',

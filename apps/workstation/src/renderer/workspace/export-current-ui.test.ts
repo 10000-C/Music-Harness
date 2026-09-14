@@ -1,7 +1,7 @@
 import React, { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { ExportCurrentView } from '../src/renderer/workspace/export-current.js';
+import { ExportCurrentView } from './export-current.js';
 
 (globalThis as unknown as { React: typeof React }).React = React;
 
@@ -39,7 +39,6 @@ describe('ExportCurrentView presentation', () => {
 
     expect(html).toContain('export-status--exporting');
     expect(html).toContain('Status: Exporting');
-    // Button should be disabled due to isBusy
     expect(html).toContain('disabled=""');
   });
 });

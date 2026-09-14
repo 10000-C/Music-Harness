@@ -2,7 +2,7 @@ import type { ProjectId } from '@agent-music/contracts';
 
 interface ProjectSwitchConfirmationProps {
   readonly source: ProjectId | null;
-  readonly target: ProjectId;
+  readonly target: string;
   readonly activeExecution: boolean;
   readonly activeTask: boolean;
   readonly onConfirm: () => void;
@@ -17,7 +17,11 @@ export const ProjectSwitchConfirmation = ({
   onConfirm,
   onCancel,
 }: ProjectSwitchConfirmationProps) => (
-  <div className="workstation-modal-overlay">
+  <div
+    className="workstation-modal-overlay"
+    data-source-project={source ?? undefined}
+    data-target-project={target}
+  >
     <section
       className="confirmation-dialog"
       role="alertdialog"
