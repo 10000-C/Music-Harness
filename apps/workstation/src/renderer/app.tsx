@@ -833,9 +833,8 @@ const LiveProjectWorkspace = () => {
   const [busy, setBusy] = useState(false);
   const latestRequest = useRef(0);
   const mounted = useRef(false);
-  
   const playbackAdapter = useRef<SourceAwarePlaybackAdapter | null>(null);
-  
+
   const [timeline, setTimeline] = useState<TimelineViewModel | null>(null);
   const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(null);
   const [focusedTrackId, setFocusedTrackId] = useState<TrackId>('track.guitar');
