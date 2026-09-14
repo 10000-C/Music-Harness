@@ -2,7 +2,6 @@ import {
   ArrowRightIcon,
   CheckCircleIcon,
   FileAudioIcon,
-  FileCodeIcon,
   FileTextIcon,
   LockKeyIcon,
 } from '@phosphor-icons/react';
@@ -13,6 +12,8 @@ import {
   type ExportCurrentFormat,
 } from './export-current-model.js';
 
+export type ExportDeliveryState = 'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled';
+
 interface ExportCurrentViewProps {
   readonly projectName: string;
   readonly currentRevision: string | null;
@@ -21,21 +22,19 @@ interface ExportCurrentViewProps {
   readonly selectedPaths: Readonly<
     Partial<Record<ExportCurrentFormat, string>>
   >;
+  readonly exportStates?: Readonly<
+    Partial<Record<ExportCurrentFormat, ExportDeliveryState>>
+  >;
   readonly onChoosePath: (format: ExportCurrentFormat) => void;
+  readonly onStartExport?: (format: ExportCurrentFormat) => void;
 }
 
 const FORMATS: ReadonlyArray<{
   readonly format: ExportCurrentFormat;
   readonly title: string;
   readonly detail: string;
-  readonly icon: typeof FileCodeIcon;
+  readonly icon: typeof FileAudioIcon;
 }> = [
-  {
-    format: 'abc',
-    title: 'Canonical ABC',
-    detail: 'The portable source notation for your Current.',
-    icon: FileCodeIcon,
-  },
   {
     format: 'midi',
     title: 'Standard MIDI',
@@ -56,7 +55,9 @@ export const ExportCurrentView = ({
   currentReady,
   playbackInputReady,
   selectedPaths,
+  exportStates = {},
   onChoosePath,
+  onStartExport,
 }: ExportCurrentViewProps) => {
   const readiness = getExportCurrentReadiness({
     currentReady,
@@ -69,7 +70,7 @@ export const ExportCurrentView = ({
     ? 'Open a saved Current to prepare export inputs.'
     : !playbackInputReady
       ? 'Current is saved, but its playback input is still preparing.'
-      : 'A5 export preparation is not connected yet. Your Current remains safe.';
+      : 'Export is ready. Choose a destination to save your arrangement.';
 
   return (
     <section className="export-current" aria-labelledby="export-current-title">
@@ -116,6 +117,9 @@ export const ExportCurrentView = ({
         {FORMATS.map(({ format, title, detail, icon: Icon }) => {
           const selectedPath = selectedPaths[format];
           const canChoosePath = currentReady && playbackInputReady;
+          const status = exportStates[format];
+          const isBusy = status === 'preparing' || status === 'exporting';
+          
           return (
             <article className="export-current__format" key={format}>
               <div className="export-current__format-icon" data-format={format}>
@@ -125,20 +129,39 @@ export const ExportCurrentView = ({
                 <span>{exportCurrentFormatLabel(format)}</span>
                 <h2>{title}</h2>
                 <p>{detail}</p>
+                {status !== undefined && (
+                  <p className={`export-status export-status--${status}`} style={{ marginTop: '8px', fontSize: '11px', fontWeight: 'bold' }}>
+                    Status: {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </p>
+                )}
               </div>
-              <button
-                type="button"
-                className="export-current__choose"
-                disabled={!canChoosePath}
-                onClick={() => {
-                  onChoosePath(format);
-                }}
-              >
-                {selectedPath === undefined
-                  ? 'Choose destination'
-                  : 'Change destination'}
-                <ArrowRightIcon size={15} aria-hidden="true" />
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="export-current__choose"
+                  disabled={!canChoosePath || isBusy}
+                  onClick={() => {
+                    onChoosePath(format);
+                  }}
+                >
+                  {selectedPath === undefined
+                    ? 'Choose destination'
+                    : 'Change destination'}
+                  <ArrowRightIcon size={15} aria-hidden="true" />
+                </button>
+                {selectedPath !== undefined && onStartExport !== undefined && (
+                  <button
+                    type="button"
+                    className="primary-action"
+                    disabled={isBusy}
+                    onClick={() => {
+                      onStartExport(format);
+                    }}
+                  >
+                    Start Export
+                  </button>
+                )}
+              </div>
               <small className="export-current__path" title={selectedPath}>
                 {selectedPath ??
                   `Suggested: ${exportCurrentSuggestedName(projectName, format)}`}

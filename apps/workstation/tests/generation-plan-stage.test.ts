@@ -45,4 +45,38 @@ describe('GenerationPlanStage presentation', () => {
     expect(html).toContain('disabled=""');
     expect(html).toContain('Processing request...');
   });
+
+  it('displays whole project scope with no track limits', () => {
+    const html = renderToStaticMarkup(
+      createElement(GenerationPlanStage, {
+        operation,
+        onApprove: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('全工程');
+    expect(html).toContain('All tracks');
+  });
+
+  it('displays time range and specified tracks', () => {
+    const html = renderToStaticMarkup(
+      createElement(GenerationPlanStage, {
+        operation: {
+          ...operation,
+          scope: {
+            type: 'timeRange',
+            startTick: 0 as any,
+            endTick: 1920 as any,
+            trackIds: ['track.guitar' as any, 'track.bass' as any],
+          },
+        },
+        onApprove: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('Ticks 0–1920');
+    expect(html).toContain('track.guitar, track.bass');
+  });
 });

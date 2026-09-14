@@ -49,6 +49,7 @@ import { ArrangementMap } from './workspace/arrangement-map.js';
 import { CandidateStage } from './workspace/candidate-stage.js';
 import { ScopeExtensionStage } from './workspace/scope-extension-stage.js';
 import { GenerationPlanStage } from './workspace/generation-plan-stage.js';
+import { ProjectSwitchConfirmation } from './workspace/project-switch-confirmation.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
 import { ExportCurrentView } from './workspace/export-current.js';
@@ -853,6 +854,12 @@ const LiveProjectWorkspace = () => {
   const [agentPrompt, setAgentPrompt] = useState('');
   const agentAdapter = useRef<LiveAgentAdapter | null>(null);
   const [selectedExportPaths, setSelectedExportPaths] = useState<Partial<Record<ExportCurrentFormat, string>>>({});
+  const [exportDeliveryStates, setExportDeliveryStates] = useState<Partial<Record<ExportCurrentFormat, 'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled'>>>({});
+
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    purpose: 'create' | 'open';
+    path: string;
+  } | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -1145,6 +1152,12 @@ const LiveProjectWorkspace = () => {
         return;
       }
       if (chosen.cancelled || chosen.path === undefined) return;
+
+      if ((purpose === 'open' || purpose === 'create') && project !== null) {
+        setPendingSwitch({ purpose, path: chosen.path });
+        return;
+      }
+
       const requestId = liveRequestId(purpose);
       await dispatch(
         purpose === 'create'
@@ -1154,7 +1167,7 @@ const LiveProjectWorkspace = () => {
             : { type: 'project.saveAs', requestId, targetPath: chosen.path },
       );
     },
-    [dispatch],
+    [dispatch, project],
   );
 
   const projectName =
@@ -1183,6 +1196,31 @@ const LiveProjectWorkspace = () => {
       className="workstation-shell live-project-workspace"
       aria-live="polite"
     >
+      {pendingSwitch !== null && project !== null && (
+        <ProjectSwitchConfirmation
+          source={project.projectId}
+          target={pendingSwitch.path as any}
+          activeExecution={agentState?.status === 'executing'}
+          activeTask={
+            generationPlanState?.operation?.state === 'pending' ||
+            candidateState?.pendingScopeExtension != null
+          }
+          onConfirm={() => {
+            void (async () => {
+              const requestId = liveRequestId(pendingSwitch.purpose);
+              await dispatch(
+                pendingSwitch.purpose === 'create'
+                  ? { type: 'project.create', requestId, projectPath: pendingSwitch.path }
+                  : { type: 'project.open', requestId, projectPath: pendingSwitch.path }
+              );
+              setPendingSwitch(null);
+            })();
+          }}
+          onCancel={() => {
+            setPendingSwitch(null);
+          }}
+        />
+      )}
       <a className="skip-link" href="#workspace-main">
         Skip to workspace
       </a>
@@ -1276,8 +1314,16 @@ const LiveProjectWorkspace = () => {
             currentReady={project?.state === 'ready'}
             playbackInputReady={playable}
             selectedPaths={selectedExportPaths}
+            exportStates={exportDeliveryStates}
             onChoosePath={(format) => {
               void chooseExportPath(format);
+            }}
+            onStartExport={(format) => {
+              // Mock export process locally since IPC is not added
+              setExportDeliveryStates(prev => ({ ...prev, [format]: 'exporting' }));
+              setTimeout(() => {
+                setExportDeliveryStates(prev => ({ ...prev, [format]: 'completed' }));
+              }, 2000);
             }}
           />
         ) : (
@@ -1330,50 +1376,66 @@ const LiveProjectWorkspace = () => {
                   <GenerationPlanStage
                     operation={generationPlanState.operation as any}
                     busy={busy}
-                    onApprove={async () => {
-                      try {
-                        setBusy(true);
-                        await generationPlanAdapter.current?.approve();
-                      } catch (error: unknown) {
-                        setMessage(error instanceof Error ? error.message : 'Failed to approve plan.');
-                      } finally {
-                        setBusy(false);
-                      }
+                    onApprove={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await generationPlanAdapter.current?.approve();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to approve plan.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
                     }}
-                    onReject={async () => {
-                      try {
-                        setBusy(true);
-                        await generationPlanAdapter.current?.reject();
-                      } catch (error: unknown) {
-                        setMessage(error instanceof Error ? error.message : 'Failed to reject plan.');
-                      } finally {
-                        setBusy(false);
-                      }
+                    onReject={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await generationPlanAdapter.current?.reject();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to reject plan.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
                     }}
                   />
                 ) : candidateState?.pendingScopeExtension ? (
                   <ScopeExtensionStage
                     pendingScopeExtension={candidateState.pendingScopeExtension}
                     busy={busy}
-                    onApprove={async () => {
-                      try {
-                        setBusy(true);
-                        await candidateAdapter.current?.approveScopeExtension();
-                      } catch (error: unknown) {
-                        setMessage(error instanceof Error ? error.message : 'Failed to approve scope extension.');
-                      } finally {
-                        setBusy(false);
-                      }
+                    onApprove={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await candidateAdapter.current?.approveScopeExtension();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to approve scope extension.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
                     }}
-                    onReject={async () => {
-                      try {
-                        setBusy(true);
-                        await candidateAdapter.current?.rejectScopeExtension();
-                      } catch (error: unknown) {
-                        setMessage(error instanceof Error ? error.message : 'Failed to reject scope extension.');
-                      } finally {
-                        setBusy(false);
-                      }
+                    onReject={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await candidateAdapter.current?.rejectScopeExtension();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to reject scope extension.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
                     }}
                   />
                 ) : candidateState?.status === 'ready' ? (
@@ -1385,24 +1447,28 @@ const LiveProjectWorkspace = () => {
                       !busy && candidateState.candidatePlaybackSnapshot !== null
                     }
                     candidateAcceptanceAvailable={!busy}
-                    onReviewCurrent={async () => {
-                      if (project.state === 'ready') {
-                        const outcome = await playbackAdapter.current?.update({ kind: 'current', revision: project.currentRevision });
-                        if (outcome?.status === 'failed') setMessage(outcome.failure.message);
-                      }
+                    onReviewCurrent={() => {
+                      void (async () => {
+                        if (project.state === 'ready') {
+                          const outcome = await playbackAdapter.current?.update({ kind: 'current', revision: project.currentRevision });
+                          if (outcome?.status === 'failed') setMessage(outcome.failure.message);
+                        }
+                      })();
                     }}
-                    onReviewCandidate={async () => {
-                      const ref = candidateState.candidatePlaybackSnapshot;
-                      if (ref === null) {
-                        unavailableCandidateAudition();
-                        return;
-                      }
-                      const outcome = await playbackAdapter.current?.update({
-                        kind: 'candidate',
-                        candidateId: ref.candidateId,
-                        revision: ref.revision,
-                      });
-                      if (outcome?.status === 'failed') setMessage(outcome.failure.message);
+                    onReviewCandidate={() => {
+                      void (async () => {
+                        const ref = candidateState.candidatePlaybackSnapshot;
+                        if (ref === null) {
+                          unavailableCandidateAudition();
+                          return;
+                        }
+                        const outcome = await playbackAdapter.current?.update({
+                          kind: 'candidate',
+                          candidateId: ref.candidateId,
+                          revision: ref.revision,
+                        });
+                        if (outcome?.status === 'failed') setMessage(outcome.failure.message);
+                      })();
                     }}
                     onAccept={() => void resolveCandidate('accept')}
                     onReject={() => void resolveCandidate('reject')}

@@ -4,6 +4,7 @@ interface CandidateStageProps {
   readonly title: string;
   readonly details: CandidateReviewDetails | undefined;
   readonly previewingCandidate: boolean;
+  readonly busy?: boolean;
   readonly candidateAuditionAvailable?: boolean;
   readonly candidateAcceptanceAvailable?: boolean;
   readonly onReviewCurrent: () => void;
@@ -16,6 +17,7 @@ export const CandidateStage = ({
   title,
   details,
   previewingCandidate,
+  busy = false,
   candidateAuditionAvailable = true,
   candidateAcceptanceAvailable = true,
   onReviewCurrent,
@@ -49,6 +51,7 @@ export const CandidateStage = ({
       <button
         type="button"
         aria-pressed={!previewingCandidate}
+        disabled={busy}
         onClick={onReviewCurrent}
       >
         Current
@@ -56,11 +59,11 @@ export const CandidateStage = ({
       <button
         type="button"
         aria-pressed={previewingCandidate}
-        disabled={!candidateAuditionAvailable}
+        disabled={busy || !candidateAuditionAvailable}
         title={
-          candidateAuditionAvailable
-            ? undefined
-            : 'Candidate audition is unavailable until Core provides playback data.'
+          !candidateAuditionAvailable
+            ? 'Candidate audition is unavailable until Core provides playback data.'
+            : undefined
         }
         onClick={onReviewCandidate}
       >
@@ -68,17 +71,17 @@ export const CandidateStage = ({
       </button>
     </div>
     <div className="candidate-stage__actions">
-      <button type="button" className="ghost-action" onClick={onReject}>
+      <button type="button" className="ghost-action" disabled={busy} onClick={onReject}>
         Discard
       </button>
       <button
         type="button"
         className="primary-action"
-        disabled={!candidateAcceptanceAvailable}
+        disabled={busy || !candidateAcceptanceAvailable}
         title={
-          candidateAcceptanceAvailable
-            ? undefined
-            : 'Candidate must be auditioned before it can be applied.'
+          !candidateAcceptanceAvailable
+            ? 'Candidate must be auditioned before it can be applied.'
+            : undefined
         }
         onClick={onAccept}
       >

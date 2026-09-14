@@ -10,7 +10,7 @@ describe('ScopeExtensionStage presentation', () => {
     operationId: 'op-1' as any,
     taskId: 'task-1' as any,
     requestId: 'req-1' as any,
-    fromScopeRevision: 1,
+    fromScopeRevision: 42,
     requestedScope: { type: 'wholeProject' as const, trackIds: [] },
     createdAt: '2026-09-14T00:00:00Z',
   };
@@ -43,5 +43,32 @@ describe('ScopeExtensionStage presentation', () => {
 
     expect(html).toContain('disabled=""');
     expect(html).toContain('Processing request...');
+  });
+
+  it('displays scope and revision information', () => {
+    const html = renderToStaticMarkup(
+      createElement(ScopeExtensionStage, {
+        pendingScopeExtension,
+        onApprove: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('全工程');
+    expect(html).toContain('All tracks');
+    expect(html).toContain('From Revision:</strong> 42');
+  });
+
+  it('displays strong confirmation text', () => {
+    const html = renderToStaticMarkup(
+      createElement(ScopeExtensionStage, {
+        pendingScopeExtension,
+        onApprove: vi.fn(),
+        onReject: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain('Strong Confirmation:');
+    expect(html).toContain('modify the requested areas');
   });
 });

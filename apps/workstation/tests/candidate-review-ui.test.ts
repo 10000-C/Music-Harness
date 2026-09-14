@@ -133,6 +133,26 @@ describe('Candidate Review UI audition wiring', () => {
       expect(html).not.toContain('Apply unavailable until audition</button>');
       expect(html).toContain('Discard</button>');
     });
+
+    it('disables all actions when busy', () => {
+      const html = renderToStaticMarkup(
+        createElement(CandidateStage, {
+          title: 'Candidate ready to review',
+          details: undefined,
+          previewingCandidate: true,
+          busy: true,
+          candidateAuditionAvailable: true,
+          candidateAcceptanceAvailable: true,
+          onReviewCurrent: vi.fn(),
+          onReviewCandidate: vi.fn(),
+          onAccept: vi.fn(),
+          onReject: vi.fn(),
+        }),
+      );
+
+      // Verify all buttons have disabled attribute
+      expect(html.match(/disabled=""/g)?.length).toBe(4); // Current, Candidate, Discard, Apply
+    });
   });
 
   describe('Audition action wiring logic', () => {
