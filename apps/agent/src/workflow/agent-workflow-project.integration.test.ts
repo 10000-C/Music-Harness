@@ -284,9 +284,10 @@ describe('AgentWorkflow full project acceptance', { concurrent: false }, () => {
     });
     const runtimeDirectory = await makeStorageRoot();
     const mcpServer = new MusicCoreMcpHttpServer({
-      projectId: opened.projectId,
+      resolveProjectId: () => opened.projectId,
       runtimeDirectory,
       toolHost,
+      control: transaction,
       createToken: () => 'project-e2e-token',
     });
     mcpServers.push(mcpServer);

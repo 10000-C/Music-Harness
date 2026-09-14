@@ -12,7 +12,7 @@ import {
 import { createStrandsMcpClient } from './strands-mcp.js';
 
 export interface TaskBootstrapDescriptorPort {
-  read(projectId: ProjectId): Promise<McpRuntimeDescriptor>;
+  read(): Promise<McpRuntimeDescriptor>;
 }
 
 export class StrandsTaskBootstrapError extends Error {
@@ -101,7 +101,7 @@ export class StrandsTaskBootstrapper {
     taskId: TaskId,
     signal: AbortSignal,
   ): Promise<TaskContextView> {
-    const descriptor = await this.descriptors.read(projectId);
+    const descriptor = await this.descriptors.read();
     const client = createStrandsMcpClient(descriptor);
     try {
       const tools = await client.listTools();
@@ -134,7 +134,7 @@ export class StrandsTaskBootstrapper {
     operationId: OperationId,
     signal: AbortSignal,
   ): Promise<OperationView> {
-    const descriptor = await this.descriptors.read(projectId);
+    const descriptor = await this.descriptors.read();
     const client = createStrandsMcpClient(descriptor);
     try {
       const tools = await client.listTools();

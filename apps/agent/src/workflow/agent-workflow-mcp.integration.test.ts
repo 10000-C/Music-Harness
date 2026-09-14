@@ -249,7 +249,7 @@ describe('AgentWorkflow + real Strands + MCP', () => {
     ]);
     const toolCalls: string[] = [];
     const mcpServer = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory: await makeTempDirectory(),
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -370,7 +370,7 @@ describe('AgentWorkflow + real Strands + MCP', () => {
     ]);
     const toolCalls: string[] = [];
     const mcpServer = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory: await makeTempDirectory(),
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -481,7 +481,7 @@ describe('AgentWorkflow + real Strands + MCP', () => {
     const toolCalls: string[] = [];
     let finishCount = 0;
     const mcpServer = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory: await makeTempDirectory(),
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,

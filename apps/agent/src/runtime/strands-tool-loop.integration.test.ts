@@ -157,7 +157,7 @@ describe('Strands real MCP tool loop', () => {
       },
     );
     const mcpServer = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory: `/tmp/strands-tool-loop-${String(process.pid)}-${String(Date.now())}`,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,

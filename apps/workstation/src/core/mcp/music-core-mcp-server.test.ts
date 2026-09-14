@@ -38,7 +38,7 @@ const makeServer = async () => {
     },
   );
   const server = new MusicCoreMcpHttpServer({
-    projectId,
+    resolveProjectId: () => projectId,
     runtimeDirectory,
     toolHost: {
       listTools: () => P0_MCP_TOOL_NAMES,
@@ -63,12 +63,14 @@ afterEach(async () => {
 describe('MusicCoreMcpHttpServer', () => {
   it('publishes a user-only runtime descriptor and removes it on stop', async () => {
     const { runtimeDirectory, server, descriptor } = await makeServer();
-    const descriptorPath = join(runtimeDirectory, `${projectId}.json`);
+    const descriptorPath = join(runtimeDirectory, 'core.json');
 
     expect(JSON.parse(await readFile(descriptorPath, 'utf8'))).toEqual(
       descriptor,
     );
-    expect((await stat(descriptorPath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect((await stat(descriptorPath)).mode & 0o777).toBe(0o600);
+    }
     expect(descriptor.endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
 
     await server.stop();
@@ -94,7 +96,7 @@ describe('MusicCoreMcpHttpServer', () => {
       remove: vi.fn(() => Promise.resolve()),
     };
     const options = {
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -107,7 +109,7 @@ describe('MusicCoreMcpHttpServer', () => {
     servers.push(server);
 
     await expect(server.start()).rejects.toThrow('descriptor write failed');
-    await expect(server.start()).resolves.toMatchObject({ projectId });
+    await expect(server.start()).resolves.toMatchObject({ pid: process.pid });
   });
 
   it('closes the HTTP server even when runtime descriptor removal fails', async () => {
@@ -121,7 +123,7 @@ describe('MusicCoreMcpHttpServer', () => {
         .mockResolvedValue(undefined),
     };
     const options = {
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -135,13 +137,13 @@ describe('MusicCoreMcpHttpServer', () => {
     await server.start();
 
     await expect(server.stop()).rejects.toThrow('descriptor remove failed');
-    await expect(server.start()).resolves.toMatchObject({ projectId });
+    await expect(server.start()).resolves.toMatchObject({ pid: process.pid });
   });
 
   it('preserves stable sanitized Candidate errors in MCP Tool Results', async () => {
     const runtimeDirectory = await makeRuntimeDirectory();
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -189,7 +191,7 @@ describe('MusicCoreMcpHttpServer', () => {
       trackIds: ['track.drums', 'track.bass'],
     };
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -241,7 +243,7 @@ describe('MusicCoreMcpHttpServer', () => {
   it('exposes only safe validation phase metadata to MCP clients', async () => {
     const runtimeDirectory = await makeRuntimeDirectory();
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -304,7 +306,7 @@ describe('MusicCoreMcpHttpServer', () => {
   it('redacts unexpected MCP Tool failures behind the stable A3 fallback', async () => {
     const runtimeDirectory = await makeRuntimeDirectory();
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -337,7 +339,7 @@ describe('MusicCoreMcpHttpServer', () => {
     const runtimeDirectory = await makeRuntimeDirectory();
     let wasAborted = false;
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory,
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -385,6 +387,142 @@ describe('MusicCoreMcpHttpServer', () => {
     expect(wasAborted).toBe(true);
 
     await client.close();
+  });
+
+  it('fails submitGenerationPlan with PROJECT_NOT_OPEN when no Project is open', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const call = vi.fn(() => Promise.resolve({ ok: true }));
+    const server = new MusicCoreMcpHttpServer({
+      resolveProjectId: () => undefined,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call,
+      },
+      createToken: () => 'no-project-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const client = await connectMcpTestClient(
+      descriptor.endpoint,
+      descriptor.instanceToken,
+    );
+
+    const result = await client.callTool({
+      name: 'submitGenerationPlan',
+      arguments: {
+        operationId: '55555555-5555-4555-8555-555555555555',
+        summary: 'plan',
+        scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(result.content[0]?.text ?? '{}')).toEqual({
+      code: 'PROJECT_NOT_OPEN',
+      message: 'No Project is open in this Core process',
+    });
+    expect(call).not.toHaveBeenCalled();
+    await client.close();
+  });
+
+  it('routes control cancel-task through the host control port with token auth', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const cancelTask = vi.fn(() => Promise.resolve({ cancelled: true }));
+    const server = new MusicCoreMcpHttpServer({
+      resolveProjectId: () => projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () => Promise.resolve({ ok: true }),
+      },
+      control: { cancelTask },
+      createToken: () => 'control-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const controlUrl = `${descriptor.endpoint.slice(0, -'/mcp'.length)}/control/cancel-task`;
+    const body = JSON.stringify({
+      projectId,
+      candidateId: '33333333-3333-4333-8333-333333333333',
+      taskId,
+    });
+
+    const unauthorized = await fetch(controlUrl, {
+      method: 'POST',
+      body,
+    });
+    expect(unauthorized.status).toBe(401);
+    expect(cancelTask).not.toHaveBeenCalled();
+
+    const invalid = await fetch(controlUrl, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${descriptor.instanceToken}` },
+      body: '{"projectId": "not-a-uuid"}',
+    });
+    expect(invalid.status).toBe(400);
+    expect(cancelTask).not.toHaveBeenCalled();
+
+    const accepted = await fetch(controlUrl, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${descriptor.instanceToken}` },
+      body,
+    });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toEqual({ ok: true });
+    expect(cancelTask).toHaveBeenCalledWith({
+      projectId,
+      candidateId: '33333333-3333-4333-8333-333333333333',
+      taskId,
+    });
+
+    const unknown = await fetch(
+      `${descriptor.endpoint.slice(0, -'/mcp'.length)}/control/other`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${descriptor.instanceToken}` },
+        body,
+      },
+    );
+    expect(unknown.status).toBe(404);
+  });
+
+  it('reports CandidateError payloads from control cancel-task as 500 JSON', async () => {
+    const runtimeDirectory = await makeRuntimeDirectory();
+    const server = new MusicCoreMcpHttpServer({
+      resolveProjectId: () => projectId,
+      runtimeDirectory,
+      toolHost: {
+        listTools: () => P0_MCP_TOOL_NAMES,
+        call: () => Promise.resolve({ ok: true }),
+      },
+      control: {
+        cancelTask: () =>
+          Promise.reject(
+            new CandidateError('TASK_NOT_ACTIVE', 'Task already finished'),
+          ),
+      },
+      createToken: () => 'control-error-token',
+    });
+    servers.push(server);
+    const descriptor = await server.start();
+    const controlUrl = `${descriptor.endpoint.slice(0, -'/mcp'.length)}/control/cancel-task`;
+
+    const response = await fetch(controlUrl, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${descriptor.instanceToken}` },
+      body: JSON.stringify({
+        projectId,
+        candidateId: '33333333-3333-4333-8333-333333333333',
+        taskId,
+      }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      code: 'TASK_NOT_ACTIVE',
+      message: 'Task already finished',
+    });
   });
 
   it('serves exactly ten tools over real Streamable HTTP and delegates calls', async () => {
@@ -435,9 +573,8 @@ describe('RuntimeDescriptorStore', () => {
       'utf8',
     );
     await writeFile(
-      join(runtimeDirectory, `${projectId}.json`),
+      join(runtimeDirectory, 'core.json'),
       JSON.stringify({
-        projectId,
         endpoint: 'http://127.0.0.1:1234/mcp',
         instanceToken: 'old-token',
         pid: 999999,
@@ -454,7 +591,7 @@ describe('RuntimeDescriptorStore', () => {
       code: 'ENOENT',
     });
     await expect(
-      stat(join(runtimeDirectory, `${projectId}.json`)),
+      stat(join(runtimeDirectory, 'core.json')),
     ).rejects.toMatchObject({
       code: 'ENOENT',
     });

@@ -15,7 +15,6 @@ import { StrandsAgentRuntimeFactory } from './strands-agent-factory.js';
 const projectId = '11111111-1111-4111-8111-111111111111' as ProjectId;
 const sessionId = '22222222-2222-4222-8222-222222222222' as AgentSessionId;
 const descriptor: McpRuntimeDescriptor = {
-  projectId,
   endpoint: 'http://127.0.0.1:43127/mcp',
   instanceToken: 'test-token',
   pid: 1234,

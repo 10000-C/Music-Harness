@@ -25,7 +25,7 @@ export interface ActiveModelSettingsPort {
 }
 
 export interface RuntimeDescriptorPort {
-  read(projectId: ProjectId): Promise<McpRuntimeDescriptor>;
+  read(): Promise<McpRuntimeDescriptor>;
 }
 
 interface StrandsAgentRuntimeFactoryDependencies {
@@ -61,7 +61,7 @@ export class StrandsAgentRuntimeFactory {
   ): Promise<StrandsAgentRuntime> {
     const [modelConfig, descriptor] = await Promise.all([
       this.dependencies.settings.getActiveModelConfig(),
-      this.dependencies.descriptors.read(projectId),
+      this.dependencies.descriptors.read(),
     ]);
     const session = createStrandsSession(
       sessionId,

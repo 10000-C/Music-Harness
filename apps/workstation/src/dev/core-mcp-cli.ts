@@ -117,9 +117,10 @@ export const runCoreMcpCli = async (
       ),
     });
     server = new MusicCoreMcpHttpServer({
-      projectId: opened.projectId,
+      resolveProjectId: () => opened.projectId,
       runtimeDirectory: options.runtimeDirectory,
       toolHost,
+      control: transaction,
     });
     const descriptor = await server.start();
     terminal.write(

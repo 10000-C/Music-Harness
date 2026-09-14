@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import {
   isMcpRuntimeDescriptor,
   type McpRuntimeDescriptor,
-  type ProjectId,
 } from '@agent-music/contracts';
 
 export type RuntimeDescriptorErrorCode =
@@ -42,14 +41,14 @@ export class RuntimeDescriptorDiscovery {
     ) => boolean = defaultIsProcessAlive,
   ) {}
 
-  public async read(projectId: ProjectId): Promise<McpRuntimeDescriptor> {
+  public async read(): Promise<McpRuntimeDescriptor> {
     try {
       const raw = await readFile(
-        join(this.runtimeDirectory, `${projectId}.json`),
+        join(this.runtimeDirectory, 'core.json'),
         'utf8',
       );
       const value: unknown = JSON.parse(raw);
-      if (!isMcpRuntimeDescriptor(value) || value.projectId !== projectId) {
+      if (!isMcpRuntimeDescriptor(value)) {
         throw new RuntimeDescriptorError(
           'RUNTIME_DESCRIPTOR_INVALID',
           'Music Core runtime descriptor is invalid',

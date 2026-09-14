@@ -121,7 +121,7 @@ describe('runCoreMcpCli operation protocol', { concurrent: false }, () => {
         'summary',
         'scope',
       ]);
-      expect(runtime.descriptor.projectId).toBe(created.projectId);
+      expect(writes.join('')).toContain(String(created.projectId));
       expect(writes.join('')).toContain('Music Core MCP ready');
     } finally {
       await client.close();

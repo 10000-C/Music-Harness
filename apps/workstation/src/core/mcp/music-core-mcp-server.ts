@@ -24,7 +24,10 @@ import {
 } from '@agent-music/contracts';
 import { z } from 'zod';
 
-import { candidateErrorPayload } from '../candidate/candidate-error.js';
+import {
+  CandidateError,
+  candidateErrorPayload,
+} from '../candidate/candidate-error.js';
 import type { MusicCoreToolName } from './music-core-tool-host.js';
 
 export interface MusicCoreToolInvoker {
@@ -34,6 +37,20 @@ export interface MusicCoreToolInvoker {
     input: unknown,
     options?: { readonly signal?: AbortSignal },
   ): Promise<unknown>;
+}
+
+/**
+ * Host-side control surface mounted on the same loopback HTTP server as the
+ * MCP endpoint but never exposed as MCP Tools. Used by the Agent process for
+ * infrastructure calls (for example Task rollback during controlled
+ * shutdown) that must not be model-visible.
+ */
+export interface MusicCoreControlPort {
+  cancelTask(input: {
+    readonly projectId: string;
+    readonly candidateId: string;
+    readonly taskId: string;
+  }): Promise<unknown>;
 }
 
 const trackIdSchema = z.enum(TRACK_IDS);
@@ -104,7 +121,7 @@ const registerJsonTool = (
 const registerTools = (
   server: McpServer,
   host: MusicCoreToolInvoker,
-  projectId: ProjectId,
+  resolveProjectId: () => ProjectId | undefined,
 ): void => {
   registerJsonTool(
     server,
@@ -134,6 +151,18 @@ const registerTools = (
     },
     async (input, extra) => {
       const parsedInput = generationPlanSchema.parse(input);
+      const projectId = resolveProjectId();
+      if (projectId === undefined) {
+        return toolResult(
+          candidateErrorPayload(
+            new CandidateError(
+              'PROJECT_NOT_OPEN',
+              'No Project is open in this Core process',
+            ),
+          ),
+          true,
+        );
+      }
       try {
         return toolResult(
           await host.call(
@@ -237,10 +266,17 @@ const defaultIsProcessAlive = (pid: number): boolean => {
 export interface RuntimeDescriptorStorePort {
   cleanupStale(): Promise<void>;
   write(descriptor: McpRuntimeDescriptor): Promise<void>;
-  remove(projectId: ProjectId): Promise<void>;
+  remove(): Promise<void>;
 }
 
+/**
+ * Filesystem store for the Core-process-scoped runtime descriptor. The fixed
+ * `core.json` filename reflects that one Core process owns one MCP server,
+ * independent of which Project (if any) is currently open.
+ */
 export class RuntimeDescriptorStore {
+  private static readonly descriptorFileName = 'core.json';
+
   public constructor(
     private readonly runtimeDirectory: string,
     private readonly isProcessAlive: (
@@ -248,13 +284,16 @@ export class RuntimeDescriptorStore {
     ) => boolean = defaultIsProcessAlive,
   ) {}
 
-  public descriptorPath(projectId: ProjectId): string {
-    return join(this.runtimeDirectory, `${projectId}.json`);
+  public descriptorPath(): string {
+    return join(
+      this.runtimeDirectory,
+      RuntimeDescriptorStore.descriptorFileName,
+    );
   }
 
   public async write(descriptor: McpRuntimeDescriptor): Promise<void> {
     await mkdir(this.runtimeDirectory, { recursive: true, mode: 0o700 });
-    const destination = this.descriptorPath(descriptor.projectId);
+    const destination = this.descriptorPath();
     const temporary = `${destination}.${String(process.pid)}.tmp`;
     await writeFile(temporary, `${JSON.stringify(descriptor, null, 2)}\n`, {
       encoding: 'utf8',
@@ -264,8 +303,8 @@ export class RuntimeDescriptorStore {
     await chmod(destination, 0o600);
   }
 
-  public async remove(projectId: ProjectId): Promise<void> {
-    await rm(this.descriptorPath(projectId), { force: true });
+  public async remove(): Promise<void> {
+    await rm(this.descriptorPath(), { force: true });
   }
 
   public async cleanupStale(): Promise<void> {
@@ -295,9 +334,15 @@ export class RuntimeDescriptorStore {
 }
 
 interface MusicCoreMcpHttpServerOptions {
-  readonly projectId: ProjectId;
+  /**
+   * Resolves the currently open Project at request time. The MCP server is
+   * Core-process-scoped and outlives Project close/open, so the Project ID
+   * cannot be captured at construction time.
+   */
+  readonly resolveProjectId: () => ProjectId | undefined;
   readonly runtimeDirectory: string;
   readonly toolHost: MusicCoreToolInvoker;
+  readonly control?: MusicCoreControlPort;
   readonly createToken?: () => string;
   readonly descriptorStore?: RuntimeDescriptorStorePort;
 }
@@ -321,6 +366,47 @@ const tokenMatches = (
     supplied.length === expected.length && timingSafeEqual(supplied, expected)
   );
 };
+
+const cancelTaskControlSchema = z.object({
+  projectId: z.uuid(),
+  candidateId: z.uuid(),
+  taskId: z.uuid(),
+});
+
+const CONTROL_BODY_LIMIT_BYTES = 65_536;
+const JSON_HEADERS = { 'content-type': 'application/json' } as const;
+
+const parseJsonBody = (body: string): unknown => {
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return undefined;
+  }
+};
+
+const readRequestBody = (
+  request: IncomingMessage,
+  limitBytes: number,
+): Promise<string | undefined> =>
+  new Promise((resolve) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    request.on('data', (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > limitBytes) {
+        request.destroy();
+        resolve(undefined);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => {
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+    request.on('error', () => {
+      resolve(undefined);
+    });
+  });
 
 export class MusicCoreMcpHttpServer {
   private readonly descriptorStore: RuntimeDescriptorStorePort;
@@ -361,7 +447,6 @@ export class MusicCoreMcpHttpServer {
     }
 
     const descriptor: McpRuntimeDescriptor = {
-      projectId: this.options.projectId,
       endpoint: `http://127.0.0.1:${String(address.port)}/mcp`,
       instanceToken: this.instanceToken,
       pid: process.pid,
@@ -390,7 +475,7 @@ export class MusicCoreMcpHttpServer {
     let removalError: unknown;
     try {
       if (descriptor !== undefined) {
-        await this.descriptorStore.remove(descriptor.projectId);
+        await this.descriptorStore.remove();
       }
     } catch (error) {
       removalError = error;
@@ -431,6 +516,10 @@ export class MusicCoreMcpHttpServer {
     request: IncomingMessage,
     response: ServerResponse,
   ): Promise<void> {
+    if (request.url?.startsWith('/control/') === true) {
+      await this.handleControlRequest(request, response);
+      return;
+    }
     if (request.url !== '/mcp') {
       response.writeHead(404).end();
       return;
@@ -477,12 +566,57 @@ export class MusicCoreMcpHttpServer {
     }
   }
 
+  private async handleControlRequest(
+    request: IncomingMessage,
+    response: ServerResponse,
+  ): Promise<void> {
+    const control = this.options.control;
+    if (request.url !== '/control/cancel-task' || control === undefined) {
+      response.writeHead(404).end();
+      return;
+    }
+    if (!tokenMatches(request.headers.authorization, this.instanceToken)) {
+      response.writeHead(401).end();
+      return;
+    }
+    if (request.method !== 'POST') {
+      response.writeHead(405).end();
+      return;
+    }
+
+    const body = await readRequestBody(request, CONTROL_BODY_LIMIT_BYTES);
+    if (body === undefined) {
+      response.writeHead(413).end();
+      return;
+    }
+    const parsed = cancelTaskControlSchema.safeParse(parseJsonBody(body));
+    if (!parsed.success) {
+      response.writeHead(400).end();
+      return;
+    }
+
+    try {
+      await control.cancelTask(parsed.data);
+      response.writeHead(200, JSON_HEADERS).end('{"ok":true}');
+    } catch (error) {
+      const payload = candidateErrorPayload(
+        error,
+        'Control cancel-task failed',
+      );
+      response.writeHead(500, JSON_HEADERS).end(JSON.stringify(payload));
+    }
+  }
+
   private async createMcpSession(): Promise<McpHttpSession> {
     const mcpServer = new McpServer({
       name: 'agent-music-workstation-core',
       version: '1.0.0',
     });
-    registerTools(mcpServer, this.options.toolHost, this.options.projectId);
+    registerTools(
+      mcpServer,
+      this.options.toolHost,
+      this.options.resolveProjectId,
+    );
 
     const transport = new StreamableHTTPServerTransport({
       enableJsonResponse: true,

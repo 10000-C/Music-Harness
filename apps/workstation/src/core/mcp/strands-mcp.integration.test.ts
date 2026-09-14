@@ -71,7 +71,7 @@ afterEach(async () => {
 describe('Strands MCP integration', () => {
   it('discovers exactly the ten P0 tools through the authenticated Core endpoint', async () => {
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory: await makeRuntimeDirectory(),
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -91,7 +91,7 @@ describe('Strands MCP integration', () => {
 
   it('mechanically fetches the confirmed Task context through the real Strands MCP client', async () => {
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory: await makeRuntimeDirectory(),
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
@@ -119,7 +119,7 @@ describe('Strands MCP integration', () => {
 
   it('mechanically removes requestScopeExtension from the repair-mode tool list', async () => {
     const server = new MusicCoreMcpHttpServer({
-      projectId,
+      resolveProjectId: () => projectId,
       runtimeDirectory: await makeRuntimeDirectory(),
       toolHost: {
         listTools: () => P0_MCP_TOOL_NAMES,
