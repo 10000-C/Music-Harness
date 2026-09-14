@@ -176,3 +176,8 @@ worktrees/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local UI audit and preview artifacts
+.playwright-cli/
+output/
+apps/workstation/test-soundfont.sf2
