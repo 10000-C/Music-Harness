@@ -50,6 +50,9 @@ const makeWorkflow = () => {
   const isRunning = vi
     .fn<AgentServiceWorkflowPort['isRunning']>()
     .mockReturnValue(false);
+  const hasActiveTask = vi
+    .fn<AgentServiceWorkflowPort['hasActiveTask']>()
+    .mockReturnValue(false);
   const startExecution = vi
     .fn<AgentServiceWorkflowPort['startExecution']>()
     .mockReturnValue(executionId);
@@ -61,6 +64,7 @@ const makeWorkflow = () => {
     .mockResolvedValue(undefined);
   const workflow: AgentServiceWorkflowPort = {
     isRunning,
+    hasActiveTask,
     startExecution,
     cancelCurrentExecution,
     shutdown,
@@ -68,6 +72,7 @@ const makeWorkflow = () => {
   return {
     workflow,
     isRunning,
+    hasActiveTask,
     startExecution,
     cancelCurrentExecution,
     shutdown,
@@ -157,6 +162,37 @@ describe('AgentService', () => {
       requestId: 'active',
       session: { sessionId: sessionIdA, projectId },
       messages: messagesA,
+    });
+  });
+
+  it('reports the Project execution and Active Task state on demand', async () => {
+    const workflow = makeWorkflow();
+    const { service } = await makeService({
+      workflow: workflow.workflow,
+    });
+
+    const idle = await service.handle(
+      { type: 'agent.execution.state', requestId: 'state-1', projectId },
+      vi.fn(),
+    );
+    expect(idle).toEqual({
+      type: 'agent.execution.stateReported',
+      requestId: 'state-1',
+      running: false,
+      activeTask: false,
+    });
+
+    workflow.isRunning.mockReturnValue(true);
+    workflow.hasActiveTask.mockReturnValue(true);
+    const busy = await service.handle(
+      { type: 'agent.execution.state', requestId: 'state-2', projectId },
+      vi.fn(),
+    );
+    expect(busy).toEqual({
+      type: 'agent.execution.stateReported',
+      requestId: 'state-2',
+      running: true,
+      activeTask: true,
     });
   });
 

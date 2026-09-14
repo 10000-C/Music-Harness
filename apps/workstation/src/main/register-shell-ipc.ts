@@ -26,12 +26,135 @@ import { AtomicExportFileWriter } from './export-file-writer.js';
 import { readAgentSettings, writeAgentSettings } from './settings-manager.js';
 import { isServiceFleetSnapshot } from '../shared/service-status.js';
 import type { ServiceSupervisor } from './service-supervisor/index.js';
+import {
+  createProjectSwitchCoordinator,
+  type ProjectSwitchAgentPort,
+  type ProjectSwitchCorePort,
+} from './project-switch-coordinator.js';
+import type { ProjectEvent, ProjectId } from '@agent-music/contracts';
+
+const agentExecutionStateRequest = (): string =>
+  `agent-state-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+/** The only project-switch payload accepted across the desktop boundary. */
+const isProjectSwitchRequest = (
+  value: unknown,
+): value is { readonly projectPath: string } =>
+  typeof value === 'object' &&
+  value !== null &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === 1 &&
+  typeof (value as { projectPath?: unknown }).projectPath === 'string' &&
+  (value as { projectPath: string }).projectPath.length > 0;
 
 export const registerShellIpc = (
   window: BrowserWindow,
   supervisor: ServiceSupervisor,
 ): (() => void) => {
   const exportFileWriter = new AtomicExportFileWriter();
+
+  /**
+   * Main's mirror of the Core-side Active Project path. The supervisor
+   * tracks the id from project events; only the source display path needs
+   * a second field for switch prompts.
+   */
+  let activeSourceProjectPath = '';
+
+  const dispatchProjectTracked = async (
+    command: Parameters<ServiceSupervisor['dispatchProject']>[0],
+  ) => {
+    const event = await supervisor.dispatchProject(command);
+    if (event.type === 'project.opened') {
+      activeSourceProjectPath = event.project.projectPath;
+    } else if (event.type === 'project.closed') {
+      activeSourceProjectPath = '';
+    }
+    return event;
+  };
+
+  /**
+   * Agent seam for the destructive Project switch ordering. The Agent
+   * process owns the running execution and Active Task state, so the
+   * coordinator asks it instead of tracking a second copy in Main.
+   */
+  const switchAgentPort: ProjectSwitchAgentPort = {
+    async hasRunningExecution(projectId) {
+      const result = await supervisor.dispatchAgent({
+        type: 'agent.execution.state',
+        requestId: agentExecutionStateRequest(),
+        projectId,
+      });
+      return result.type === 'agent.execution.stateReported' && result.running;
+    },
+    async hasActiveTask(projectId) {
+      const result = await supervisor.dispatchAgent({
+        type: 'agent.execution.state',
+        requestId: agentExecutionStateRequest(),
+        projectId,
+      });
+      return (
+        result.type === 'agent.execution.stateReported' && result.activeTask
+      );
+    },
+    async cancelCurrentExecution(projectId) {
+      await supervisor.dispatchAgent({
+        type: 'agent.execution.cancel',
+        requestId: agentExecutionStateRequest(),
+        projectId,
+      });
+    },
+    async waitForExecutionSettled(projectId) {
+      for (;;) {
+        const result = await supervisor.dispatchAgent({
+          type: 'agent.execution.state',
+          requestId: agentExecutionStateRequest(),
+          projectId,
+        });
+        if (
+          result.type !== 'agent.execution.stateReported' ||
+          !result.running
+        ) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    },
+  };
+
+  /** The authoritative opened event from the coordinator's last open. */
+  let lastSwitchedOpenEvent: ProjectEvent | null = null;
+
+  const switchCorePort: ProjectSwitchCorePort = {
+    async closeProject(projectId: ProjectId) {
+      void projectId; // Core closes whichever project is active.
+      await dispatchProjectTracked({
+        type: 'project.close',
+        requestId: `switch-close-${Date.now().toString(36)}`,
+      });
+    },
+    async openProject(projectPath) {
+      const event = await dispatchProjectTracked({
+        type: 'project.open',
+        requestId: `switch-open-${Date.now().toString(36)}`,
+        projectPath,
+      });
+      if (event.type !== 'project.opened') {
+        throw new Error(
+          event.type === 'project.failed'
+            ? event.message
+            : 'Project open failed',
+        );
+      }
+      lastSwitchedOpenEvent = event;
+      return event.project;
+    },
+  };
+
+  const switchCoordinator = createProjectSwitchCoordinator(
+    switchAgentPort,
+    switchCorePort,
+  );
+
   ipcMain.handle(shellIpcChannels.snapshot, () => supervisor.getSnapshot());
   ipcMain.handle(shellIpcChannels.restart, async (_event, service: unknown) => {
     if (!isServiceKind(service))
@@ -137,7 +260,7 @@ export const registerShellIpc = (
       };
     }
     try {
-      return { ok: true, event: await supervisor.dispatchProject(command) };
+      return { ok: true, event: await dispatchProjectTracked(command) };
     } catch {
       return {
         ok: false,
@@ -146,6 +269,55 @@ export const registerShellIpc = (
       };
     }
   });
+  ipcMain.handle(
+    shellIpcChannels.projectSwitch,
+    async (_event, request: unknown) => {
+      if (!isProjectSwitchRequest(request)) {
+        return {
+          ok: false,
+          code: 'INVALID_PROJECT_SWITCH',
+          userMessage: 'Invalid project switch request.',
+        };
+      }
+      const sourceProjectId = supervisor.getActiveProjectId();
+      if (sourceProjectId === null) {
+        return {
+          ok: false,
+          code: 'PROJECT_SWITCH_NO_SOURCE',
+          userMessage: 'No project is open to switch away from.',
+        };
+      }
+      try {
+        const result = await switchCoordinator.switchProject({
+          source: {
+            projectId: sourceProjectId,
+            projectPath: activeSourceProjectPath,
+          },
+          target: { projectPath: request.projectPath },
+          confirmed: true,
+        });
+        if (result.status === 'switched') {
+          activeSourceProjectPath = result.project.projectPath;
+          const event = lastSwitchedOpenEvent;
+          lastSwitchedOpenEvent = null;
+          if (event !== null && event.type === 'project.opened') {
+            return { ok: true, event };
+          }
+        }
+        return {
+          ok: false,
+          code: 'PROJECT_SWITCH_FAILED',
+          userMessage: 'Project switch failed. The open Project was kept.',
+        };
+      } catch {
+        return {
+          ok: false,
+          code: 'PROJECT_SWITCH_FAILED',
+          userMessage: 'Project switch failed. The open Project was kept.',
+        };
+      }
+    },
+  );
   ipcMain.handle(
     shellIpcChannels.candidate,
     async (_event, command: unknown) => {

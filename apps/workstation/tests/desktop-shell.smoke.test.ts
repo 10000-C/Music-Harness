@@ -96,6 +96,7 @@ test('launches the isolated desktop shell with fake services', async () => {
         'readPlaybackSnapshot',
         'readSettings',
         'restartService',
+        'switchProject',
         'writeCurrentExport',
         'writeSettings',
       ],

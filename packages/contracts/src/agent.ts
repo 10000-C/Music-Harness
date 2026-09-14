@@ -52,6 +52,9 @@ export type AgentCommand =
     })
   | (AgentCommandBase & {
       readonly type: 'agent.execution.cancel';
+    })
+  | (AgentCommandBase & {
+      readonly type: 'agent.execution.state';
     });
 
 export type AgentCommandResult =
@@ -85,6 +88,12 @@ export type AgentCommandResult =
   | {
       readonly type: 'agent.execution.cancelAccepted';
       readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.execution.stateReported';
+      readonly requestId: string;
+      readonly running: boolean;
+      readonly activeTask: boolean;
     };
 
 interface AgentEventBase {
@@ -211,6 +220,7 @@ export const isAgentCommand = (value: unknown): value is AgentCommand => {
     case 'agent.session.create':
     case 'agent.session.getActive':
     case 'agent.execution.cancel':
+    case 'agent.execution.state':
       return hasOnlyAllowedKeys(value, ['type', 'requestId', 'projectId']);
     case 'agent.session.open':
       return (
@@ -290,6 +300,17 @@ export const isAgentCommandResult = (
       );
     case 'agent.execution.cancelAccepted':
       return hasOnlyAllowedKeys(value, ['type', 'requestId']);
+    case 'agent.execution.stateReported':
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'requestId',
+          'running',
+          'activeTask',
+        ]) &&
+        typeof value.running === 'boolean' &&
+        typeof value.activeTask === 'boolean'
+      );
     default:
       return false;
   }

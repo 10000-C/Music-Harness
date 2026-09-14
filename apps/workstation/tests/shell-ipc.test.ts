@@ -71,6 +71,8 @@ const supervisor = {
   }),
   readCurrentPlayback: vi.fn(),
   readPlaybackSnapshot: vi.fn(),
+  getActiveProjectId: vi.fn(() => null),
+  trackActiveProject: vi.fn(),
   shutdown: vi.fn(async () => undefined),
   subscribe: vi.fn((listener: (snapshot: unknown) => void) => {
     snapshotListener = listener;
@@ -106,6 +108,7 @@ describe('shell Main IPC and dialogs', () => {
         channels.playback,
         channels.playbackSnapshot,
         channels.project,
+        channels.projectSwitch,
         channels.restart,
         channels.settingsRead,
         channels.settingsWrite,
@@ -362,5 +365,90 @@ describe('shell Main IPC and dialogs', () => {
       channels.agentEvent,
       validEvent,
     );
+  });
+
+  it('rejects a project switch without an active source project', async () => {
+    await expect(
+      invoke(channels.projectSwitch, { projectPath: 'D:/projects/b' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'PROJECT_SWITCH_NO_SOURCE',
+    });
+  });
+
+  it('runs the confirmed switch ordering through the coordinator', async () => {
+    vi.mocked(supervisor.getActiveProjectId).mockReturnValue(
+      '00000000-0000-4000-8000-000000000001' as never,
+    );
+    vi.mocked(supervisor.dispatchAgent).mockImplementation(
+      async (command: { type: string }) => {
+        if (command.type === 'agent.execution.state') {
+          return {
+            type: 'agent.execution.stateReported',
+            requestId: 'state',
+            running: false,
+            activeTask: false,
+          } as never;
+        }
+        return {
+          type: 'agent.execution.cancelAccepted',
+          requestId: 'cancel',
+        } as never;
+      },
+    );
+    const openedEvent = {
+      type: 'project.opened' as const,
+      requestId: 'switch-open',
+      sequence: 2,
+      project: {
+        projectId: '00000000-0000-4000-8000-000000000009',
+        projectPath: 'D:/projects/b',
+        currentRevision: 'C0',
+        state: 'ready' as const,
+        manifest: {
+          formatVersion: 1 as const,
+          projectId: '00000000-0000-4000-8000-000000000009',
+          timebase: { ppq: 960 },
+          tracks: [],
+        },
+      },
+    };
+    vi.mocked(supervisor.dispatchProject).mockImplementation(
+      async (command: { type: string }) => {
+        if (command.type === 'project.close')
+          return {
+            type: 'project.closed',
+            requestId: 'switch-close',
+            sequence: 1,
+          } as never;
+        return openedEvent as never;
+      },
+    );
+
+    await expect(
+      invoke(channels.projectSwitch, { projectPath: 'D:/projects/b' }),
+    ).resolves.toEqual({ ok: true, event: openedEvent });
+
+    const sentCommands = vi
+      .mocked(supervisor.dispatchProject)
+      .mock.calls.map(([command]) => command.type);
+    expect(sentCommands).toEqual(['project.close', 'project.open']);
+  });
+
+  it('fails the switch closed when the coordinator cannot settle the Agent', async () => {
+    vi.mocked(supervisor.getActiveProjectId).mockReturnValue(
+      '00000000-0000-4000-8000-000000000001' as never,
+    );
+    vi.mocked(supervisor.dispatchAgent).mockRejectedValue(
+      new Error('agent unavailable'),
+    );
+
+    await expect(
+      invoke(channels.projectSwitch, { projectPath: 'D:/projects/b' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'PROJECT_SWITCH_FAILED',
+    });
+    expect(supervisor.dispatchProject).not.toHaveBeenCalled();
   });
 });

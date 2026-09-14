@@ -806,4 +806,68 @@ describe('ServiceSupervisor', () => {
     });
     expect(agentEvents.length).toBe(1);
   });
+
+  it('rolls back the tracked Active Project when the Agent process exits unexpectedly', async () => {
+    const processes = adapter();
+    active = createServiceSupervisor(processes);
+    await active.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    processes.emit('agent', { type: 'agent.process.ready' });
+    expect(active.getSnapshot().agent).toBe('ready');
+
+    processes.emit('core', {
+      type: 'projectEvent',
+      protocolVersion: 1,
+      event: {
+        type: 'project.opened',
+        requestId: 'open-1',
+        sequence: 1,
+        project: {
+          projectId: agentProjectId,
+          projectPath: 'D:/projects/a',
+          currentRevision: 'C0',
+          state: 'ready',
+        },
+      },
+    });
+    expect(active.getActiveProjectId()).toBe(agentProjectId);
+
+    processes.exit('agent');
+    expect(
+      processes.sent.find(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          (message as { type?: string }).type === 'candidateCommand' &&
+          (message as { command?: { type?: string } }).command?.type ===
+            'candidate.cancelActiveTaskForAgentLoss',
+      ),
+    ).toBeDefined();
+  });
+
+  it('skips Agent-loss rollback when no Project is tracked', async () => {
+    const processes = adapter();
+    active = createServiceSupervisor(processes);
+    await active.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    processes.emit('agent', { type: 'agent.process.ready' });
+
+    processes.exit('agent');
+    expect(
+      processes.sent.find(
+        (message) =>
+          typeof message === 'object' &&
+          message !== null &&
+          (message as { type?: string }).type === 'candidateCommand',
+      ),
+    ).toBeUndefined();
+  });
 });

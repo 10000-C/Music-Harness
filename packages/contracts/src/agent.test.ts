@@ -68,6 +68,11 @@ describe('Agent command contract', () => {
       requestId: 'request-6',
       projectId,
     });
+    expectValidCommand({
+      type: 'agent.execution.state',
+      requestId: 'request-6b',
+      projectId,
+    });
   });
 
   it('rejects unknown, malformed, or empty commands', () => {
@@ -143,6 +148,14 @@ describe('Agent command result contract', () => {
       isAgentCommandResult({
         type: 'agent.execution.cancelAccepted',
         requestId: 'request-cancel',
+      }),
+    ).toBe(true);
+    expect(
+      isAgentCommandResult({
+        type: 'agent.execution.stateReported',
+        requestId: 'request-state',
+        running: true,
+        activeTask: false,
       }),
     ).toBe(true);
   });

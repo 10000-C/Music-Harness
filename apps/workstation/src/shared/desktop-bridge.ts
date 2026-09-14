@@ -42,6 +42,13 @@ export interface DesktopBridge extends LiveOperationBridge {
   ): Promise<DirectoryDialogResult>;
   chooseExportPath(request: ExportPathRequest): Promise<FileDialogResult>;
   dispatchProject(command: ProjectCommand): Promise<ProjectCommandResult>;
+  /**
+   * Confirmed destructive Project switch: Main cancels the Agent execution,
+   * waits for rollback settlement, closes the source, then opens the target.
+   */
+  switchProject(request: {
+    readonly projectPath: string;
+  }): Promise<ProjectCommandResult>;
   dispatchCandidate(command: CandidateCommand): Promise<CandidateCommandResult>;
   readCandidateState(projectId: ProjectId): Promise<CandidateStateResult>;
   onCandidateEvent(

@@ -32,6 +32,7 @@ it('exposes only the DesktopBridge allowlist and no raw Electron objects', async
     'readPlaybackSnapshot',
     'readSettings',
     'restartService',
+    'switchProject',
     'writeCurrentExport',
     'writeSettings',
   ]);

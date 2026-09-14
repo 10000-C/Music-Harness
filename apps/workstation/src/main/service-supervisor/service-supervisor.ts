@@ -36,6 +36,7 @@ import {
 } from '../../shared/playback-bridge.js';
 import type { ProjectEvent } from '@agent-music/contracts';
 import type { CandidateEvent } from '@agent-music/contracts';
+import type { ProjectId } from '@agent-music/contracts';
 import {
   isAgentProcessEvent,
   type AgentCommand,
@@ -69,6 +70,12 @@ export interface ServiceSupervisor {
   ): () => void;
   dispatchAgent(command: AgentCommand): Promise<AgentCommandResult>;
   onAgentEvent(listener: (event: AgentEvent) => void): () => void;
+  /**
+   * Tracks the Core-side Active Project so an unexpected Agent exit can roll
+   * back its authoritative Active Task via cancelActiveTaskForAgentLoss.
+   */
+  trackActiveProject(projectId: ProjectId | null): void;
+  getActiveProjectId(): ProjectId | null;
   readCurrentPlayback(): Promise<CorePlaybackResponse>;
   readPlaybackSnapshot(
     projectId: CorePlaybackSnapshotRequest['projectId'],
@@ -184,6 +191,7 @@ export const createServiceSupervisor = (
   >();
   const listeners = new Set<(value: ServiceFleetSnapshot) => void>();
   const stopResolvers = new Map<ServiceKind, () => void>();
+  let trackedProjectId: ProjectId | null = null;
   let stopping = false;
   let requestSequence = 0;
   let shutdownPromise: Promise<void> | undefined;
@@ -351,7 +359,10 @@ export const createServiceSupervisor = (
     const unsubscribeExit = process.onExit(() => {
       if (generations[service] !== generation) return;
       if (stopping) finalizeStopped(service, generation, false);
-      else fail(service, generation);
+      else {
+        if (service === 'agent') rollbackTrackedProjectForAgentLoss();
+        fail(service, generation);
+      }
     });
     subscriptions.set(service, [unsubscribeMessage, unsubscribeExit]);
     addTimer(
@@ -361,6 +372,42 @@ export const createServiceSupervisor = (
       },
       config.readyTimeoutMs,
     );
+  };
+
+  /**
+   * Best-effort Core-side rollback after the Agent process was lost with an
+   * Active Task possibly outstanding. Core treats this command as idempotent
+   * when no Active Task exists, so firing it unconditionally is safe.
+   */
+  const rollbackTrackedProjectForAgentLoss = (): void => {
+    if (stopping || trackedProjectId === null) return;
+    const projectId = trackedProjectId;
+    const core = processes.get('core');
+    if (core === undefined || states.core !== 'ready') return;
+    const requestId = `agent-loss-${String(++requestSequence)}`;
+    const timeout = schedule(() => {
+      pendingCandidates.delete(requestId);
+    }, 15_000);
+    pendingCandidates.set(requestId, {
+      generation: generations.core,
+      resolve: () => undefined,
+      reject: () => undefined,
+      timeout,
+    });
+    try {
+      core.send({
+        type: 'candidateCommand',
+        protocolVersion: 1,
+        command: {
+          type: 'candidate.cancelActiveTaskForAgentLoss',
+          requestId,
+          projectId,
+        },
+      } satisfies CoreCandidateRequest);
+    } catch {
+      cancel(timeout);
+      pendingCandidates.delete(requestId);
+    }
   };
 
   const fail = (service: ServiceKind, generation: number): void => {
@@ -474,6 +521,11 @@ export const createServiceSupervisor = (
         pendingProjects.delete(requestId);
         pending.resolve(message.event);
       }
+      if (message.event.type === 'project.opened') {
+        trackedProjectId = message.event.project.projectId;
+      } else if (message.event.type === 'project.closed') {
+        trackedProjectId = null;
+      }
       return;
     }
     if (service === 'core' && isCorePlaybackResponse(message)) {
@@ -577,6 +629,7 @@ export const createServiceSupervisor = (
           });
           return;
         case 'agent.process.fatal':
+          rollbackTrackedProjectForAgentLoss();
           fail('agent', generation);
           return;
       }
@@ -945,6 +998,12 @@ export const createServiceSupervisor = (
         agentEventListeners.delete(listener);
       };
     },
+
+    trackActiveProject(projectId) {
+      trackedProjectId = projectId;
+    },
+
+    getActiveProjectId: () => trackedProjectId,
 
     onCandidateEvent(listener) {
       candidateEventListeners.add(listener);

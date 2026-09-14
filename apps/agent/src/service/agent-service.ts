@@ -41,6 +41,7 @@ export interface AgentServiceSessionPort {
 
 export interface AgentServiceWorkflowPort {
   isRunning(projectId?: ProjectId): boolean;
+  hasActiveTask(projectId?: ProjectId): boolean;
   startExecution(
     input: StartAgentExecutionInput,
     emit: AgentEventSink,
@@ -123,6 +124,15 @@ export class AgentService {
         return {
           type: 'agent.execution.cancelAccepted',
           requestId: command.requestId,
+        };
+      case 'agent.execution.state':
+        return {
+          type: 'agent.execution.stateReported',
+          requestId: command.requestId,
+          running: this.dependencies.workflow.isRunning(command.projectId),
+          activeTask: this.dependencies.workflow.hasActiveTask(
+            command.projectId,
+          ),
         };
     }
   }

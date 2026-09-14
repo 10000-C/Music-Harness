@@ -1386,20 +1386,30 @@ const LiveProjectWorkspace = () => {
           }
           onConfirm={() => {
             void (async () => {
-              const requestId = liveRequestId(pendingSwitch.purpose);
-              await dispatch(
-                pendingSwitch.purpose === 'create'
-                  ? {
-                      type: 'project.create',
-                      requestId,
-                      projectPath: pendingSwitch.path,
-                    }
-                  : {
-                      type: 'project.open',
-                      requestId,
-                      projectPath: pendingSwitch.path,
-                    },
-              );
+              const bridge = window.agentMusic;
+              if (bridge === undefined) {
+                setMessage('The secure desktop bridge is unavailable.');
+                return;
+              }
+              // Confirmed switch: Main runs the destructive ordering
+              // (cancel execution → settle → close A → open B).
+              const result = await bridge.switchProject({
+                projectPath: pendingSwitch.path,
+              });
+              if (!result.ok) {
+                setMessage(result.userMessage);
+                setPendingSwitch(null);
+                return;
+              }
+              const event = result.event;
+              if (event.type === 'project.opened') {
+                setProject(event.project);
+                setMessage(
+                  event.project.state === 'recoveryRequired'
+                    ? 'Current needs recovery before it can be edited.'
+                    : 'Current is clean and ready.',
+                );
+              }
               setActiveView('studio');
               setPendingSwitch(null);
             })();

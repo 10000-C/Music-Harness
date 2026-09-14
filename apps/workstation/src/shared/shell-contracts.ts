@@ -53,6 +53,7 @@ export const shellIpcChannels = {
   directory: 'shell:directory',
   exportPath: 'shell:export',
   project: 'shell:project',
+  projectSwitch: 'shell:project:switch',
   candidate: 'shell:candidate',
   candidateState: 'shell:candidate:state',
   playback: 'shell:playback',

@@ -344,6 +344,13 @@ export class AgentWorkflow {
     );
   }
 
+  public hasActiveTask(projectId?: ProjectId): boolean {
+    return (
+      this.active?.task !== undefined &&
+      (projectId === undefined || this.active.projectId === projectId)
+    );
+  }
+
   public async cancelCurrentExecution(projectId: ProjectId): Promise<void> {
     const execution = this.active;
     if (execution?.projectId !== projectId) {

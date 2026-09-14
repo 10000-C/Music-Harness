@@ -121,6 +121,28 @@ const bridge = {
           userMessage: 'The desktop service is unavailable. Try again.',
         };
   },
+  async switchProject(request: unknown) {
+    if (
+      typeof request !== 'object' ||
+      request === null ||
+      Array.isArray(request) ||
+      typeof (request as { projectPath?: unknown }).projectPath !== 'string' ||
+      (request as { projectPath: string }).projectPath.length === 0
+    )
+      return {
+        ok: false,
+        code: 'INVALID_PROJECT_SWITCH',
+        userMessage: 'Invalid project switch request.',
+      };
+    const value = await invoke(shellIpcChannels.projectSwitch, request);
+    return isProjectCommandResult(value)
+      ? value
+      : {
+          ok: false,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
+  },
   async dispatchCandidate(command: unknown) {
     if (!isCandidateCommand(command))
       return {
