@@ -1300,7 +1300,9 @@ const LiveProjectWorkspace = () => {
                     title="Candidate ready to review"
                     details={undefined}
                     previewingCandidate={runtimeState?.activeSource?.kind === 'candidate'}
-                    candidateAuditionAvailable={!busy}
+                    candidateAuditionAvailable={
+                      !busy && candidateState.candidatePlaybackSnapshot !== null
+                    }
                     candidateAcceptanceAvailable={!busy}
                     onReviewCurrent={async () => {
                       if (project.state === 'ready') {
@@ -1309,10 +1311,17 @@ const LiveProjectWorkspace = () => {
                       }
                     }}
                     onReviewCandidate={async () => {
-                      if (candidateState.status === 'ready' && candidateState.candidate) {
-                        const outcome = await playbackAdapter.current?.update({ kind: 'candidate', candidateId: candidateState.candidate.candidateId, revision: candidateState.candidate.baseRevision });
-                        if (outcome?.status === 'failed') setMessage(outcome.failure.message);
+                      const ref = candidateState.candidatePlaybackSnapshot;
+                      if (ref === null) {
+                        unavailableCandidateAudition();
+                        return;
                       }
+                      const outcome = await playbackAdapter.current?.update({
+                        kind: 'candidate',
+                        candidateId: ref.candidateId,
+                        revision: ref.revision,
+                      });
+                      if (outcome?.status === 'failed') setMessage(outcome.failure.message);
                     }}
                     onAccept={() => void resolveCandidate('accept')}
                     onReject={() => void resolveCandidate('reject')}
