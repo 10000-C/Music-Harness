@@ -1,8 +1,8 @@
-# MUSE Workstation — product context
+# Music Harness — product context
 
 ## Product
 
-MUSE is a local-first Windows music workstation. It helps a musician listen to
+Music Harness is a local-first Windows music workstation. It helps a musician listen to
 the saved **Current**, shape a coherent six-track arrangement, and ask an agent
 for musical changes without silently overwriting their work.
 

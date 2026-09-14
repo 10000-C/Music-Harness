@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { access, rename, rm, writeFile } from 'node:fs/promises';
+import { access, open, rename, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { ExportFileWriteCommand } from '../shared/export-bridge.js';
 import { hasExpectedExportExtension } from '../shared/export-bridge.js';
@@ -41,7 +41,13 @@ export class AtomicExportFileWriter implements ExportFileWriter {
     let movedExisting = false;
 
     try {
-      await writeFile(temporaryPath, command.bytes, { flag: 'wx' });
+      const temporaryFile = await open(temporaryPath, 'wx');
+      try {
+        await temporaryFile.writeFile(command.bytes);
+        await temporaryFile.sync();
+      } finally {
+        await temporaryFile.close();
+      }
       if (await targetExists(targetPath)) {
         await rename(targetPath, backupPath);
         movedExisting = true;

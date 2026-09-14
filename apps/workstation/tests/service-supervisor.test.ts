@@ -4,7 +4,7 @@ import {
   createInitialCanonicalAbc,
 } from '../src/core/composition/index.js';
 import { createServiceSupervisor as createProductionServiceSupervisor } from '../src/main/service-supervisor/index.js';
-import type { ProjectId } from '@agent-music/contracts';
+import type { OperationId, ProjectId } from '@agent-music/contracts';
 import type {
   ManagedProcess,
   ManagedProcessAdapter,
@@ -284,6 +284,115 @@ describe('ServiceSupervisor', () => {
     };
     processes.emit('core', notification);
     expect(notifications).toEqual([notification]);
+  });
+  it('routes Operation state, control results, and project-scoped notifications', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+
+    const projectId = '00000000-0000-4000-8000-000000000001' as ProjectId;
+    const operationNotifications: unknown[] = [];
+    supervisor.onOperationEvent((notification) => {
+      operationNotifications.push(notification);
+    });
+
+    const statePending = supervisor.readOperationState(projectId);
+    const stateRequest = processes.sent.find(
+      (message): message is { type: string; requestId: string } =>
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { type?: string }).type === 'operationState.read',
+    );
+    expect(stateRequest).toBeDefined();
+    processes.emit('core', {
+      type: 'operationState.readResult',
+      protocolVersion: 1,
+      requestId: stateRequest?.requestId,
+      state: { projectId, sequence: 2, operations: [] },
+    });
+    await expect(statePending).resolves.toEqual({
+      projectId,
+      sequence: 2,
+      operations: [],
+    });
+
+    const command = {
+      type: 'operation.resolve' as const,
+      protocolVersion: 1 as const,
+      requestId: 'operation-resolve-1',
+      operationId: 'operation-1' as OperationId,
+      decision: 'reject' as const,
+    };
+    const controlPending = supervisor.dispatchOperation(command);
+    expect(processes.sent).toContainEqual(command);
+    const result = {
+      ok: false as const,
+      code: 'OPERATION_NOT_FOUND',
+      userMessage: 'The operation no longer exists.',
+    };
+    processes.emit('core', {
+      type: 'operation.resolveResult',
+      protocolVersion: 1,
+      requestId: command.requestId,
+      result,
+    });
+    await expect(controlPending).resolves.toEqual(result);
+
+    const notification = {
+      type: 'operationState.event' as const,
+      protocolVersion: 1 as const,
+      projectId,
+      sequence: 3,
+      operation: {
+        operationId: 'operation-1',
+        type: 'generationPlan' as const,
+        state: 'cancelled' as const,
+        createdAt: '2026-09-11T00:00:00.000Z',
+      },
+    };
+    processes.emit('core', notification);
+    expect(operationNotifications).toEqual([notification]);
+  });
+  it('routes Current export preparation through the Core process', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+
+    const pending = supervisor.prepareCurrentExport();
+    const request = processes.sent.find(
+      (message): message is { type: string; command: { requestId: string } } =>
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { type?: string }).type === 'exportCommand',
+    );
+    expect(request).toBeDefined();
+    const prepared = {
+      projectId: '00000000-0000-4000-8000-000000000001' as ProjectId,
+      currentRevision: 'current-1',
+      canonicalAbc: 'X:1\nK:C\n',
+      midiFileBytes: new Uint8Array([0x4d, 0x54, 0x68, 0x64]),
+    };
+    processes.emit('core', {
+      type: 'exportEvent',
+      protocolVersion: 1,
+      event: {
+        type: 'export.prepared',
+        requestId: request?.command.requestId,
+        sequence: 1,
+        result: prepared,
+      },
+    });
+    await expect(pending).resolves.toEqual(prepared);
   });
   it('keeps an in-flight Core command when the Agent restarts', async () => {
     const processes = adapter();

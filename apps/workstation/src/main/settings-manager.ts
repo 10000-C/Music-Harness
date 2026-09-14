@@ -1,7 +1,11 @@
 import { promises as fs } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { isAgentSettings, type AgentSettings } from '../shared/settings-bridge.js';
+import {
+  isAgentSettings,
+  type AgentSettings,
+} from '../shared/settings-bridge.js';
 import type { CommandResult } from '../shared/shell-contracts.js';
 
 const getSettingsPath = (): string =>
@@ -36,20 +40,30 @@ export const writeAgentSettings = async (
 
   const settingsPath = getSettingsPath();
   const dirPath = join(homedir(), '.agent-music');
+  const tempPath = `${settingsPath}.${randomUUID()}.tmp`;
 
   try {
-    await fs.mkdir(dirPath, { recursive: true });
-    // Atomic write by writing to a .tmp file then renaming
-    const tempPath = `${settingsPath}.tmp`;
-    await fs.writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf8');
+    await fs.mkdir(dirPath, { recursive: true, mode: 0o700 });
+    // Best effort on Windows; POSIX hosts use this to keep the settings
+    // directory and file private to the current user.
+    await Promise.resolve(fs.chmod(dirPath, 0o700)).catch(() => undefined);
+    await fs.writeFile(tempPath, JSON.stringify(settings, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600,
+      flag: 'wx',
+    });
+    await Promise.resolve(fs.chmod(tempPath, 0o600)).catch(() => undefined);
     await fs.rename(tempPath, settingsPath);
 
     return { ok: true };
-  } catch (error: unknown) {
+  } catch {
+    await Promise.resolve(fs.rm(tempPath, { force: true })).catch(
+      () => undefined,
+    );
     return {
       ok: false,
       code: 'SETTINGS_WRITE_FAILED',
-      userMessage: `Failed to save settings: ${error instanceof Error ? error.message : String(error)}`,
+      userMessage: 'Failed to save settings. Check permissions and try again.',
     };
   }
 };

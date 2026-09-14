@@ -1,5 +1,5 @@
 ---
-name: MUSE Workstation
+name: Music Harness
 description: Calm Apple-grade material restraint with the warmth and creative directness of a modern AI music product
 colors:
   primary-violet: 'oklch(60% 0.25 350)'
@@ -36,7 +36,7 @@ components:
     padding: '8px'
 ---
 
-# Design System: MUSE Workstation
+# Design System: Music Harness
 
 ## Overview
 

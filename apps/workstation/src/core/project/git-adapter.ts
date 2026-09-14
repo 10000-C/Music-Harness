@@ -11,17 +11,19 @@ export type AuthorityFile = (typeof AUTHORITY_FILES)[number];
 
 export class GitAdapter {
   async init(repositoryPath: string): Promise<void> {
-    await this.run(repositoryPath, ['init', '-b', 'main']);
+    await this.run(repositoryPath, [
+      '-c',
+      'core.longpaths=true',
+      'init',
+      '-b',
+      'main',
+    ]);
     await writeFile(
       join(repositoryPath, '.git', 'info', 'exclude'),
       '.agent-music/\nexports/\n',
       'utf8',
     );
-    await this.run(repositoryPath, [
-      'config',
-      'user.name',
-      'Agent Music Workstation',
-    ]);
+    await this.run(repositoryPath, ['config', 'user.name', 'Music Harness']);
     await this.run(repositoryPath, [
       'config',
       'user.email',

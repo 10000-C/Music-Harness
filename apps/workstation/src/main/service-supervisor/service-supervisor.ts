@@ -34,7 +34,24 @@ import {
   type CorePlaybackResponse,
   type PlaybackSnapshotSource,
 } from '../../shared/playback-bridge.js';
-import type { ProjectEvent } from '@agent-music/contracts';
+import {
+  isCoreOperationControlResponse,
+  isCoreOperationStateResponse,
+  isCoreOperationEventNotification,
+  type CoreOperationEventNotification,
+  type CoreOperationStateRequest,
+  type CoreOperationStateSnapshot,
+  type OperationControlCommand,
+  type OperationControlResult,
+} from '../../shared/operation-bridge.js';
+import {
+  isCoreExportResponse,
+  type CoreExportRequest,
+} from '../../shared/export-bridge.js';
+import type {
+  PreparedCurrentExport,
+  ProjectEvent,
+} from '@agent-music/contracts';
 import type { CandidateEvent } from '@agent-music/contracts';
 import {
   isAgentProcessEvent,
@@ -67,6 +84,16 @@ export interface ServiceSupervisor {
   onCandidateEvent(
     listener: (notification: CoreCandidateEventNotification) => void,
   ): () => void;
+  readOperationState(
+    projectId: CoreOperationStateRequest['projectId'],
+  ): Promise<CoreOperationStateSnapshot>;
+  dispatchOperation(
+    command: OperationControlCommand,
+  ): Promise<OperationControlResult>;
+  onOperationEvent(
+    listener: (notification: CoreOperationEventNotification) => void,
+  ): () => void;
+  prepareCurrentExport(): Promise<PreparedCurrentExport>;
   dispatchAgent(command: AgentCommand): Promise<AgentCommandResult>;
   onAgentEvent(listener: (event: AgentEvent) => void): () => void;
   readCurrentPlayback(): Promise<CorePlaybackResponse>;
@@ -169,6 +196,34 @@ export const createServiceSupervisor = (
       readonly timeout: ReturnType<typeof setTimeout>;
     }
   >();
+  const pendingOperationStates = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly projectId: CoreOperationStateRequest['projectId'];
+      readonly resolve: (state: CoreOperationStateSnapshot) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
+  const pendingOperations = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly resolve: (result: OperationControlResult) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
+  const pendingExports = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly resolve: (result: PreparedCurrentExport) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
   const pendingAgents = new Map<
     string,
     {
@@ -181,6 +236,9 @@ export const createServiceSupervisor = (
   const agentEventListeners = new Set<(event: AgentEvent) => void>();
   const candidateEventListeners = new Set<
     (notification: CoreCandidateEventNotification) => void
+  >();
+  const operationEventListeners = new Set<
+    (notification: CoreOperationEventNotification) => void
   >();
   const listeners = new Set<(value: ServiceFleetSnapshot) => void>();
   let stopping = false;
@@ -283,6 +341,24 @@ export const createServiceSupervisor = (
         cancel(pending.timeout);
         pending.reject(new Error('The Music Core process restarted.'));
         pendingCandidateStates.delete(requestId);
+      }
+      for (const [requestId, pending] of pendingOperationStates) {
+        if (pending.generation !== generations.core) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Music Core process restarted.'));
+        pendingOperationStates.delete(requestId);
+      }
+      for (const [requestId, pending] of pendingOperations) {
+        if (pending.generation !== generations.core) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Music Core process restarted.'));
+        pendingOperations.delete(requestId);
+      }
+      for (const [requestId, pending] of pendingExports) {
+        if (pending.generation !== generations.core) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Music Core process restarted.'));
+        pendingExports.delete(requestId);
       }
     }
     if (service === 'agent') {
@@ -483,6 +559,21 @@ export const createServiceSupervisor = (
       }
       return;
     }
+    if (service === 'core' && isCoreExportResponse(message)) {
+      const pending = pendingExports.get(message.event.requestId);
+      if (pending?.generation === generation) {
+        cancel(pending.timeout);
+        pendingExports.delete(message.event.requestId);
+        if (message.event.type === 'export.prepared') {
+          pending.resolve(message.event.result);
+        } else {
+          const error = new Error(message.event.message);
+          (error as { code?: string }).code = message.event.code;
+          pending.reject(error);
+        }
+      }
+      return;
+    }
     if (service === 'core' && isCorePlaybackResponse(message)) {
       const pending = pendingPlayback.get(message.requestId);
       if (pending?.generation === generation) {
@@ -529,7 +620,11 @@ export const createServiceSupervisor = (
       if (pending?.generation === generation) {
         cancel(pending.timeout);
         pendingCandidateStates.delete(message.requestId);
-        if (pending.projectId !== message.state.projectId) {
+        if (message.type === 'candidateState.readFailed') {
+          const error = new Error(message.userMessage);
+          (error as { code?: string }).code = message.code;
+          pending.reject(error);
+        } else if (pending.projectId !== message.state.projectId) {
           pending.reject(
             new Error('Music Core returned the wrong project state.'),
           );
@@ -537,6 +632,40 @@ export const createServiceSupervisor = (
           pending.resolve(message.state);
         }
       }
+      return;
+    }
+    if (service === 'core' && isCoreOperationStateResponse(message)) {
+      const pending = pendingOperationStates.get(message.requestId);
+      if (pending?.generation === generation) {
+        cancel(pending.timeout);
+        pendingOperationStates.delete(message.requestId);
+        if (message.type === 'operationState.readFailed') {
+          const error = new Error(message.userMessage);
+          (error as { code?: string }).code = message.code;
+          pending.reject(error);
+        } else if (pending.projectId !== message.state.projectId) {
+          pending.reject(
+            new Error('Music Core returned the wrong Operation state.'),
+          );
+        } else {
+          pending.resolve(message.state);
+        }
+      }
+      return;
+    }
+    if (service === 'core' && isCoreOperationControlResponse(message)) {
+      const pending = pendingOperations.get(message.requestId);
+      if (pending?.generation === generation) {
+        cancel(pending.timeout);
+        pendingOperations.delete(message.requestId);
+        pending.resolve(message.result);
+      }
+      return;
+    }
+    if (service === 'core' && isCoreOperationEventNotification(message)) {
+      operationEventListeners.forEach((listener) => {
+        listener(message);
+      });
       return;
     }
     if (service === 'core' && isCoreCandidateEventNotification(message)) {
@@ -898,6 +1027,122 @@ export const createServiceSupervisor = (
       });
     },
 
+    readOperationState(projectId) {
+      if (states.core !== 'ready') {
+        return Promise.reject(new Error('Music Core is not ready.'));
+      }
+      const process = processes.get('core');
+      if (process === undefined) {
+        return Promise.reject(new Error('Music Core is unavailable.'));
+      }
+      const requestId = `operation-state-${String(++requestSequence)}`;
+      const generation = generations.core;
+      return new Promise<CoreOperationStateSnapshot>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingOperationStates.delete(requestId);
+          reject(new Error('Music Core did not return Operation state.'));
+        }, 15_000);
+        pendingOperationStates.set(requestId, {
+          generation,
+          projectId,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send({
+            type: 'operationState.read',
+            protocolVersion: 1,
+            requestId,
+            projectId,
+          } satisfies CoreOperationStateRequest);
+        } catch {
+          cancel(timeout);
+          pendingOperationStates.delete(requestId);
+          reject(
+            new Error('Music Core could not receive Operation state request.'),
+          );
+        }
+      });
+    },
+
+    dispatchOperation(command) {
+      if (states.core !== 'ready') {
+        return Promise.reject(new Error('Music Core is not ready.'));
+      }
+      const process = processes.get('core');
+      if (process === undefined) {
+        return Promise.reject(new Error('Music Core is unavailable.'));
+      }
+      const generation = generations.core;
+      if (pendingOperations.has(command.requestId)) {
+        return Promise.reject(
+          new Error('A matching Operation command is already pending.'),
+        );
+      }
+      return new Promise<OperationControlResult>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingOperations.delete(command.requestId);
+          reject(
+            new Error('Music Core did not respond to the Operation command.'),
+          );
+        }, 15_000);
+        pendingOperations.set(command.requestId, {
+          generation,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send(command satisfies OperationControlCommand);
+        } catch {
+          cancel(timeout);
+          pendingOperations.delete(command.requestId);
+          reject(
+            new Error('Music Core could not receive the Operation command.'),
+          );
+        }
+      });
+    },
+
+    prepareCurrentExport() {
+      if (states.core !== 'ready') {
+        return Promise.reject(new Error('Music Core is not ready.'));
+      }
+      const process = processes.get('core');
+      if (process === undefined) {
+        return Promise.reject(new Error('Music Core is unavailable.'));
+      }
+      const requestId = `export-${String(++requestSequence)}`;
+      const generation = generations.core;
+      return new Promise<PreparedCurrentExport>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingExports.delete(requestId);
+          reject(new Error('Music Core did not prepare the Current export.'));
+        }, 15_000);
+        pendingExports.set(requestId, {
+          generation,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send({
+            type: 'exportCommand',
+            protocolVersion: 1,
+            command: {
+              type: 'export.prepareCurrent',
+              requestId,
+            },
+          } satisfies CoreExportRequest);
+        } catch {
+          cancel(timeout);
+          pendingExports.delete(requestId);
+          reject(new Error('Music Core could not receive the export request.'));
+        }
+      });
+    },
+
     dispatchAgent(command) {
       if (states.agent !== 'ready') {
         return Promise.reject(new Error('Agent service is not ready.'));
@@ -944,6 +1189,13 @@ export const createServiceSupervisor = (
       candidateEventListeners.add(listener);
       return () => {
         candidateEventListeners.delete(listener);
+      };
+    },
+
+    onOperationEvent(listener) {
+      operationEventListeners.add(listener);
+      return () => {
+        operationEventListeners.delete(listener);
       };
     },
   };

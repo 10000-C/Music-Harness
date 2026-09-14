@@ -202,7 +202,7 @@ export const createMainWindow = (
               ui: {
                 shell: document.querySelector('.live-project-workspace, .workstation-shell') !== null,
                 trackCount: document.querySelectorAll('.track-row[data-track-id]').length,
-                agentTitle: document.querySelector('.agent-panel__header h2')?.textContent ?? null
+                agentTitle: document.querySelector('.agent-chat__header h2, .agent-panel__header h2')?.textContent ?? null
               }
             };
           })()`,

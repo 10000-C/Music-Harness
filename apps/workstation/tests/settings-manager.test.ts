@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { promises as fs } from 'node:fs';
-import { readAgentSettings, writeAgentSettings } from '../src/main/settings-manager.js';
+import {
+  readAgentSettings,
+  writeAgentSettings,
+} from '../src/main/settings-manager.js';
 import type { AgentSettings } from '../src/shared/settings-bridge.js';
 
 vi.mock('node:fs', () => ({
@@ -9,6 +12,8 @@ vi.mock('node:fs', () => ({
     writeFile: vi.fn(),
     mkdir: vi.fn(),
     rename: vi.fn(),
+    chmod: vi.fn(),
+    rm: vi.fn(),
   },
 }));
 
@@ -19,10 +24,17 @@ describe('settings-manager', () => {
 
   it('reads valid settings from disk', async () => {
     const validSettings: AgentSettings = {
-      provider: 'openai',
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: 'sk-test-key-12345',
-      model: 'gpt-4o',
+      formatVersion: 1,
+      activeModelConfigId: 'primary',
+      modelConfigs: [
+        {
+          id: 'primary',
+          endpoint: 'https://api.openai.com/v1',
+          apiKey: 'sk-test-key-12345',
+          model: 'gpt-4o',
+        },
+      ],
+      agent: { maxRepairAttempts: 2 },
     };
 
     vi.mocked(fs.readFile).mockResolvedValueOnce(JSON.stringify(validSettings));
@@ -52,8 +64,10 @@ describe('settings-manager', () => {
 
   it('validates settings before writing and rejects invalid payloads', async () => {
     const invalidSettings = {
-      provider: 'unsupported-provider',
-      baseUrl: '',
+      formatVersion: 1,
+      activeModelConfigId: 'primary',
+      modelConfigs: [],
+      agent: { maxRepairAttempts: 2 },
     };
 
     const result = await writeAgentSettings(invalidSettings);
@@ -67,10 +81,17 @@ describe('settings-manager', () => {
 
   it('writes settings atomically via temporary file and rename', async () => {
     const validSettings: AgentSettings = {
-      provider: 'custom',
-      baseUrl: 'http://localhost:11434/v1',
-      apiKey: '',
-      model: 'deepseek-v3',
+      formatVersion: 1,
+      activeModelConfigId: 'primary',
+      modelConfigs: [
+        {
+          id: 'primary',
+          endpoint: 'http://localhost:11434/v1',
+          apiKey: 'local-test-key',
+          model: 'deepseek-v3',
+        },
+      ],
+      agent: { maxRepairAttempts: 2 },
     };
 
     vi.mocked(fs.mkdir).mockResolvedValueOnce(undefined);
@@ -80,11 +101,14 @@ describe('settings-manager', () => {
     const result = await writeAgentSettings(validSettings);
     expect(result).toEqual({ ok: true });
 
-    expect(fs.mkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+    expect(fs.mkdir).toHaveBeenCalledWith(expect.any(String), {
+      recursive: true,
+      mode: 0o700,
+    });
     expect(fs.writeFile).toHaveBeenCalledWith(
       expect.stringMatching(/\.tmp$/),
       JSON.stringify(validSettings, null, 2),
-      'utf8',
+      { encoding: 'utf8', mode: 0o600, flag: 'wx' },
     );
     expect(fs.rename).toHaveBeenCalledWith(
       expect.stringMatching(/\.tmp$/),
@@ -94,10 +118,17 @@ describe('settings-manager', () => {
 
   it('handles write failures gracefully without throwing', async () => {
     const validSettings: AgentSettings = {
-      provider: 'openai',
-      baseUrl: 'https://api.openai.com/v1',
-      apiKey: 'sk-test',
-      model: 'gpt-4o',
+      formatVersion: 1,
+      activeModelConfigId: 'primary',
+      modelConfigs: [
+        {
+          id: 'primary',
+          endpoint: 'https://api.openai.com/v1',
+          apiKey: 'sk-test',
+          model: 'gpt-4o',
+        },
+      ],
+      agent: { maxRepairAttempts: 2 },
     };
 
     vi.mocked(fs.mkdir).mockRejectedValueOnce(new Error('Permission denied'));
@@ -106,7 +137,7 @@ describe('settings-manager', () => {
     expect(result).toEqual({
       ok: false,
       code: 'SETTINGS_WRITE_FAILED',
-      userMessage: 'Failed to save settings: Permission denied',
+      userMessage: 'Failed to save settings. Check permissions and try again.',
     });
   });
 });

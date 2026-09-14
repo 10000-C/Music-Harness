@@ -32,7 +32,10 @@ import {
   type AgentEvent,
 } from '@agent-music/contracts';
 export {
+  isCoreOperationControlResponse,
   isCoreOperationEventNotification,
+  isCoreOperationStateRequest,
+  isCoreOperationStateResponse,
   isCoreOperationStateSnapshot,
   isOperationControlCommand,
   isOperationControlResult,
@@ -40,6 +43,8 @@ export {
   isOperationView,
 } from './operation-bridge.js';
 export {
+  isCoreExportRequest,
+  isCoreExportResponse,
   isExportFileWriteCommand,
   isExportFileWriteResult,
   isExportPreparationResult,

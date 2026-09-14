@@ -1,4 +1,4 @@
-# Agent Music Workstation
+# Music Harness
 
 A **local-first, agent-first desktop music creation workstation**. You describe a musical idea in natural language; an agent, constrained by a local MCP tool surface, creates and edits a structured composition. The canonical [ABC](https://abcnotation.com/) file is the single source of truth, from which Standard MIDI, the openDAW runtime state, and audio export are all derived.
 

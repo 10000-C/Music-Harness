@@ -163,12 +163,20 @@ export type CoreCandidateStateRequest = Readonly<{
   projectId: ProjectId;
 }>;
 
-export type CoreCandidateStateResponse = Readonly<{
-  type: 'candidateState.readResult';
-  protocolVersion: 1;
-  requestId: string;
-  state: CandidateStateSnapshot;
-}>;
+export type CoreCandidateStateResponse =
+  | Readonly<{
+      type: 'candidateState.readResult';
+      protocolVersion: 1;
+      requestId: string;
+      state: CandidateStateSnapshot;
+    }>
+  | Readonly<{
+      type: 'candidateState.readFailed';
+      protocolVersion: 1;
+      requestId: string;
+      code: string;
+      userMessage: string;
+    }>;
 
 /** Unsolicited Candidate/Task event notification, scoped to one project. */
 export type CoreCandidateEventNotification = Readonly<{
@@ -195,9 +203,27 @@ export const isCoreCandidateStateResponse = (
 ): value is CoreCandidateStateResponse => {
   if (
     !isRecord(value) ||
-    value.type !== 'candidateState.readResult' ||
     value.protocolVersion !== 1 ||
-    !isRequestId(value.requestId) ||
+    !isRequestId(value.requestId)
+  )
+    return false;
+  if (value.type === 'candidateState.readFailed') {
+    return (
+      hasOnlyKeys(value, [
+        'type',
+        'protocolVersion',
+        'requestId',
+        'code',
+        'userMessage',
+      ]) &&
+      typeof value.code === 'string' &&
+      value.code.length > 0 &&
+      typeof value.userMessage === 'string' &&
+      value.userMessage.length > 0
+    );
+  }
+  if (
+    value.type !== 'candidateState.readResult' ||
     !isRecord(value.state) ||
     !isProjectId(value.state.projectId) ||
     !isSequence(value.state.sequence) ||
@@ -215,7 +241,7 @@ export const isCoreCandidateStateResponse = (
       value.state.candidate.candidateId
   )
     return false;
-  return Object.keys(value).length === 4;
+  return hasOnlyKeys(value, ['type', 'protocolVersion', 'requestId', 'state']);
 };
 
 export const isCoreCandidateEventNotification = (

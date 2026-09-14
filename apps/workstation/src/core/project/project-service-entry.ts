@@ -10,6 +10,7 @@ import {
   CandidateTransaction,
 } from '../candidate/index.js';
 import { CompositionPipeline } from '../composition/index.js';
+import { ExportIpcHandler, ExportPreparation } from '../export/index.js';
 import { randomUUID } from 'node:crypto';
 import {
   type CoreProjectRequest,
@@ -18,7 +19,13 @@ import {
 import {
   type CoreCandidateRequest,
   type CoreCandidateResponse,
+  type CoreCandidateStateResponse,
 } from '../../shared/candidate-bridge.js';
+import type {
+  CoreOperationControlResponse,
+  CoreOperationStateResponse,
+} from '../../shared/operation-bridge.js';
+import type { CoreExportResponse } from '../../shared/export-bridge.js';
 import {
   isMainToServiceMessage,
   type ServiceKind,
@@ -33,6 +40,7 @@ const service: ServiceKind = 'core';
 const foundation = new ProjectFoundation();
 const handler = new ProjectIpcHandler(foundation);
 const playback = new CurrentPlaybackReader(foundation);
+const exportHandler = new ExportIpcHandler(new ExportPreparation(foundation));
 const candidateRepository = new CandidateGitRepository();
 const candidateTransaction = new CandidateTransaction({
   project: foundation,
@@ -172,8 +180,50 @@ const handle = async (message: unknown): Promise<void> => {
       }
       return;
     }
+    if (message.type === 'exportCommand') {
+      send({
+        type: 'exportEvent',
+        protocolVersion: 1,
+        event: await exportHandler.handle(message.command),
+      } satisfies CoreExportResponse);
+      return;
+    }
     if (message.type === 'candidateCommand') {
       await enqueueCandidate(message.command);
+      return;
+    }
+    if (message.type === 'candidateState.read') {
+      send({
+        type: 'candidateState.readFailed',
+        protocolVersion: 1,
+        requestId: message.requestId,
+        code: 'CANDIDATE_STATE_UNAVAILABLE',
+        userMessage: 'Candidate state is not available from Music Core yet.',
+      } satisfies CoreCandidateStateResponse);
+      return;
+    }
+    if (message.type === 'operationState.read') {
+      send({
+        type: 'operationState.readFailed',
+        protocolVersion: 1,
+        requestId: message.requestId,
+        code: 'OPERATION_STATE_UNAVAILABLE',
+        userMessage: 'Operation state is not available from Music Core yet.',
+      } satisfies CoreOperationStateResponse);
+      return;
+    }
+    if (message.type === 'operation.resolve') {
+      send({
+        type: 'operation.resolveResult',
+        protocolVersion: 1,
+        requestId: message.requestId,
+        result: {
+          ok: false,
+          code: 'OPERATION_CONTROL_UNAVAILABLE',
+          userMessage:
+            'Operation control is not available from Music Core yet.',
+        },
+      } satisfies CoreOperationControlResponse);
       return;
     }
     await enqueue(message.command);

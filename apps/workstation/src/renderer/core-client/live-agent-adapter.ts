@@ -359,14 +359,14 @@ export const createLiveAgentAdapter = ({
 
   const cancel = async (): Promise<void> => {
     if (!state.isExecuting) return;
-    try {
-      await bridge.dispatchAgent({
-        type: 'agent.execution.cancel',
-        requestId: createRequestId('cancel'),
-        projectId: state.projectId,
-      });
-    } catch {
-      // Best-effort cancellation dispatch
+    const outcome = await bridge.dispatchAgent({
+      type: 'agent.execution.cancel',
+      requestId: createRequestId('cancel'),
+      projectId: state.projectId,
+    });
+    if (!outcome.ok) throw new Error(outcome.userMessage);
+    if (outcome.result.type !== 'agent.execution.cancelAccepted') {
+      throw new Error('Agent did not accept the execution cancellation.');
     }
   };
 

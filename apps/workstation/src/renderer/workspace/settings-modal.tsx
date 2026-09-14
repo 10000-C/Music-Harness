@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { EyeIcon } from '@phosphor-icons/react/dist/csr/Eye';
 import { EyeClosedIcon } from '@phosphor-icons/react/dist/csr/EyeClosed';
+import {
+  isAgentSettings,
+  type AgentModelConfig,
+  type AgentSettings,
+} from '../../shared/settings-bridge.js';
 
-export interface AgentSettings {
-  readonly provider: 'openai' | 'custom';
-  readonly baseUrl: string;
-  readonly apiKey: string;
-  readonly model: string;
-}
+export type { AgentSettings } from '../../shared/settings-bridge.js';
 
 interface SettingsModalProps {
   readonly initialSettings?: AgentSettings | undefined;
@@ -16,10 +16,17 @@ interface SettingsModalProps {
 }
 
 const DEFAULT_SETTINGS: AgentSettings = {
-  provider: 'openai',
-  baseUrl: 'https://api.openai.com/v1',
-  apiKey: '',
-  model: 'gpt-4o',
+  formatVersion: 1,
+  activeModelConfigId: 'primary',
+  modelConfigs: [
+    {
+      id: 'primary',
+      endpoint: 'https://api.openai.com/v1',
+      apiKey: '',
+      model: 'gpt-4o',
+    },
+  ],
+  agent: { maxRepairAttempts: 2 },
 };
 
 export const SettingsModal = ({
@@ -28,11 +35,30 @@ export const SettingsModal = ({
   onClose,
 }: SettingsModalProps) => {
   const [settings, setSettings] = useState<AgentSettings>(
-    initialSettings ?? DEFAULT_SETTINGS
+    initialSettings ?? DEFAULT_SETTINGS,
   );
   const [showKey, setShowKey] = useState(false);
 
-  const isConfigured = settings.apiKey.trim().length > 0;
+  const activeConfig = settings.modelConfigs.find(
+    (config) => config.id === settings.activeModelConfigId,
+  );
+  const [providerPreset, setProviderPreset] = useState<'openai' | 'custom'>(
+    () =>
+      activeConfig?.endpoint.startsWith('https://api.openai.com') === true
+        ? 'openai'
+        : 'custom',
+  );
+  const isConfigured = isAgentSettings(settings);
+  const updateActiveConfig = (patch: Partial<AgentModelConfig>): void => {
+    setSettings((current) => ({
+      ...current,
+      modelConfigs: current.modelConfigs.map((config) =>
+        config.id === current.activeModelConfigId
+          ? { ...config, ...patch }
+          : config,
+      ),
+    }));
+  };
 
   return (
     <div className="workstation-modal-overlay">
@@ -47,12 +73,18 @@ export const SettingsModal = ({
             <h2 id="settings-dialog-title">AI Collaborator</h2>
           </div>
           {isConfigured ? (
-            <span className="settings-dialog__status is-ready" title="API Key configured">
+            <span
+              className="settings-dialog__status is-ready"
+              title="API Key configured"
+            >
               <div className="status-dot"></div>
               Ready
             </span>
           ) : (
-            <span className="settings-dialog__status is-warning" title="API Key required">
+            <span
+              className="settings-dialog__status is-warning"
+              title="API Key required"
+            >
               <div className="status-dot"></div>
               Required
             </span>
@@ -69,21 +101,19 @@ export const SettingsModal = ({
             <label htmlFor="setting-provider">Provider Preset</label>
             <select
               id="setting-provider"
-              value={settings.provider}
+              value={providerPreset}
               onChange={(e) => {
                 const provider = e.target.value as 'openai' | 'custom';
-                setSettings({
-                  ...settings,
-                  provider,
-                  baseUrl:
-                    provider === 'openai'
-                      ? 'https://api.openai.com/v1'
-                      : settings.baseUrl,
-                });
+                setProviderPreset(provider);
+                if (provider === 'openai') {
+                  updateActiveConfig({ endpoint: 'https://api.openai.com/v1' });
+                }
               }}
             >
               <option value="openai">OpenAI (or Compatible)</option>
-              <option value="custom">Custom Endpoint (e.g. DeepSeek, Ollama)</option>
+              <option value="custom">
+                Custom Endpoint (e.g. DeepSeek, Ollama)
+              </option>
             </select>
           </div>
 
@@ -92,11 +122,16 @@ export const SettingsModal = ({
             <input
               id="setting-base-url"
               type="text"
-              value={settings.baseUrl}
-              onChange={(e) => { setSettings({ ...settings, baseUrl: e.target.value }); }}
+              value={activeConfig?.endpoint ?? ''}
+              onChange={(e) => {
+                setProviderPreset('custom');
+                updateActiveConfig({ endpoint: e.target.value });
+              }}
               placeholder="https://api.openai.com/v1"
             />
-            <small>Must be compatible with the standard /v1/chat/completions endpoint</small>
+            <small>
+              Must be compatible with the standard /v1/chat/completions endpoint
+            </small>
           </div>
 
           <div className="settings-form__field">
@@ -105,8 +140,10 @@ export const SettingsModal = ({
               <input
                 id="setting-api-key"
                 type={showKey ? 'text' : 'password'}
-                value={settings.apiKey}
-                onChange={(e) => { setSettings({ ...settings, apiKey: e.target.value }); }}
+                value={activeConfig?.apiKey ?? ''}
+                onChange={(e) => {
+                  updateActiveConfig({ apiKey: e.target.value });
+                }}
                 placeholder="sk-..."
                 autoComplete="off"
                 spellCheck="false"
@@ -114,14 +151,20 @@ export const SettingsModal = ({
               <button
                 type="button"
                 className="icon-action"
-                onClick={() => { setShowKey(!showKey); }}
+                onClick={() => {
+                  setShowKey(!showKey);
+                }}
                 aria-label={showKey ? 'Hide API Key' : 'Show API Key'}
                 title={showKey ? 'Hide' : 'Show'}
               >
                 {showKey ? <EyeClosedIcon size={16} /> : <EyeIcon size={16} />}
               </button>
             </div>
-            {!isConfigured && <small className="settings-form__error">API Key is required for the agent to work.</small>}
+            {!isConfigured && (
+              <small className="settings-form__error">
+                API Key is required for the agent to work.
+              </small>
+            )}
           </div>
 
           <div className="settings-form__field">
@@ -129,8 +172,10 @@ export const SettingsModal = ({
             <input
               id="setting-model"
               type="text"
-              value={settings.model}
-              onChange={(e) => { setSettings({ ...settings, model: e.target.value }); }}
+              value={activeConfig?.model ?? ''}
+              onChange={(e) => {
+                updateActiveConfig({ model: e.target.value });
+              }}
               placeholder="gpt-4o"
             />
           </div>
@@ -143,7 +188,10 @@ export const SettingsModal = ({
           <button
             type="button"
             className="primary-action"
-            onClick={() => { onSave(settings); }}
+            onClick={() => {
+              if (isConfigured) onSave(settings);
+            }}
+            disabled={!isConfigured}
           >
             Save Changes
           </button>

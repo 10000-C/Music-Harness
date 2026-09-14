@@ -36,6 +36,7 @@ const window = {
 let snapshotListener: ((snapshot: unknown) => void) | undefined;
 let agentEventListener: ((event: unknown) => void) | undefined;
 let candidateEventListener: ((event: unknown) => void) | undefined;
+let operationEventListener: ((event: unknown) => void) | undefined;
 const supervisor = {
   getSnapshot: vi.fn(() => ({ core: 'ready', agent: 'ready' })),
   restart: vi.fn(async () => undefined),
@@ -52,6 +53,22 @@ const supervisor = {
     task: null,
     candidatePlaybackSnapshot: null,
   })),
+  readOperationState: vi.fn(async () => ({
+    projectId: '00000000-0000-4000-8000-000000000001',
+    sequence: 0,
+    operations: [],
+  })),
+  dispatchOperation: vi.fn(async () => ({
+    ok: false as const,
+    code: 'OPERATION_CONTROL_UNAVAILABLE',
+    userMessage: 'Operation control is unavailable.',
+  })),
+  prepareCurrentExport: vi.fn(async () => ({
+    projectId: '00000000-0000-4000-8000-000000000001',
+    currentRevision: 'current-1',
+    canonicalAbc: 'X:1\nK:C\n',
+    midiFileBytes: new Uint8Array([0x4d, 0x54, 0x68, 0x64]),
+  })),
   dispatchAgent: vi.fn(async () => ({
     type: 'agent.session.created',
     requestId: 'agent-test',
@@ -67,6 +84,10 @@ const supervisor = {
   }),
   onCandidateEvent: vi.fn((listener: (event: unknown) => void) => {
     candidateEventListener = listener;
+    return vi.fn();
+  }),
+  onOperationEvent: vi.fn((listener: (event: unknown) => void) => {
+    operationEventListener = listener;
     return vi.fn();
   }),
   readCurrentPlayback: vi.fn(),
@@ -91,6 +112,7 @@ describe('shell Main IPC and dialogs', () => {
     snapshotListener = undefined;
     agentEventListener = undefined;
     candidateEventListener = undefined;
+    operationEventListener = undefined;
     registerShellIpc(window as never, supervisor);
   });
 
@@ -103,6 +125,8 @@ describe('shell Main IPC and dialogs', () => {
         channels.exportWrite,
         channels.candidate,
         channels.candidateState,
+        channels.operation,
+        channels.operationState,
         channels.playback,
         channels.playbackSnapshot,
         channels.project,
@@ -199,6 +223,55 @@ describe('shell Main IPC and dialogs', () => {
     );
   });
 
+  it('validates Operation state and control at the Main boundary', async () => {
+    const projectId = '00000000-0000-4000-8000-000000000001';
+    await expect(invoke(channels.operationState, projectId)).resolves.toEqual({
+      ok: true,
+      state: { projectId, sequence: 0, operations: [] },
+    });
+    expect(supervisor.readOperationState).toHaveBeenCalledWith(projectId);
+
+    await expect(
+      invoke(channels.operation, { type: 'operation.resolve' }),
+    ).resolves.toMatchObject({
+      ok: false,
+      code: 'INVALID_OPERATION_COMMAND',
+    });
+
+    const command = {
+      type: 'operation.resolve' as const,
+      protocolVersion: 1 as const,
+      requestId: 'operation-test',
+      operationId: 'operation-1',
+      decision: 'approve' as const,
+    };
+    await expect(invoke(channels.operation, command)).resolves.toEqual({
+      ok: false,
+      code: 'OPERATION_CONTROL_UNAVAILABLE',
+      userMessage: 'Operation control is unavailable.',
+    });
+    expect(supervisor.dispatchOperation).toHaveBeenCalledWith(command);
+
+    const notification = {
+      type: 'operationState.event' as const,
+      protocolVersion: 1 as const,
+      projectId,
+      sequence: 1,
+      operation: {
+        operationId: 'operation-1',
+        type: 'generationPlan' as const,
+        state: 'cancelled' as const,
+        createdAt: '2026-09-11T00:00:00.000Z',
+      },
+    };
+    operationEventListener?.(notification);
+    operationEventListener?.({ type: 'invalid.event' });
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      channels.operationEvent,
+      notification,
+    );
+  });
+
   it('forwards a validated Current playback bundle and fails closed otherwise', async () => {
     const compiled = compileComposition(createInitialCanonicalAbc());
     const bundle = {
@@ -238,11 +311,22 @@ describe('shell Main IPC and dialogs', () => {
     expect(showSaveDialog).not.toHaveBeenCalled();
   });
 
-  it('keeps export preparation unavailable until A5 is connected and validates file writes', async () => {
+  it('prepares a validated Current export and validates file writes', async () => {
+    await expect(invoke(channels.exportPrepare)).resolves.toMatchObject({
+      ok: true,
+      result: {
+        projectId: '00000000-0000-4000-8000-000000000001',
+        currentRevision: 'current-1',
+        canonicalAbc: 'X:1\nK:C\n',
+      },
+    });
+    vi.mocked(supervisor.prepareCurrentExport).mockRejectedValueOnce(
+      new Error('secret Core failure'),
+    );
     await expect(invoke(channels.exportPrepare)).resolves.toEqual({
       ok: false,
       code: 'A5_UNAVAILABLE',
-      userMessage: 'Current export preparation is not ready yet.',
+      userMessage: 'Current export preparation is unavailable. Try again.',
     });
     await expect(
       invoke(channels.exportWrite, { type: 'export.writeFile' }),

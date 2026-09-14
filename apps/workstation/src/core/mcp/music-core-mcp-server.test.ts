@@ -68,7 +68,9 @@ describe('MusicCoreMcpHttpServer', () => {
     expect(JSON.parse(await readFile(descriptorPath, 'utf8'))).toEqual(
       descriptor,
     );
-    expect((await stat(descriptorPath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== 'win32') {
+      expect((await stat(descriptorPath)).mode & 0o777).toBe(0o600);
+    }
     expect(descriptor.endpoint).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp$/);
 
     await server.stop();

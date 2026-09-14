@@ -9,7 +9,10 @@ import {
   type TrackId,
 } from './b-contracts/index.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CommandResult } from '../shared/shell-contracts.js';
+import type {
+  CommandResult,
+  ProjectCommandResult,
+} from '../shared/shell-contracts.js';
 import type {
   OpenedProject,
   ProjectCommand,
@@ -40,7 +43,10 @@ import {
 } from './core-client/index.js';
 import { type PlaybackRuntimeState } from './opendaw-runtime/index.js';
 import { createSpessaSynthPlaybackRuntime } from './opendaw-runtime/spessasynth-playback-runtime.js';
-import { createSourceAwarePlaybackAdapter, type SourceAwarePlaybackAdapter } from './opendaw-runtime/index.js';
+import {
+  createSourceAwarePlaybackAdapter,
+  type SourceAwarePlaybackAdapter,
+} from './opendaw-runtime/index.js';
 import type { PlaybackCommand } from './opendaw-runtime/types.js';
 import {
   createAbcjsWavRenderer,
@@ -55,6 +61,7 @@ import { CandidateStage } from './workspace/candidate-stage.js';
 import { ScopeExtensionStage } from './workspace/scope-extension-stage.js';
 import { GenerationPlanStage } from './workspace/generation-plan-stage.js';
 import { ProjectSwitchConfirmation } from './workspace/project-switch-confirmation.js';
+import { createProjectSwitchCoordinator } from '../shared/project-switch-coordinator.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
 import {
@@ -860,28 +867,42 @@ const LiveProjectWorkspace = () => {
   const playbackAdapter = useRef<SourceAwarePlaybackAdapter | null>(null);
 
   const [timeline, setTimeline] = useState<TimelineViewModel | null>(null);
-  const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(null);
+  const [runtimeState, setRuntimeState] = useState<PlaybackRuntimeState | null>(
+    null,
+  );
   const [focusedTrackId, setFocusedTrackId] = useState<TrackId>('track.guitar');
-  const [candidateState, setCandidateState] = useState<LiveCandidateState | null>(null);
+  const [candidateState, setCandidateState] =
+    useState<LiveCandidateState | null>(null);
   const candidateAdapter = useRef<LiveCandidateAdapter | null>(null);
-  const [generationPlanState, setGenerationPlanState] = useState<LiveGenerationPlanState | null>(null);
+  const [generationPlanState, setGenerationPlanState] =
+    useState<LiveGenerationPlanState | null>(null);
   const generationPlanAdapter = useRef<LiveGenerationPlanAdapter | null>(null);
   const [agentState, setAgentState] = useState<LiveAgentState | null>(null);
   const [agentPrompt, setAgentPrompt] = useState('');
   const agentAdapter = useRef<LiveAgentAdapter | null>(null);
   const exportAdapter = useRef<CurrentExportAdapter | null>(null);
   const exportAbortController = useRef<AbortController | null>(null);
-  const [selectedExportPaths, setSelectedExportPaths] = useState<Partial<Record<ExportCurrentFormat, string>>>({});
-  const [exportDeliveryStates, setExportDeliveryStates] = useState<Partial<Record<ExportCurrentFormat, 'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled'>>>({});
+  const [selectedExportPaths, setSelectedExportPaths] = useState<
+    Partial<Record<ExportCurrentFormat, string>>
+  >({});
+  const [exportDeliveryStates, setExportDeliveryStates] = useState<
+    Partial<
+      Record<
+        ExportCurrentFormat,
+        'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled'
+      >
+    >
+  >({});
 
   const [pendingSwitch, setPendingSwitch] = useState<{
     purpose: 'create' | 'open';
     path: string;
   } | null>(null);
+  const projectSwitchInFlight = useRef(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [agentSettings, setAgentSettings] = useState<AgentSettings | undefined>(
-    undefined
+    undefined,
   );
 
   useEffect(() => {
@@ -918,11 +939,13 @@ const LiveProjectWorkspace = () => {
     const unsubscribe = adapter.subscribe((state) => {
       if (mounted.current) setRuntimeState(state);
     });
-    void adapter.load({ kind: 'current', revision: project.currentRevision }).then((result) => {
-      if (!mounted.current) return;
-      if (result.status === 'failed') setMessage(result.failure.message);
-      else setMessage('Current is loaded for playback.');
-    });
+    void adapter
+      .load({ kind: 'current', revision: project.currentRevision })
+      .then((result) => {
+        if (!mounted.current) return;
+        if (result.status === 'failed') setMessage(result.failure.message);
+        else setMessage('Current is loaded for playback.');
+      });
     return () => {
       unsubscribe();
       void adapter.dispose();
@@ -938,25 +961,29 @@ const LiveProjectWorkspace = () => {
       return;
     }
     let active = true;
-    void bridge.readPlaybackSnapshot(project.projectId, source).then((result) => {
-      if (!active) return;
-      if (result.ok) {
-        const view = createCurrentPlaybackViewModel(
-          result.snapshot.revision,
-          result.snapshot.timeline,
-          result.snapshot.compilation
-        );
-        if (view !== null) setTimeline(view);
-        else {
+    void bridge
+      .readPlaybackSnapshot(project.projectId, source)
+      .then((result) => {
+        if (!active) return;
+        if (result.ok) {
+          const view = createCurrentPlaybackViewModel(
+            result.snapshot.revision,
+            result.snapshot.timeline,
+            result.snapshot.compilation,
+          );
+          if (view !== null) setTimeline(view);
+          else {
+            setTimeline(null);
+            setMessage('Playback data did not pass the Renderer boundary.');
+          }
+        } else {
           setTimeline(null);
-          setMessage('Playback data did not pass the Renderer boundary.');
+          setMessage(result.userMessage);
         }
-      } else {
-        setTimeline(null);
-        setMessage(result.userMessage);
-      }
-    });
-    return () => { active = false; };
+      });
+    return () => {
+      active = false;
+    };
   }, [
     runtimeState?.activeSource?.kind,
     runtimeState?.activeSource?.revision,
@@ -1004,7 +1031,8 @@ const LiveProjectWorkspace = () => {
     return () => {
       unsubscribe();
       adapter.dispose();
-      if (generationPlanAdapter.current === adapter) generationPlanAdapter.current = null;
+      if (generationPlanAdapter.current === adapter)
+        generationPlanAdapter.current = null;
     };
   }, [project?.projectId, project?.state]);
 
@@ -1107,7 +1135,10 @@ const LiveProjectWorkspace = () => {
         } else {
           setMessage('Candidate discarded. Current is unchanged.');
           if (project?.state === 'ready') {
-            void playbackAdapter.current?.update({ kind: 'current', revision: project.currentRevision });
+            void playbackAdapter.current?.update({
+              kind: 'current',
+              revision: project.currentRevision,
+            });
           }
         }
       } catch (error: unknown) {
@@ -1123,36 +1154,53 @@ const LiveProjectWorkspace = () => {
     [candidateState?.status, project],
   );
 
-  const dispatch = useCallback(async (command: ProjectCommand) => {
-    const bridge = window.agentMusic;
-    if (bridge === undefined) {
-      setMessage('The secure desktop bridge is unavailable.');
-      return;
-    }
-    const operation = ++latestRequest.current;
-    setBusy(true);
-    const result = await bridge.dispatchProject(command);
-    if (operation !== latestRequest.current) return;
-    setBusy(false);
-    if (!result.ok) {
-      setMessage(result.userMessage);
-      return;
-    }
-    const event: ProjectEvent = result.event;
-    if (event.type === 'project.opened') {
-      setProject(event.project);
-      setMessage(
-        event.project.state === 'recoveryRequired'
-          ? 'Current needs recovery before it can be edited.'
-          : 'Current is clean and ready.',
-      );
-    } else if (event.type === 'project.closed') {
-      setProject(null);
-      setMessage('Project closed.');
-    } else {
-      setMessage(event.message);
-    }
-  }, []);
+  const dispatch = useCallback(
+    async (command: ProjectCommand): Promise<ProjectCommandResult> => {
+      const bridge = window.agentMusic;
+      if (bridge === undefined) {
+        setMessage('The secure desktop bridge is unavailable.');
+        return {
+          ok: false,
+          code: 'DESKTOP_BRIDGE_UNAVAILABLE',
+          userMessage: 'The secure desktop bridge is unavailable.',
+        };
+      }
+      const operation = ++latestRequest.current;
+      setBusy(true);
+      let result: ProjectCommandResult;
+      try {
+        result = await bridge.dispatchProject(command);
+      } catch {
+        result = {
+          ok: false,
+          code: 'CORE_UNAVAILABLE',
+          userMessage: 'Music Core is unavailable. Try again.',
+        };
+      }
+      if (operation !== latestRequest.current) return result;
+      setBusy(false);
+      if (!result.ok) {
+        setMessage(result.userMessage);
+        return result;
+      }
+      const event: ProjectEvent = result.event;
+      if (event.type === 'project.opened') {
+        setProject(event.project);
+        setMessage(
+          event.project.state === 'recoveryRequired'
+            ? 'Current needs recovery before it can be edited.'
+            : 'Current is clean and ready.',
+        );
+      } else if (event.type === 'project.closed') {
+        setProject(null);
+        setMessage('Project closed.');
+      } else {
+        setMessage(event.message);
+      }
+      return result;
+    },
+    [],
+  );
 
   const chooseExportPath = useCallback(
     async (format: ExportCurrentFormat) => {
@@ -1181,9 +1229,7 @@ const LiveProjectWorkspace = () => {
         ...current,
         [format]: chosen.path,
       }));
-      setMessage(
-        'Destination saved. Start the export when you are ready.',
-      );
+      setMessage('Destination saved. Start the export when you are ready.');
     },
     [project],
   );
@@ -1191,7 +1237,9 @@ const LiveProjectWorkspace = () => {
   const startExport = useCallback(
     async (format: ExportCurrentFormat) => {
       if (format === 'abc') {
-        setMessage('Canonical ABC is an internal format and cannot be exported.');
+        setMessage(
+          'Canonical ABC is an internal format and cannot be exported.',
+        );
         return;
       }
       const path = selectedExportPaths[format];
@@ -1205,7 +1253,9 @@ const LiveProjectWorkspace = () => {
           ...current,
           [format]: 'failed',
         }));
-        setMessage('Current export is unavailable until the desktop bridge is ready.');
+        setMessage(
+          'Current export is unavailable until the desktop bridge is ready.',
+        );
         return;
       }
       if (exportAbortController.current !== null) {
@@ -1236,7 +1286,8 @@ const LiveProjectWorkspace = () => {
         } else {
           setExportDeliveryStates((current) => ({
             ...current,
-            [format]: outcome.code === 'EXPORT_CANCELLED' ? 'cancelled' : 'failed',
+            [format]:
+              outcome.code === 'EXPORT_CANCELLED' ? 'cancelled' : 'failed',
           }));
           setMessage(outcome.userMessage);
         }
@@ -1282,6 +1333,158 @@ const LiveProjectWorkspace = () => {
     [dispatch, project],
   );
 
+  const confirmProjectSwitch = useCallback(() => {
+    const source = project;
+    const target = pendingSwitch;
+    if (source === null || target === null || projectSwitchInFlight.current)
+      return;
+    projectSwitchInFlight.current = true;
+
+    void (async () => {
+      setBusy(true);
+      try {
+        const coordinator = createProjectSwitchCoordinator(
+          {
+            hasRunningExecution: () =>
+              agentAdapter.current?.hasRunningExecution() ??
+              agentState?.isExecuting ??
+              false,
+            hasActiveTask: () => {
+              const candidateTask =
+                candidateAdapter.current?.getState().task ??
+                candidateState?.task;
+              const operation =
+                generationPlanAdapter.current?.getState().operation ??
+                generationPlanState?.operation;
+              return (
+                (candidateTask !== null && candidateTask !== undefined) ||
+                operation?.state === 'pending'
+              );
+            },
+            cancelCurrentExecution: async () => {
+              const agent = agentAdapter.current;
+              const agentIsRunning =
+                agent?.hasRunningExecution() ??
+                agentState?.isExecuting ??
+                false;
+              if (agentIsRunning) {
+                if (agent === null) {
+                  throw new Error('Agent cancellation is unavailable.');
+                }
+                await agent.cancel();
+              }
+
+              const candidate = candidateAdapter.current;
+              const candidateTask =
+                candidate?.getState().task ?? candidateState?.task;
+              if (candidateTask != null) {
+                if (candidate === null) {
+                  throw new Error('Candidate cancellation is unavailable.');
+                }
+                await candidate.cancelTask();
+              }
+
+              const generationPlan = generationPlanAdapter.current;
+              const operation =
+                generationPlan?.getState().operation ??
+                generationPlanState?.operation;
+              if (operation?.state === 'pending') {
+                if (generationPlan === null) {
+                  throw new Error(
+                    'Generation plan cancellation is unavailable.',
+                  );
+                }
+                await generationPlan.reject();
+              }
+            },
+            waitForExecutionSettled: async () => {
+              if (
+                agentAdapter.current === null &&
+                (agentState?.isExecuting ?? false)
+              ) {
+                throw new Error('Agent settlement is unavailable.');
+              }
+              await agentAdapter.current?.waitForExecutionSettled();
+            },
+          },
+          {
+            closeProject: async (projectId) => {
+              const result = await dispatch({
+                type: 'project.close',
+                requestId: liveRequestId('switch-close'),
+              });
+              if (!result.ok) throw new Error(result.userMessage);
+              if (
+                result.event.type !== 'project.closed' ||
+                projectId !== source.projectId
+              ) {
+                throw new Error('Music Core did not close the source Project.');
+              }
+            },
+            openProject: async (projectPath, purpose = 'open') => {
+              const result = await dispatch(
+                purpose === 'create'
+                  ? {
+                      type: 'project.create',
+                      requestId: liveRequestId('switch-create'),
+                      projectPath,
+                    }
+                  : {
+                      type: 'project.open',
+                      requestId: liveRequestId('switch-open'),
+                      projectPath,
+                    },
+              );
+              if (!result.ok) throw new Error(result.userMessage);
+              if (result.event.type !== 'project.opened') {
+                throw new Error('Music Core did not open the target Project.');
+              }
+              return result.event.project;
+            },
+          },
+        );
+
+        const result = await coordinator.switchProject({
+          source: {
+            projectId: source.projectId,
+            projectPath: source.projectPath,
+          },
+          target: {
+            projectPath: target.path,
+            purpose: target.purpose,
+          },
+          confirmed: true,
+        });
+
+        if (result.status === 'switched') {
+          setPendingSwitch(null);
+          setActiveView('studio');
+          setMessage('Project switched safely.');
+        } else if (result.status === 'failed') {
+          setMessage(result.message);
+        } else {
+          setMessage('Project switch requires confirmation.');
+        }
+      } catch (error: unknown) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : 'Project switch could not be completed.',
+        );
+      } finally {
+        projectSwitchInFlight.current = false;
+        setBusy(false);
+      }
+    })();
+  }, [
+    agentState,
+    candidateState,
+    dispatch,
+    generationPlanState,
+    pendingSwitch,
+    project,
+  ]);
+
   const projectName =
     project === null ? 'No project open' : displayName(project.projectPath);
   const currentLabel =
@@ -1289,8 +1492,7 @@ const LiveProjectWorkspace = () => {
       ? 'Choose a project folder to begin'
       : `Current · ${project.currentRevision.slice(0, 8)}`;
   const playback = runtimeState;
-  const playable =
-    timeline !== null && playback?.activeSource !== null;
+  const playable = timeline !== null && playback?.activeSource !== null;
   const mutedTrackIds = new Set(playback?.mutedTrackIds ?? []);
   const soloTrackIds = new Set(playback?.soloTrackIds ?? []);
   const bpm = timeline?.tempoMap[0]?.bpm ?? 0;
@@ -1323,20 +1525,10 @@ const LiveProjectWorkspace = () => {
           activeExecution={agentState?.isExecuting ?? false}
           activeTask={
             generationPlanState?.operation?.state === 'pending' ||
-            (candidateState?.task !== null && candidateState?.task !== undefined)
+            (candidateState?.task !== null &&
+              candidateState?.task !== undefined)
           }
-          onConfirm={() => {
-            void (async () => {
-              const requestId = liveRequestId(pendingSwitch.purpose);
-              await dispatch(
-                pendingSwitch.purpose === 'create'
-                  ? { type: 'project.create', requestId, projectPath: pendingSwitch.path }
-                  : { type: 'project.open', requestId, projectPath: pendingSwitch.path }
-              );
-              setActiveView('studio');
-              setPendingSwitch(null);
-            })();
-          }}
+          onConfirm={confirmProjectSwitch}
           onCancel={() => {
             setPendingSwitch(null);
           }}
@@ -1350,7 +1542,8 @@ const LiveProjectWorkspace = () => {
               setBusy(true);
               try {
                 if (window.agentMusic) {
-                  const result = await window.agentMusic.writeSettings(settings);
+                  const result =
+                    await window.agentMusic.writeSettings(settings);
                   if (result.ok) {
                     setAgentSettings(settings);
                     setIsSettingsOpen(false);
@@ -1384,7 +1577,10 @@ const LiveProjectWorkspace = () => {
         projectOpen={project !== null}
         busy={busy}
         isSettingsConfigured={
-          agentSettings !== undefined && agentSettings.apiKey.trim() !== ''
+          agentSettings !== undefined &&
+          (agentSettings.modelConfigs
+            .find((config) => config.id === agentSettings.activeModelConfigId)
+            ?.apiKey.trim() ?? '') !== ''
         }
         onViewChange={setActiveView}
         onSwitchProject={() => {
@@ -1543,7 +1739,9 @@ const LiveProjectWorkspace = () => {
                           await generationPlanAdapter.current?.approve();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to approve plan.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to approve plan.',
                           );
                         } finally {
                           setBusy(false);
@@ -1557,7 +1755,9 @@ const LiveProjectWorkspace = () => {
                           await generationPlanAdapter.current?.reject();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to reject plan.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to reject plan.',
                           );
                         } finally {
                           setBusy(false);
@@ -1577,7 +1777,9 @@ const LiveProjectWorkspace = () => {
                           await candidateAdapter.current?.approveScopeExtension();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to approve scope extension.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to approve scope extension.',
                           );
                         } finally {
                           setBusy(false);
@@ -1591,7 +1793,9 @@ const LiveProjectWorkspace = () => {
                           await candidateAdapter.current?.rejectScopeExtension();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to reject scope extension.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to reject scope extension.',
                           );
                         } finally {
                           setBusy(false);
@@ -1603,7 +1807,9 @@ const LiveProjectWorkspace = () => {
                   <CandidateStage
                     title="Candidate ready to review"
                     details={undefined}
-                    previewingCandidate={runtimeState?.activeSource?.kind === 'candidate'}
+                    previewingCandidate={
+                      runtimeState?.activeSource?.kind === 'candidate'
+                    }
                     candidateAuditionAvailable={
                       !busy && candidateState.candidatePlaybackSnapshot !== null
                     }
@@ -1611,8 +1817,14 @@ const LiveProjectWorkspace = () => {
                     onReviewCurrent={() => {
                       void (async () => {
                         if (project.state === 'ready') {
-                          const outcome = await playbackAdapter.current?.update({ kind: 'current', revision: project.currentRevision });
-                          if (outcome?.status === 'failed') setMessage(outcome.failure.message);
+                          const outcome = await playbackAdapter.current?.update(
+                            {
+                              kind: 'current',
+                              revision: project.currentRevision,
+                            },
+                          );
+                          if (outcome?.status === 'failed')
+                            setMessage(outcome.failure.message);
                         }
                       })();
                     }}
@@ -1628,7 +1840,8 @@ const LiveProjectWorkspace = () => {
                           candidateId: ref.candidateId,
                           revision: ref.revision,
                         });
-                        if (outcome?.status === 'failed') setMessage(outcome.failure.message);
+                        if (outcome?.status === 'failed')
+                          setMessage(outcome.failure.message);
                       })();
                     }}
                     onAccept={() => void resolveCandidate('accept')}

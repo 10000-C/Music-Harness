@@ -5,6 +5,7 @@ import {
   type ScopeExtensionRequestId,
   type TaskId,
 } from '@agent-music/contracts';
+import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -32,8 +33,8 @@ describe('parseCoreMcpCliOptions', () => {
         homeDirectory: '/home/tester',
       }),
     ).toEqual({
-      projectPath: '/workspace/demo',
-      runtimeDirectory: '/home/tester/.agent-music/runtime',
+      projectPath: resolve('/workspace', './demo'),
+      runtimeDirectory: join('/home/tester', '.agent-music', 'runtime'),
     });
   });
 
@@ -44,8 +45,8 @@ describe('parseCoreMcpCliOptions', () => {
         { currentDirectory: '/workspace', homeDirectory: '/home/tester' },
       ),
     ).toEqual({
-      projectPath: '/music/project',
-      runtimeDirectory: '/workspace/runtime',
+      projectPath: resolve('/workspace', '/music/project'),
+      runtimeDirectory: resolve('/workspace', './runtime'),
     });
     expect(() =>
       parseCoreMcpCliOptions(

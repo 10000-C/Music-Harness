@@ -7,7 +7,7 @@ export const BootStatus = ({
   restart: (service: 'core' | 'agent') => void;
 }) => (
   <main>
-    <h1>Agent Music Workstation</h1>
+    <h1>Music Harness</h1>
     <p>Main: running</p>
     {(['core', 'agent'] as const).map((service) => (
       <section key={service}>

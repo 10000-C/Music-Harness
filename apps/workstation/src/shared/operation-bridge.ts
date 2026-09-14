@@ -42,8 +42,46 @@ export type OperationStateResult =
   | Readonly<{ ok: true; state: CoreOperationStateSnapshot }>
   | Readonly<{ ok: false; code: string; userMessage: string }>;
 
+/** Core request used by Main to read the recoverable Operation state. */
+export type CoreOperationStateRequest = Readonly<{
+  type: 'operationState.read';
+  protocolVersion: 1;
+  requestId: string;
+  projectId: ProjectId;
+}>;
+
+export type CoreOperationStateResponse =
+  | Readonly<{
+      type: 'operationState.readResult';
+      protocolVersion: 1;
+      requestId: string;
+      state: CoreOperationStateSnapshot;
+    }>
+  | Readonly<{
+      type: 'operationState.readFailed';
+      protocolVersion: 1;
+      requestId: string;
+      code: string;
+      userMessage: string;
+    }>;
+
+/** Core response envelope for an approve/reject decision. */
+export type CoreOperationControlResponse = Readonly<{
+  type: 'operation.resolveResult';
+  protocolVersion: 1;
+  requestId: string;
+  result: OperationControlResult;
+}>;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const hasOnlyKeys = (
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean =>
+  Object.keys(value).length === keys.length &&
+  keys.every((key) => Object.hasOwn(value, key));
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
@@ -159,6 +197,16 @@ export const isCoreOperationEventNotification = (
   isSequence(value.sequence) &&
   isOperationView(value.operation);
 
+export const isCoreOperationStateRequest = (
+  value: unknown,
+): value is CoreOperationStateRequest =>
+  isRecord(value) &&
+  value.type === 'operationState.read' &&
+  value.protocolVersion === 1 &&
+  isNonEmptyString(value.requestId) &&
+  isUuid(value.projectId) &&
+  hasOnlyKeys(value, ['type', 'protocolVersion', 'requestId', 'projectId']);
+
 export const isOperationControlCommand = (
   value: unknown,
 ): value is OperationControlCommand =>
@@ -180,6 +228,45 @@ export const isOperationControlResult = (
   isRecord(value) &&
   (isErrorResult(value) ||
     (value.ok === true && isOperationView(value.operation)));
+
+export const isCoreOperationStateResponse = (
+  value: unknown,
+): value is CoreOperationStateResponse => {
+  if (
+    !isRecord(value) ||
+    value.protocolVersion !== 1 ||
+    !isNonEmptyString(value.requestId)
+  )
+    return false;
+  if (value.type === 'operationState.readFailed') {
+    return (
+      hasOnlyKeys(value, [
+        'type',
+        'protocolVersion',
+        'requestId',
+        'code',
+        'userMessage',
+      ]) &&
+      isNonEmptyString(value.code) &&
+      isNonEmptyString(value.userMessage)
+    );
+  }
+  return (
+    value.type === 'operationState.readResult' &&
+    hasOnlyKeys(value, ['type', 'protocolVersion', 'requestId', 'state']) &&
+    isCoreOperationStateSnapshot(value.state)
+  );
+};
+
+export const isCoreOperationControlResponse = (
+  value: unknown,
+): value is CoreOperationControlResponse =>
+  isRecord(value) &&
+  value.type === 'operation.resolveResult' &&
+  value.protocolVersion === 1 &&
+  isNonEmptyString(value.requestId) &&
+  hasOnlyKeys(value, ['type', 'protocolVersion', 'requestId', 'result']) &&
+  isOperationControlResult(value.result);
 
 export const isOperationStateResult = (
   value: unknown,

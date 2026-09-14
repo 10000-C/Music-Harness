@@ -14,14 +14,16 @@ const electronPath = join(
 const mainPath = join(workstationPath, 'out', 'main', 'index.js');
 
 test('runs the isolated SpessaSynth AudioWorklet capability probe', async () => {
+  const childEnv = {
+    ...process.env,
+    AGENT_MUSIC_FAKE_SERVICES: '1',
+    AGENT_MUSIC_SMOKE: '1',
+    AGENT_MUSIC_SPESSA_SPIKE: '1',
+  };
+  delete childEnv.ELECTRON_RUN_AS_NODE;
   const child = spawn(electronPath, [mainPath], {
     cwd: workstationPath,
-    env: {
-      ...process.env,
-      AGENT_MUSIC_FAKE_SERVICES: '1',
-      AGENT_MUSIC_SMOKE: '1',
-      AGENT_MUSIC_SPESSA_SPIKE: '1',
-    },
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -97,11 +99,24 @@ test('runs the isolated SpessaSynth AudioWorklet capability probe', async () => 
       bridge: [
         'chooseExportPath',
         'chooseProjectDirectory',
+        'dispatchAgent',
+        'dispatchCandidate',
+        'dispatchOperation',
         'dispatchProject',
         'getServiceSnapshot',
+        'onAgentEvent',
+        'onCandidateEvent',
+        'onOperationEvent',
         'onServiceSnapshot',
+        'prepareCurrentExport',
+        'readCandidateState',
         'readCurrentPlayback',
+        'readOperationState',
+        'readPlaybackSnapshot',
+        'readSettings',
         'restartService',
+        'writeCurrentExport',
+        'writeSettings',
       ],
     });
     expect(

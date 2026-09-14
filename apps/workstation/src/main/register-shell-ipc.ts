@@ -12,8 +12,12 @@ import {
   isCandidateStateResult,
   isPlaybackSnapshotResult,
   isCorePlaybackResponse,
+  isCoreOperationEventNotification,
+  isCoreOperationStateSnapshot,
   isAgentCommand,
   isAgentEvent,
+  isOperationControlCommand,
+  isOperationControlResult,
   shellIpcChannels,
 } from '../shared/shell-contracts.js';
 import {
@@ -72,18 +76,8 @@ export const registerShellIpc = (
     },
   );
   ipcMain.handle(shellIpcChannels.exportPrepare, async () => {
-    const candidate = supervisor as ServiceSupervisor & {
-      prepareCurrentExport?: () => Promise<unknown>;
-    };
-    if (typeof candidate.prepareCurrentExport !== 'function') {
-      return {
-        ok: false,
-        code: 'A5_UNAVAILABLE',
-        userMessage: 'Current export preparation is not ready yet.',
-      };
-    }
     try {
-      const result = await candidate.prepareCurrentExport();
+      const result = await supervisor.prepareCurrentExport();
       return isPreparedCurrentExport(result)
         ? { ok: true, result }
         : {
@@ -208,6 +202,63 @@ export const registerShellIpc = (
       }
     },
   );
+  ipcMain.handle(
+    shellIpcChannels.operationState,
+    async (_event, projectId: unknown) => {
+      if (!isProjectId(projectId)) {
+        return {
+          ok: false,
+          code: 'INVALID_PROJECT_ID',
+          userMessage: 'Invalid project identity.',
+        };
+      }
+      try {
+        const state = await supervisor.readOperationState(projectId);
+        return isCoreOperationStateSnapshot(state)
+          ? { ok: true, state }
+          : {
+              ok: false,
+              code: 'CORE_INVALID_RESPONSE',
+              userMessage: 'Music Core returned invalid Operation state.',
+            };
+      } catch {
+        return {
+          ok: false,
+          code: 'CORE_UNAVAILABLE',
+          userMessage: 'Music Core Operation state is unavailable. Try again.',
+        };
+      }
+    },
+  );
+  ipcMain.handle(
+    shellIpcChannels.operation,
+    async (_event, command: unknown) => {
+      if (!isOperationControlCommand(command)) {
+        return {
+          ok: false,
+          code: 'INVALID_OPERATION_COMMAND',
+          userMessage: 'Invalid Operation command.',
+        };
+      }
+      try {
+        const result = await supervisor.dispatchOperation(command);
+        return isOperationControlResult(result)
+          ? result
+          : {
+              ok: false,
+              code: 'CORE_INVALID_RESPONSE',
+              userMessage: 'Music Core returned an invalid Operation result.',
+            };
+      } catch {
+        return {
+          ok: false,
+          code: 'CORE_UNAVAILABLE',
+          userMessage:
+            'Music Core Operation control is unavailable. Try again.',
+        };
+      }
+    },
+  );
   ipcMain.handle(shellIpcChannels.playback, async () => {
     try {
       const result = await supervisor.readCurrentPlayback();
@@ -303,7 +354,7 @@ export const registerShellIpc = (
     shellIpcChannels.settingsWrite,
     async (_event, settings: unknown) => {
       return await writeAgentSettings(settings);
-    }
+    },
   );
   const unsubscribeSnapshot = supervisor.subscribe((snapshot) => {
     if (
@@ -329,10 +380,19 @@ export const registerShellIpc = (
     )
       window.webContents.send(shellIpcChannels.candidateEvent, notification);
   });
+  const unsubscribeOperation = supervisor.onOperationEvent((notification) => {
+    if (
+      isCoreOperationEventNotification(notification) &&
+      !window.isDestroyed() &&
+      !window.webContents.isDestroyed()
+    )
+      window.webContents.send(shellIpcChannels.operationEvent, notification);
+  });
   return () => {
     unsubscribeSnapshot();
     unsubscribeAgent();
     unsubscribeCandidate();
+    unsubscribeOperation();
     Object.values(shellIpcChannels).forEach((channel) => {
       ipcMain.removeHandler(channel);
     });

@@ -1,7 +1,9 @@
 import { isProjectCommand, type CoreProjectRequest } from './project-bridge.js';
 import {
   isCoreCandidateRequest,
+  isCoreCandidateStateRequest,
   type CoreCandidateRequest,
+  type CoreCandidateStateRequest,
 } from './candidate-bridge.js';
 import {
   isCorePlaybackRequest,
@@ -9,6 +11,16 @@ import {
   type CorePlaybackRequest,
   type CorePlaybackSnapshotRequest,
 } from './playback-bridge.js';
+import {
+  isCoreOperationStateRequest,
+  isOperationControlCommand,
+  type CoreOperationStateRequest,
+  type OperationControlCommand,
+} from './operation-bridge.js';
+import {
+  isCoreExportRequest,
+  type CoreExportRequest,
+} from './export-bridge.js';
 
 export const SERVICE_LIFECYCLE_PROTOCOL_VERSION = 1 as const;
 
@@ -18,8 +30,12 @@ export type MainToServiceMessage =
   | Readonly<{ type: 'shutdown'; protocolVersion: 1; requestId: string }>
   | CoreProjectRequest
   | CoreCandidateRequest
+  | CoreCandidateStateRequest
   | CorePlaybackRequest
-  | CorePlaybackSnapshotRequest;
+  | CorePlaybackSnapshotRequest
+  | CoreOperationStateRequest
+  | OperationControlCommand
+  | CoreExportRequest;
 export type ServiceToMainMessage =
   | Readonly<{ type: 'ready'; protocolVersion: 1; service: ServiceKind }>
   | Readonly<{ type: 'healthResult'; protocolVersion: 1; requestId: string }>
@@ -51,10 +67,17 @@ export const isMainToServiceMessage = (
   if (!isRecord(value) || !hasVersion(value)) return false;
   if (value.type === 'projectCommand') return isProjectCommand(value.command);
   if (value.type === 'candidateCommand') return isCoreCandidateRequest(value);
+  if (value.type === 'candidateState.read')
+    return isCoreCandidateStateRequest(value);
   if (value.type === 'playback.readCurrent')
     return isCorePlaybackRequest(value);
   if (value.type === 'playback.readSnapshot')
     return isCorePlaybackSnapshotRequest(value);
+  if (value.type === 'operationState.read')
+    return isCoreOperationStateRequest(value);
+  if (value.type === 'operation.resolve')
+    return isOperationControlCommand(value);
+  if (value.type === 'exportCommand') return isCoreExportRequest(value);
   if (!isRequestId(value.requestId)) return false;
   return value.type === 'healthCheck' || value.type === 'shutdown';
 };

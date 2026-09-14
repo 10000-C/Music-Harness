@@ -1,10 +1,28 @@
-import type { PreparedCurrentExport, ProjectId } from '@agent-music/contracts';
+import {
+  isExportCommand,
+  type ExportCommand,
+  type ExportEvent,
+  type PreparedCurrentExport,
+  type ProjectId,
+} from '@agent-music/contracts';
 
 export type DesktopExportFormat = 'midi' | 'wav';
 
 export type ExportPreparationResult =
   | Readonly<{ ok: true; result: PreparedCurrentExport }>
   | Readonly<{ ok: false; code: string; userMessage: string }>;
+
+export type CoreExportRequest = Readonly<{
+  type: 'exportCommand';
+  protocolVersion: 1;
+  command: ExportCommand;
+}>;
+
+export type CoreExportResponse = Readonly<{
+  type: 'exportEvent';
+  protocolVersion: 1;
+  event: ExportEvent;
+}>;
 
 export type ExportFileWriteCommand = Readonly<{
   type: 'export.writeFile';
@@ -34,6 +52,44 @@ const isProjectId = (value: unknown): value is ProjectId =>
 
 const isByteArray = (value: unknown): value is Uint8Array =>
   value instanceof Uint8Array;
+
+const isSequence = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+
+const isExportEvent = (value: unknown): value is ExportEvent => {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.requestId) ||
+    !isSequence(value.sequence)
+  )
+    return false;
+  if (value.type === 'export.prepared') {
+    return isPreparedCurrentExport(value.result);
+  }
+  return (
+    value.type === 'export.failed' &&
+    isNonEmptyString(value.code) &&
+    isNonEmptyString(value.message)
+  );
+};
+
+export const isCoreExportRequest = (
+  value: unknown,
+): value is CoreExportRequest =>
+  isRecord(value) &&
+  value.type === 'exportCommand' &&
+  value.protocolVersion === 1 &&
+  Object.keys(value).length === 3 &&
+  isExportCommand(value.command);
+
+export const isCoreExportResponse = (
+  value: unknown,
+): value is CoreExportResponse =>
+  isRecord(value) &&
+  value.type === 'exportEvent' &&
+  value.protocolVersion === 1 &&
+  Object.keys(value).length === 3 &&
+  isExportEvent(value.event);
 
 export const isPreparedCurrentExport = (
   value: unknown,

@@ -17,15 +17,17 @@ const mainPath = join(workstationPath, 'out', 'main', 'index.js');
 
 test('launches the isolated desktop shell with fake services', async () => {
   const projectPath = await mkdtemp(join(tmpdir(), 'amw-electron-b2-'));
+  const childEnv = {
+    ...process.env,
+    AGENT_MUSIC_FAKE_AGENT: '1',
+    AGENT_MUSIC_SMOKE: '1',
+    AGENT_MUSIC_WINDOW_WIDTH: '1280',
+    AGENT_MUSIC_B2_SMOKE_PROJECT: projectPath,
+  };
+  delete childEnv.ELECTRON_RUN_AS_NODE;
   const child = spawn(electronPath, [mainPath], {
     cwd: workstationPath,
-    env: {
-      ...process.env,
-      AGENT_MUSIC_FAKE_AGENT: '1',
-      AGENT_MUSIC_SMOKE: '1',
-      AGENT_MUSIC_WINDOW_WIDTH: '1280',
-      AGENT_MUSIC_B2_SMOKE_PROJECT: projectPath,
-    },
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -80,11 +82,24 @@ test('launches the isolated desktop shell with fake services', async () => {
       bridge: [
         'chooseExportPath',
         'chooseProjectDirectory',
+        'dispatchAgent',
+        'dispatchCandidate',
+        'dispatchOperation',
         'dispatchProject',
         'getServiceSnapshot',
+        'onAgentEvent',
+        'onCandidateEvent',
+        'onOperationEvent',
         'onServiceSnapshot',
+        'prepareCurrentExport',
+        'readCandidateState',
         'readCurrentPlayback',
+        'readOperationState',
+        'readPlaybackSnapshot',
+        'readSettings',
         'restartService',
+        'writeCurrentExport',
+        'writeSettings',
       ],
     });
     expect(['starting', 'ready']).toContain(state.snapshot?.core);
@@ -96,7 +111,7 @@ test('launches the isolated desktop shell with fake services', async () => {
     ).toEqual({
       shell: true,
       trackCount: 0,
-      agentTitle: 'MUSE Agent',
+      agentTitle: 'Music Harness',
     });
   } finally {
     if (child.exitCode === null) {

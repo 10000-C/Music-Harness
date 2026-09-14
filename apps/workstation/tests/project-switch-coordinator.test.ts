@@ -52,21 +52,21 @@ const createHarness = (
       return options.running ?? false;
     }),
     hasActiveTask: vi.fn(async () => options.activeTask ?? false),
-    cancelCurrentExecution: vi.fn(async (projectId) => {
+    cancelCurrentExecution: vi.fn(async (projectId: ProjectId) => {
       calls.push(`cancel:${projectId}`);
       await options.cancel?.();
     }),
-    waitForExecutionSettled: vi.fn(async (projectId) => {
+    waitForExecutionSettled: vi.fn(async (projectId: ProjectId) => {
       calls.push(`settle:${projectId}`);
       await options.settle?.();
     }),
   };
   const core: ProjectSwitchCorePort = {
-    closeProject: vi.fn(async (projectId) => {
+    closeProject: vi.fn(async (projectId: ProjectId) => {
       calls.push(`close:${projectId}`);
       await options.close?.();
     }),
-    openProject: vi.fn(async (projectPath) => {
+    openProject: vi.fn(async (projectPath: string) => {
       calls.push(`open:${projectPath}`);
       return options.open?.(projectPath) ?? project(targetId, projectPath);
     }),

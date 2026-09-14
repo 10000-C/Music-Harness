@@ -1,4 +1,4 @@
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -24,7 +24,7 @@ describe('parseProjectCreateCliOptions', () => {
   it('requires --path and resolves it from the current directory', () => {
     expect(
       parseProjectCreateCliOptions(['--path', './my-project'], '/workspace'),
-    ).toEqual({ projectPath: '/workspace/my-project' });
+    ).toEqual({ projectPath: resolve('/workspace', './my-project') });
   });
 
   it('rejects missing, duplicate, and unknown arguments', () => {
