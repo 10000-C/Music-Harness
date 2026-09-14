@@ -31,6 +31,14 @@ import {
   type AgentCommand,
   type AgentEvent,
 } from '@agent-music/contracts';
+export {
+  isCoreOperationEventNotification,
+  isCoreOperationStateSnapshot,
+  isOperationControlCommand,
+  isOperationControlResult,
+  isOperationStateResult,
+  isOperationView,
+} from './operation-bridge.js';
 
 export const shellIpcChannels = {
   snapshot: 'shell:snapshot',

@@ -25,6 +25,12 @@ import {
 } from '../shared/shell-contracts.js';
 import type { CoreCandidateEventNotification } from '../shared/candidate-bridge.js';
 import {
+  isCoreOperationEventNotification,
+  isOperationControlCommand,
+  isOperationControlResult,
+  isOperationStateResult,
+} from '../shared/operation-bridge.js';
+import {
   isServiceFleetSnapshot,
   unavailableServiceSnapshot,
   type ServiceFleetSnapshot,
@@ -207,8 +213,8 @@ const bridge = {
         userMessage: 'Invalid project identity.',
       };
     const value = await invoke(shellIpcChannels.operationState, projectId);
-    return (value as any)?.ok !== undefined
-      ? (value as any)
+    return isOperationStateResult(value)
+      ? value
       : {
           ok: false as const,
           code: 'IPC_UNAVAILABLE',
@@ -216,18 +222,27 @@ const bridge = {
         };
   },
   async dispatchOperation(command: unknown) {
+    if (!isOperationControlCommand(command))
+      return {
+        ok: false as const,
+        code: 'INVALID_OPERATION_COMMAND',
+        userMessage: 'Invalid operation command.',
+      };
     const value = await invoke(shellIpcChannels.operation, command);
-    return (value as any)?.ok !== undefined
-      ? (value as any)
+    return isOperationControlResult(value)
+      ? value
       : {
           ok: false as const,
           code: 'IPC_UNAVAILABLE',
           userMessage: 'The desktop service is unavailable. Try again.',
         };
   },
-  onOperationEvent: (listener: (notification: any) => void) => {
+  onOperationEvent: (
+    listener: Parameters<DesktopBridge['onOperationEvent']>[0],
+  ) => {
     const wrapped = (_event: unknown, notification: unknown) => {
-      listener(notification);
+      if (isCoreOperationEventNotification(notification))
+        listener(notification);
     };
     ipcRenderer.on(shellIpcChannels.operationEvent, wrapped);
     return () =>
