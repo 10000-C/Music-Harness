@@ -6689,3 +6689,21 @@ textarea,
 select {
   -webkit-app-region: no-drag;
 }
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: FIX NATIVE WINDOW DRAG (EMPTY STATE TOP BAR)
+   ========================================================================== */
+
+/* 1. In the Empty State, the workspace-content takes 100% height and has no-drag, 
+      blocking the drag region across the whole screen.
+      We add a dedicated 48px invisible drag bar at the very top of the window just for the empty state. */
+.workspace-main:has(.project-empty-state)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  -webkit-app-region: drag;
+  z-index: 100;
+}
