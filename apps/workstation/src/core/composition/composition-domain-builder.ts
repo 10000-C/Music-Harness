@@ -155,6 +155,12 @@ const buildTrack = (
 
   for (const item of voice) {
     if (item.el_type === 'tempo') {
+      if (cursor === 0) {
+        return failCompositionValidation(
+          'INITIAL_GLOBAL_EVENT_CONFLICT',
+          'Tick 0 initial Tempo must use the Q: header / updateMusicalProperties; inline [Q:] is only allowed after music has started',
+        );
+      }
       if (item.bpm === undefined || item.bpm <= 0) {
         return failCompositionValidation(
           'ABC_STRUCTURE_INVALID',
@@ -166,6 +172,12 @@ const buildTrack = (
       continue;
     }
     if (item.el_type === 'key') {
+      if (cursor === 0) {
+        return failCompositionValidation(
+          'INITIAL_GLOBAL_EVENT_CONFLICT',
+          'Tick 0 initial Key must use the K: header; inline [K:] is only allowed after music has started',
+        );
+      }
       if (item.root === undefined) {
         return failCompositionValidation(
           'ABC_STRUCTURE_INVALID',
@@ -313,6 +325,14 @@ export const buildCanonicalCompilation = (
     return failCompositionValidation(
       'TRACK_LENGTH_MISMATCH',
       'All six Canonical ABC voices must have the same non-zero totalTicks',
+      {
+        tracks: Object.fromEntries(
+          builtTracks.map((built) => [
+            built.track.trackId,
+            built.track.totalTicks,
+          ]),
+        ),
+      },
     );
   }
 

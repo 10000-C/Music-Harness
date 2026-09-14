@@ -189,7 +189,8 @@ describe('CandidateTransaction lifecycle', () => {
     });
     expect(task.allowedOperations).toEqual([
       'replaceScopedMusic',
-      'updateGlobalMeter',
+      'updateMusicalProperties',
+      'resizeComposition',
     ]);
     expect(task).not.toHaveProperty('userIntent');
     expect(task).not.toHaveProperty('modelConfigurationId');
@@ -210,6 +211,24 @@ describe('CandidateTransaction lifecycle', () => {
       '/project',
       workspace,
     );
+    await expect(transaction.getTaskContext(taskId)).rejects.toMatchObject({
+      code: 'TASK_NOT_ACTIVE',
+    });
+  });
+
+  it('cancels the authoritative Active Task when the Agent process is lost', async () => {
+    const { transaction, repository, workspace } = createHarness();
+    await transaction.startTask({ projectId, scope: wholeProjectScope });
+
+    await expect(
+      (
+        transaction as unknown as {
+          cancelActiveTaskForAgentLoss(project: ProjectId): Promise<unknown>;
+        }
+      ).cancelActiveTaskForAgentLoss(projectId),
+    ).resolves.toBeUndefined();
+
+    expect(repository.resetTo).toHaveBeenCalledWith(workspace, 'C0');
     await expect(transaction.getTaskContext(taskId)).rejects.toMatchObject({
       code: 'TASK_NOT_ACTIVE',
     });
@@ -309,7 +328,8 @@ describe('CandidateTransaction authorization', () => {
     });
     expect(wholeTask.allowedOperations).toEqual([
       'replaceScopedMusic',
-      'updateGlobalMeter',
+      'updateMusicalProperties',
+      'resizeComposition',
     ]);
   });
 
@@ -396,6 +416,7 @@ describe('CandidateTransaction authorization', () => {
       requestId: scopeRequestId,
       fromScopeRevision: 0,
       requestedScope,
+      createdAt: '2026-08-13T00:00:00.000Z',
     });
     await expect(
       transaction.requestScopeExtension({ envelope, requestedScope }),
@@ -420,6 +441,130 @@ describe('CandidateTransaction authorization', () => {
     await expect(
       transaction.approveScopeExtension({ taskId, requestId: scopeRequestId }),
     ).rejects.toMatchObject({ code: 'STALE_SCOPE_EXTENSION_REQUEST' });
+  });
+
+  it.each([
+    [
+      'Task cancel',
+      async (
+        transaction: CandidateTransaction,
+        task: Awaited<ReturnType<CandidateTransaction['startTask']>>,
+      ) =>
+        transaction.cancelTask({
+          projectId: task.projectId,
+          candidateId: task.candidateId,
+          taskId: task.taskId,
+        }),
+    ],
+    [
+      'Agent loss',
+      async (
+        transaction: CandidateTransaction,
+        task: Awaited<ReturnType<CandidateTransaction['startTask']>>,
+      ) => transaction.cancelActiveTaskForAgentLoss(task.projectId),
+    ],
+  ])(
+    'clears pending Scope Extension with %s by ending the Task',
+    async (_name, endTask) => {
+      const { transaction } = createHarness();
+      const task = await transaction.startTask({
+        projectId,
+        scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+      });
+      await transaction.requestScopeExtension({
+        envelope: envelopeFor(task),
+        requestedScope: {
+          type: 'wholeProject',
+          trackIds: ['track.drums', 'track.bass'],
+        },
+      });
+      expect(
+        (await transaction.getTaskContext(task.taskId)).pendingScopeExtension,
+      ).toBeDefined();
+
+      await endTask(transaction, task);
+      await expect(
+        transaction.getTaskContext(task.taskId),
+      ).rejects.toMatchObject({
+        code: 'TASK_NOT_ACTIVE',
+      });
+    },
+  );
+
+  it('exposes pending Scope Extension in Task context and lets the Agent retract it without changing scopeRevision', async () => {
+    const { transaction } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const envelope = envelopeFor(task);
+    const requestedScope: TaskScope = {
+      type: 'wholeProject',
+      trackIds: ['track.drums', 'track.bass'],
+    };
+    const pending = await transaction.requestScopeExtension({
+      envelope,
+      requestedScope,
+    });
+
+    await expect(
+      transaction.getTaskContext(task.taskId),
+    ).resolves.toMatchObject({
+      scopeRevision: 0,
+      pendingScopeExtension: {
+        requestId: pending.requestId,
+        requestedScope,
+        fromScopeRevision: 0,
+        createdAt: '2026-08-13T00:00:00.000Z',
+      },
+    });
+
+    const retracted = await transaction.rejectScopeExtension({
+      taskId: task.taskId,
+      requestId: pending.requestId,
+    });
+    expect(retracted.scopeRevision).toBe(0);
+    expect(retracted.scope).toEqual(task.scope);
+    expect(retracted.pendingScopeExtension).toBeUndefined();
+    await expect(
+      transaction.getTaskContext(task.taskId),
+    ).resolves.toMatchObject({
+      scopeRevision: 0,
+    });
+    expect(
+      (await transaction.getTaskContext(task.taskId)).pendingScopeExtension,
+    ).toBeUndefined();
+  });
+
+  it('returns pending request metadata when a write is blocked by Scope Extension', async () => {
+    const { transaction } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: { type: 'wholeProject', trackIds: ['track.drums'] },
+    });
+    const envelope = envelopeFor(task);
+    const pending = await transaction.requestScopeExtension({
+      envelope,
+      requestedScope: {
+        type: 'wholeProject',
+        trackIds: ['track.drums', 'track.bass'],
+      },
+    });
+
+    await expect(
+      transaction.applyScopedMusicChange({
+        envelope,
+        replacements: [{ trackId: 'track.drums', abc: 'z4 |' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'TASK_SCOPE_EXTENSION_PENDING',
+      details: {
+        requestId: pending.requestId,
+        requestedScope: pending.requestedScope,
+        fromScopeRevision: 0,
+        createdAt: pending.createdAt,
+      },
+    });
   });
 
   it('accepts timeRange to wholeProject only when the track set is a superset', async () => {
@@ -501,6 +646,28 @@ describe('CandidateTransaction authorization', () => {
 });
 
 describe('CandidateTransaction A2-backed operations', () => {
+  it('allows operation targetScope only when it is contained by Task Scope', async () => {
+    const { transaction } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: {
+        type: 'timeRange',
+        trackIds: ['track.drums'],
+        startTick: 0 as never,
+        endTick: 3840 as never,
+      },
+    });
+    const envelope = envelopeFor(task);
+    await expect(
+      transaction.getScopedComposition(envelope, {
+        type: 'timeRange',
+        trackIds: ['track.drums'],
+        startTick: 0 as never,
+        endTick: 7680 as never,
+      }),
+    ).rejects.toMatchObject({ code: 'OPERATION_NOT_ALLOWED' });
+  });
+
   it('returns A2 scoped composition unchanged after reading Candidate authority', async () => {
     const { transaction, repository, composition } = createHarness();
     const task = await transaction.startTask({
@@ -603,19 +770,18 @@ describe('CandidateTransaction A2-backed operations', () => {
     );
   });
 
-  it('requires derived updateGlobalMeter permission before calling A2', async () => {
+  it('requires derived updateMusicalProperties permission before calling A2', async () => {
     const { transaction, composition, repository } = createHarness();
     const task = await transaction.startTask({
       projectId,
       scope: { type: 'wholeProject', trackIds: ['track.drums'] },
     });
-    const update = vi.spyOn(composition, 'updateGlobalMeter');
+    const update = vi.spyOn(composition, 'updateMusicalProperties');
 
     await expect(
-      transaction.updateGlobalMeter({
+      transaction.updateMusicalProperties({
         envelope: envelopeFor(task),
-        numerator: 3,
-        denominator: 4,
+        meter: { numerator: 3, denominator: 4 },
       }),
     ).rejects.toMatchObject({ code: 'OPERATION_NOT_ALLOWED' });
     expect(update).not.toHaveBeenCalled();
@@ -636,24 +802,55 @@ describe('CandidateTransaction A2-backed operations', () => {
       canonicalAbc: `${compilation.canonicalAbc}\n% meter result\n`,
     };
     vi.spyOn(composition, 'compileCanonical').mockReturnValue(compilation);
-    const update = vi.spyOn(composition, 'updateGlobalMeter').mockReturnValue({
-      compilation: nextCompilation,
-    });
+    const update = vi
+      .spyOn(composition, 'updateMusicalProperties')
+      .mockReturnValue({
+        compilation: nextCompilation,
+      });
 
     await expect(
-      transaction.updateGlobalMeter({
+      transaction.updateMusicalProperties({
         envelope: envelopeFor(task),
-        numerator: 3,
-        denominator: 4,
+        meter: { numerator: 3, denominator: 4 },
       }),
     ).resolves.toBe(nextCompilation);
     expect(update).toHaveBeenCalledWith(compilation, wholeProjectScope, {
-      numerator: 3,
-      denominator: 4,
+      meter: { numerator: 3, denominator: 4 },
     });
     expect(repository.writeComposition).toHaveBeenCalledWith(
       expect.objectContaining({ candidateId }),
       nextCompilation.canonicalAbc,
+    );
+  });
+
+  it('delegates resizeComposition only for wholeProject over all tracks', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    const compilation = new CompositionPipeline().compileCanonical(
+      initialSource,
+    );
+    const resized = {
+      compilation,
+      previousMeasureCount: 1,
+      targetMeasureCount: 64,
+    };
+    vi.spyOn(composition, 'compileCanonical').mockReturnValue(compilation);
+    const resize = vi
+      .spyOn(composition, 'resizeComposition')
+      .mockReturnValue(resized);
+
+    await transaction.resizeComposition({
+      envelope: envelopeFor(task),
+      targetMeasureCount: 64,
+    });
+
+    expect(resize).toHaveBeenCalledWith(compilation, wholeProjectScope, 64);
+    expect(repository.writeComposition).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId }),
+      compilation.canonicalAbc,
     );
   });
 
@@ -863,7 +1060,45 @@ describe('CandidateTransaction A2-backed operations', () => {
     expect(cleanup.authorizeAndAttempt).toHaveBeenCalledOnce();
   });
 
-  it('maps A2 validation failures to stable Candidate validation details', async () => {
+  it('labels current Candidate canonical preflight failures separately from replacement failures', async () => {
+    const { transaction, composition, repository } = createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    vi.spyOn(composition, 'compileCanonical').mockImplementation(() => {
+      throw new CompositionValidationError({
+        code: 'ABC_NOT_CANONICAL',
+        message: 'Current Candidate source is not canonical',
+      });
+    });
+    const replaceScopedMusic = vi.spyOn(composition, 'replaceScopedMusic');
+
+    await expect(
+      transaction.applyScopedMusicChange({
+        envelope: envelopeFor(task),
+        replacements: [{ trackId: 'track.drums', abc: 'C D E F |' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: {
+        phase: 'currentComposition',
+        validation: {
+          valid: false,
+          issues: [
+            {
+              code: 'ABC_NOT_CANONICAL',
+              message: 'Current Candidate source is not canonical',
+            },
+          ],
+        },
+      },
+    });
+    expect(replaceScopedMusic).not.toHaveBeenCalled();
+    expect(repository.writeComposition).not.toHaveBeenCalled();
+  });
+
+  it('maps replacement validation failures to stable Candidate validation details', async () => {
     const { transaction, composition, repository } = createHarness();
     const task = await transaction.startTask({
       projectId,
@@ -884,6 +1119,7 @@ describe('CandidateTransaction A2-backed operations', () => {
     ).rejects.toMatchObject({
       code: 'VALIDATION_FAILED',
       details: {
+        phase: 'replacement',
         validation: {
           valid: false,
           issues: [
@@ -952,14 +1188,11 @@ describe('CandidateTransaction finishTask', () => {
       projectId,
       scope: wholeProjectScope,
     });
-    vi.spyOn(composition, 'validateFinalMeterConsistency').mockReturnValue({
-      valid: false,
-      issues: [
-        {
-          code: 'METER_BARLINE_MISMATCH',
-          message: 'Final bars do not match meter',
-        },
-      ],
+    vi.spyOn(composition, 'compileFinalCanonical').mockImplementation(() => {
+      throw new CompositionValidationError({
+        code: 'METER_BARLINE_MISMATCH',
+        message: 'Final bars do not match meter',
+      });
     });
 
     await expect(
@@ -1148,6 +1381,38 @@ describe('CandidateTransaction acceptCandidate', () => {
     expect(nextTask.candidateId).not.toBe(candidateId);
     expect(nextTask.baseRevision).toBe('C1');
     expect(repository.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses the A2 final compile seam before entering serialized Accept', async () => {
+    const { transaction, composition, repository, serializedWrites } =
+      createHarness();
+    const task = await transaction.startTask({
+      projectId,
+      scope: wholeProjectScope,
+    });
+    await transaction.finishTask(envelopeFor(task));
+    const finalCompile = vi
+      .spyOn(composition, 'compileFinalCanonical')
+      .mockImplementation(() => {
+        throw new CompositionValidationError({
+          code: 'METER_BARLINE_MISMATCH',
+          message: 'Final bars do not match meter',
+        });
+      });
+
+    await expect(
+      transaction.acceptCandidate({ projectId, candidateId }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_FAILED',
+      details: {
+        validation: {
+          issues: [{ code: 'METER_BARLINE_MISMATCH' }],
+        },
+      },
+    });
+    expect(finalCompile).toHaveBeenCalledWith(initialSource);
+    expect(serializedWrites).not.toHaveBeenCalled();
+    expect(repository.commitCompositionToCurrent).not.toHaveBeenCalled();
   });
 
   it('lets Reject preempt an Accept that has not committed main yet', async () => {

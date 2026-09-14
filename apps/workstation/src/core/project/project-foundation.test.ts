@@ -121,6 +121,25 @@ describe('ProjectFoundation lifecycle', () => {
       expect.objectContaining({ code: 'PROJECT_NOT_OPEN' }),
     );
   });
+
+  it('exposes the active Project ID and clears it after close', async () => {
+    expect(foundation.getProjectId()).toBeUndefined();
+
+    const opened = await foundation.createProject(projectPath);
+    expect(foundation.getProjectId()).toBe(opened.projectId);
+
+    await foundation.closeProject();
+    expect(foundation.getProjectId()).toBeUndefined();
+  });
+
+  it('resolves the reopened Project ID from the manifest', async () => {
+    const opened = await foundation.createProject(projectPath);
+    await foundation.closeProject();
+
+    const reopened = await foundation.openProject(projectPath);
+    expect(reopened.projectId).toBe(opened.projectId);
+    expect(foundation.getProjectId()).toBe(opened.projectId);
+  });
 });
 
 describe('ProjectFoundation Save As', () => {

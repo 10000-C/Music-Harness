@@ -3,6 +3,7 @@ import {
   type CandidateId,
   type TaskId,
   type TaskScope,
+  type Tick,
 } from '@agent-music/contracts';
 import { execFile } from 'node:child_process';
 import { join } from 'node:path';
@@ -122,6 +123,74 @@ describe(
         projectId: created.projectId,
         candidateId,
       });
+    });
+
+    it('resizes a one-bar Candidate to 64 bars, fills a bounded sub-scope, and finishes it', async () => {
+      const created = await foundation.createProject(projectPath);
+      const repository = new CandidateGitRepository();
+      const transaction = new CandidateTransaction({
+        project: foundation,
+        composition: new CompositionPipeline(),
+        repository,
+        cleanup: new CandidateCleanupManager(repository),
+        createId: (() => {
+          const ids = [candidateId, task1Id];
+          return () => ids.shift() ?? '00000000-0000-4000-8000-000000000079';
+        })(),
+        now: () => '2026-08-13T00:00:00.000Z',
+      });
+      const task = await transaction.startTask({
+        projectId: created.projectId,
+        scope: wholeProjectScope,
+      });
+      const envelope = {
+        taskId: task.taskId,
+        projectId: task.projectId,
+        candidateId: task.candidateId,
+        baseRevision: task.baseRevision,
+        expectedScopeRevision: task.scopeRevision,
+      };
+
+      const resized = await transaction.resizeComposition({
+        envelope,
+        targetMeasureCount: 64,
+      });
+      expect(resized.totalTicks).toBe(245_760);
+
+      const firstEightBars: TaskScope = {
+        type: 'timeRange',
+        trackIds: TRACK_IDS,
+        startTick: 0 as Tick,
+        endTick: 30_720 as Tick,
+      };
+      const scoped = await transaction.getScopedComposition(
+        envelope,
+        firstEightBars,
+      );
+      expect(scoped.startTick).toBe(0);
+      expect(scoped.endTick).toBe(30_720);
+
+      const eightBars = 'C D E F | '.repeat(8).trim();
+      const changed = await transaction.applyScopedMusicChange({
+        envelope,
+        targetScope: firstEightBars,
+        replacements: TRACK_IDS.map((trackId) => ({
+          trackId,
+          abc: eightBars,
+        })),
+      });
+      expect(changed.totalTicks).toBe(245_760);
+      expect(
+        changed.tracks[0]?.events.some((event) => event.type === 'note'),
+      ).toBe(true);
+
+      await expect(transaction.finishTask(envelope)).resolves.toMatchObject({
+        candidate: { state: 'ready' },
+        validation: { valid: true },
+      });
+      expect(await git(projectPath, 'rev-parse', 'main')).toBe(
+        created.currentRevision,
+      );
     });
 
     it('creates a unique Current revision for an empty Accept without changing the tree', async () => {

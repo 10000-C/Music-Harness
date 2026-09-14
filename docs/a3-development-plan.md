@@ -67,8 +67,8 @@
 ### Existing modules intentionally not expanded
 
 - Do **not** add Candidate lifecycle methods to `apps/workstation/src/core/project/git-adapter.ts`; A1 remains Current/Project Foundation.
-- Do **not** move `replaceScopedMusic`, `updateGlobalMeter`, parser, Scope Mapping, meter consistency, or MIDI logic out of `apps/workstation/src/core/composition/`.
-- Do **not** implement MCP transport, Provider/Mastra loop, planning, confirmation orchestration, or repair limits in A3; those are A4.
+- Do **not** move `replaceScopedMusic`, `updateMusicalProperties`, `resizeComposition`, parser, Scope Mapping, meter consistency, or MIDI logic out of `apps/workstation/src/core/composition/`.
+- Do **not** implement MCP transport, Provider/Strands loop, planning, confirmation orchestration, or repair limits in A3; those are A4.
 - Do **not** introduce RuntimeSnapshot/openDAW dependencies into A3.
 
 ---
@@ -91,10 +91,14 @@ export interface CandidateAgentPort {
     readonly envelope: TaskExecutionEnvelope;
     readonly replacements: readonly TrackReplacement[];
   }): Promise<CompositionCompilation>;
-  updateGlobalMeter(input: {
+  updateMusicalProperties(input: {
     readonly envelope: TaskExecutionEnvelope;
-    readonly numerator: number;
-    readonly denominator: number;
+    readonly meter?: { readonly numerator: number; readonly denominator: number };
+    readonly tempo?: { readonly bpm: number };
+  }): Promise<CompositionCompilation>;
+  resizeComposition(input: {
+    readonly envelope: TaskExecutionEnvelope;
+    readonly targetMeasureCount: number;
   }): Promise<CompositionCompilation>;
   finishTask(
     envelope: TaskExecutionEnvelope,
@@ -221,7 +225,10 @@ Define the canonical states exactly:
 ```ts
 export type CandidateState = 'active' | 'ready' | 'accepting' | 'stale';
 export type TaskState = 'editing' | 'validating';
-export type CandidateOperation = 'replaceScopedMusic' | 'updateGlobalMeter';
+export type CandidateOperation =
+  | 'replaceScopedMusic'
+  | 'updateMusicalProperties'
+  | 'resizeComposition';
 
 export interface TaskExecutionEnvelope {
   readonly taskId: TaskId;
@@ -667,7 +674,8 @@ interface CandidateTransactionDependencies {
     | 'compileCanonical'
     | 'getScopedComposition'
     | 'replaceScopedMusic'
-    | 'updateGlobalMeter'
+    | 'updateMusicalProperties'
+    | 'resizeComposition'
     | 'validateFinalMeterConsistency'
   >;
   readonly repository: CandidateRepository;
@@ -864,7 +872,7 @@ Expected behavior:
 ```text
 timeRange scope                    → replaceScopedMusic
 wholeProject with subset tracks    → replaceScopedMusic
-wholeProject covering all 6 tracks → replaceScopedMusic + updateGlobalMeter
+wholeProject covering all 6 tracks → replaceScopedMusic + updateMusicalProperties + resizeComposition
 ```
 
 `getTaskContext(taskId)` returns these computed values without storing them in the Active Task record.
@@ -925,7 +933,7 @@ git commit -m "feat(core): enforce candidate task authorization"
 - Modify: `apps/workstation/src/core/candidate/candidate-transaction.test.ts`
 
 **Interfaces:**
-- Consumes: existing A2 methods `compileCanonical`, `getScopedComposition`, `replaceScopedMusic`, `updateGlobalMeter`; Candidate repository authority reads/writes.
+- Consumes: existing A2 methods `compileCanonical`, `getScopedComposition`, `replaceScopedMusic`, `updateMusicalProperties`, `resizeComposition`; Candidate repository authority reads/writes.
 - Produces: Agent-facing scoped read and Candidate mutation operations with no duplicated music-domain implementation.
 
 - [ ] **Step 1: Write the scoped-read tracer test**
@@ -959,18 +967,22 @@ begin ordinary mutation lease
 
 Assert A3 uses `result.compilation.canonicalAbc`; it must not reserialize or manipulate ABC itself.
 
-- [ ] **Step 3: Add `updateGlobalMeter` behavior**
+- [ ] **Step 3: Add `updateMusicalProperties` behavior**
 
 Use the same mutation skeleton and call:
 
 ```ts
-composition.updateGlobalMeter(compilation, task.scope, {
-  numerator,
-  denominator,
+composition.updateMusicalProperties(compilation, task.scope, {
+  meter,
+  tempo,
 });
 ```
 
-If current Scope does not derive `updateGlobalMeter`, fail `OPERATION_NOT_ALLOWED` before A2 mutation.
+If current Scope does not derive `updateMusicalProperties`, fail `OPERATION_NOT_ALLOWED` before A2 mutation.
+
+- [ ] **Step 3a: Add `resizeComposition` behavior**
+
+Use the same mutation lease/envelope/barrier skeleton. The operation is derived only for `wholeProject` covering all six tracks and delegates to A2 with `targetMeasureCount`. A3 must not calculate Tick length or construct Rest ABC itself. Pending Scope Extension, stale envelope and concurrent mutation rules are identical to other ordinary writes.
 
 - [ ] **Step 4: Add the concurrent-mutation test with a deferred A2 fake**
 
@@ -1019,7 +1031,7 @@ pnpm exec vitest run --config vitest.config.ts \
   apps/workstation/src/core/candidate/candidate-transaction.test.ts \
   apps/workstation/src/core/composition/composition-service.test.ts \
   apps/workstation/src/core/composition/scoped-replacement.test.ts \
-  apps/workstation/src/core/composition/global-meter.test.ts
+  apps/workstation/src/core/composition/musical-properties.test.ts
 ```
 
 Expected: PASS.

@@ -25,6 +25,7 @@ import { ProjectWriteLock } from './project-lock.js';
 import { ProjectWriteCoordinator } from './project-write-coordinator.js';
 
 interface ProjectSession {
+  readonly projectId: ProjectId;
   readonly projectPath: string;
   readonly lock: ProjectWriteLock;
   readonly writes: ProjectWriteCoordinator;
@@ -78,7 +79,7 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
       await this.git.init(absolutePath);
       await this.git.commitAuthorityFiles(absolutePath, 'Initial Current');
       const snapshot = await this.authority.readCleanCurrent(absolutePath);
-      this.activateSession(absolutePath, lock, 'ready');
+      this.activateSession(projectId, absolutePath, lock, 'ready');
       return this.toOpenedProject(absolutePath, snapshot, 'ready');
     } catch (error) {
       await lock?.release();
@@ -94,6 +95,7 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
     let currentRevision: string;
 
     try {
+      await this.git.configureRepository(absolutePath);
       [manifestSource, currentRevision] = await Promise.all([
         this.git.readMainFile(absolutePath, 'project.json'),
         this.git.mainRevision(absolutePath),
@@ -114,7 +116,12 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
     try {
       const dirty = (await this.git.statusPorcelain(absolutePath)) !== '';
       if (dirty) {
-        this.activateSession(absolutePath, lock, 'recoveryRequired');
+        this.activateSession(
+          manifest.projectId,
+          absolutePath,
+          lock,
+          'recoveryRequired',
+        );
         return {
           projectId: manifest.projectId,
           projectPath: absolutePath,
@@ -125,7 +132,7 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
       }
 
       const snapshot = await this.authority.readCleanCurrent(absolutePath);
-      this.activateSession(absolutePath, lock, 'ready');
+      this.activateSession(manifest.projectId, absolutePath, lock, 'ready');
       return this.toOpenedProject(absolutePath, snapshot, 'ready');
     } catch (error) {
       await lock.release();
@@ -182,6 +189,15 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
     return this.requireSession().projectPath;
   }
 
+  /**
+   * The currently open Project's ID, or undefined when no Project is open.
+   * The Core-process-scoped MCP server uses this to resolve the active
+   * Project per request instead of capturing one at construction time.
+   */
+  getProjectId(): ProjectId | undefined {
+    return this.session?.projectId;
+  }
+
   runSerializedWrite<T>(operation: () => Promise<T>): Promise<T> {
     const session = this.requireSession();
     if (session.state !== 'ready') {
@@ -214,19 +230,22 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
   }
 
   private activateSession(
+    projectId: ProjectId,
     projectPath: string,
     lock: ProjectWriteLock,
     state: ProjectOpenState,
   ): void {
-    this.session = this.createSession(projectPath, lock, state);
+    this.session = this.createSession(projectId, projectPath, lock, state);
   }
 
   private createSession(
+    projectId: ProjectId,
     projectPath: string,
     lock: ProjectWriteLock,
     state: ProjectOpenState,
   ): ProjectSession {
     return {
+      projectId,
       projectPath,
       lock,
       writes: new ProjectWriteCoordinator(lock),
@@ -271,7 +290,12 @@ export class ProjectFoundation implements ProjectAuthorityAccess {
       await this.git.init(projectPath);
       await this.git.commitAuthorityFiles(projectPath, 'Initial Current');
       const snapshot = await this.authority.readCleanCurrent(projectPath);
-      const session = this.createSession(projectPath, acquiredLock, 'ready');
+      const session = this.createSession(
+        manifest.projectId,
+        projectPath,
+        acquiredLock,
+        'ready',
+      );
       return {
         session,
         snapshot,

@@ -58,11 +58,15 @@ export type CompositionValidationIssueCode =
   | 'SCOPE_DURATION_MISMATCH'
   | 'SCOPE_OUTSIDE_CHANGED'
   | 'SCOPE_GLOBAL_CHANGE_REQUIRES_ALL_TRACKS'
-  | 'SCOPE_GLOBAL_METER_REQUIRES_WHOLE_PROJECT';
+  | 'SCOPE_GLOBAL_METER_REQUIRES_WHOLE_PROJECT'
+  | 'COMPOSITION_RESIZE_INVALID'
+  | 'COMPOSITION_TRUNCATE_WOULD_DELETE_CONTENT'
+  | 'INITIAL_GLOBAL_EVENT_CONFLICT';
 
 export interface CompositionValidationIssue {
   readonly code: CompositionValidationIssueCode;
   readonly message: string;
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface ValidationReport {

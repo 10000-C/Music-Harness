@@ -28,6 +28,12 @@ export class GitAdapter {
       'agent-music@localhost',
     ]);
     await this.run(repositoryPath, ['config', 'core.longpaths', 'true']);
+    await this.configureRepository(repositoryPath);
+  }
+
+  async configureRepository(repositoryPath: string): Promise<void> {
+    await this.run(repositoryPath, ['config', 'core.autocrlf', 'false']);
+    await this.run(repositoryPath, ['config', 'core.eol', 'lf']);
   }
 
   async commitAuthorityFiles(

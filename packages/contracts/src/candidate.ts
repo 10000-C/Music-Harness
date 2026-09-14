@@ -1,3 +1,4 @@
+import type { OperationId } from './mcp.js';
 import {
   TRACK_IDS,
   isTaskScope,
@@ -15,7 +16,8 @@ export type ScopeExtensionRequestId = string & {
 
 export type CandidateState = 'active' | 'ready' | 'accepting' | 'stale';
 export type TaskState = 'editing' | 'validating';
-export type CandidateOperation = 'replaceScopedMusic' | 'updateGlobalMeter';
+export type CandidateOperation =
+  'replaceScopedMusic' | 'updateMusicalProperties' | 'resizeComposition';
 
 export interface TaskExecutionEnvelope {
   readonly taskId: TaskId;
@@ -44,18 +46,22 @@ export interface TaskContextView {
   readonly allowedOperations: readonly CandidateOperation[];
   readonly trackIds: typeof TRACK_IDS;
   readonly createdAt: string;
+  readonly pendingScopeExtension?: PendingScopeExtensionView;
 }
 
 export interface PendingScopeExtensionView {
+  readonly operationId: OperationId;
   readonly taskId: TaskId;
   readonly requestId: ScopeExtensionRequestId;
   readonly fromScopeRevision: number;
   readonly requestedScope: TaskScope;
+  readonly createdAt: string;
 }
 
 export interface CandidateValidationIssue {
   readonly code: string;
   readonly message: string;
+  readonly details?: Readonly<Record<string, unknown>>;
 }
 
 export interface CandidateValidationReport {
@@ -91,6 +97,7 @@ export const CANDIDATE_ERROR_CODES = [
   'STALE_SCOPE_EXTENSION_REQUEST',
   'SCOPE_EXTENSION_NOT_SUPERSET',
   'OPERATION_NOT_ALLOWED',
+  'PROJECT_NOT_OPEN',
   'CANDIDATE_NOT_FOUND',
   'CANDIDATE_NOT_READY',
   'CANDIDATE_STALE',
@@ -100,6 +107,8 @@ export const CANDIDATE_ERROR_CODES = [
   'VALIDATION_FAILED',
   'CANDIDATE_TRANSACTION_FAILED',
   'ORPHAN_CANDIDATE_RESOURCE',
+  'OPERATION_NOT_FOUND',
+  'OPERATION_ID_CONFLICT',
 ] as const;
 
 export type CandidateErrorCode = (typeof CANDIDATE_ERROR_CODES)[number];
@@ -119,6 +128,10 @@ export type CandidateCommand =
       readonly projectId: ProjectId;
       readonly candidateId: CandidateId;
       readonly taskId: TaskId;
+    })
+  | (CandidateCommandBase & {
+      readonly type: 'candidate.cancelActiveTaskForAgentLoss';
+      readonly projectId: ProjectId;
     })
   | (CandidateCommandBase & {
       readonly type: 'candidate.approveScopeExtension';
@@ -219,6 +232,8 @@ export const isCandidateCommand = (
         isUuid(value.candidateId) &&
         isUuid(value.taskId)
       );
+    case 'candidate.cancelActiveTaskForAgentLoss':
+      return isUuid(value.projectId);
     case 'candidate.approveScopeExtension':
       return isUuid(value.taskId) && isUuid(value.requestIdToApprove);
     case 'candidate.rejectScopeExtension':

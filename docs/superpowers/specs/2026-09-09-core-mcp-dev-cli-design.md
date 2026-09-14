@@ -1,0 +1,129 @@
+# Core MCP Dev CLI Design
+
+## Goal
+
+Provide a development-only CLI that opens an existing Agent Music project, starts the real Music Core MCP Server as a standalone process, and prints the connection information needed for Claude Code or any standards-compliant HTTP MCP client.
+
+## Scope
+
+The CLI is a local interoperability harness. It intentionally binds a standalone MCP server to one Project. Architecture V1.16 defines a different formal desktop product composition root: one long-lived Core/MCP with `0..1` Active Project across Project switches. It does not change the product protocol, add Agent-facing tools, or move authorization decisions into MCP.
+
+The ten P0 MCP tools are:
+
+1. `getTaskContext`
+2. `getScopedComposition`
+3. `submitGenerationPlan`
+4. `requestScopeExtension`
+5. `getOperation`
+6. `cancelOperation`
+7. `replaceScopedMusic`
+8. `updateMusicalProperties`
+9. `resizeComposition`
+10. `finishTask`
+
+## Invocation
+
+```bash
+pnpm core:mcp --project /absolute/or/relative/project/path
+```
+
+Optional:
+
+```bash
+--runtime-dir <path>
+```
+
+Default runtime directory is user-level and outside the project repository:
+
+```text
+~/.agent-music/runtime
+```
+
+The command opens an existing valid project only. It does not create projects. The Project must open in `ready` state; `recoveryRequired` fails before MCP startup.
+
+## Composition
+
+The CLI composes only existing production modules:
+
+```text
+ProjectFoundation.openProject
+→ CandidateGitRepository
+→ CandidateCleanupManager
+→ CompositionPipeline
+→ CandidateTransaction
+→ MusicCoreToolHost
+→ MusicCoreMcpHttpServer
+```
+
+The MCP server continues to bind to `127.0.0.1` on an ephemeral port and publishes the existing runtime descriptor with a random Instance Token.
+
+## Terminal Decisions
+
+### Generation Plan
+
+`submitGenerationPlan` now creates or recovers a runtime-scoped Operation and returns immediately. The CLI confirmation prompt is keyed by `operationId`; `getOperation` retrieves the eventual Task bootstrap, while `cancelOperation` is the explicit business cancellation path. Transport timeout is intentionally not treated as cancellation.
+
+```text
+Generation plan
+Summary: ...
+Scope: ...
+Approve? [y/N]
+```
+
+`y`/`yes` approves. Any other answer rejects. An aborted MCP call returns the existing cancelled behavior. A new generation-plan request cancels any older pending terminal question before opening the new prompt; MCP request timeout/cancellation must reach the original Tool Call through the stateful MCP session transport.
+
+### Scope Extension
+
+`requestScopeExtension` must still first create the real A3 pending request. The CLI wraps only the Agent-facing A3 port for this tool:
+
+```text
+MCP requestScopeExtension
+→ CandidateTransaction.requestScopeExtension
+→ pending request exists
+→ terminal asks approve/reject
+→ CandidateControlPort.approveScopeExtension / rejectScopeExtension
+→ original pending Tool Result returns
+```
+
+This is intentionally dev-harness behavior. It does not add `approveScopeExtension` or `rejectScopeExtension` to MCP. The MCP client should call `getTaskContext` after the Tool Result to observe the authoritative current Scope and `scopeRevision`.
+
+## Output
+
+After startup, print:
+
+```text
+Music Core MCP ready
+Project: <project path>
+Project ID: <projectId>
+Endpoint: <http://127.0.0.1:port/mcp>
+Instance Token: <token>
+
+Claude Code:
+claude mcp add --transport http agent-music <endpoint> --header "Authorization: Bearer <token>"
+```
+
+The token is intentionally printed because this is an explicit local dev harness whose purpose is connecting another local client. It is never persisted into the project.
+
+## Lifecycle
+
+- `SIGINT` and `SIGTERM` perform one idempotent cleanup.
+- Cleanup stops the MCP HTTP server first, then closes the opened Project.
+- Startup failure after Project open closes the Project before exiting.
+- Terminal input is closed during cleanup.
+- The CLI exits non-zero on invalid arguments, invalid project/open failure, or MCP startup failure.
+
+## Runtime
+
+The repository is `noEmit` TypeScript and uses `.js` import specifiers, so the CLI is executed with `tsx`. `tsx` is a workspace development dependency used only by the dev CLI; it is not part of the product runtime contract.
+
+## Testing
+
+Keep process plumbing thin and test the behavior-bearing pieces separately:
+
+1. argument parsing/default runtime path;
+2. terminal plan confirmation decision mapping;
+3. Scope Extension wrapper creates pending first, binds the terminal question to the MCP cancellation signal, and routes approval/rejection through the existing control seam; cancellation clears/rejects pending authorization;
+4. composition/lifecycle integration starts the real HTTP MCP server over a real temporary project and verifies a standards-compliant client can list exactly ten tools;
+5. cleanup closes server/project resources.
+
+The existing A-layer manual regression procedure remains the broader behavioral acceptance for all ten tools and real project facts.

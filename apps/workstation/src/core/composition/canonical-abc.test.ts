@@ -284,13 +284,56 @@ describe('Canonical ABC', () => {
     const unequal = canonicalizeExternalAbc(
       sourceWithBodies({ 'track.drums': 'z8 |' }),
     );
-    expect(() => compileCanonicalAbc(unequal)).toThrow(
-      CompositionValidationError,
-    );
+    try {
+      compileCanonicalAbc(unequal);
+      throw new Error('expected unequal-track validation');
+    } catch (error) {
+      expect(error).toBeInstanceOf(CompositionValidationError);
+      expect(
+        (error as CompositionValidationError).report.issues[0],
+      ).toMatchObject({
+        code: 'TRACK_LENGTH_MISMATCH',
+        details: {
+          tracks: {
+            'track.drums': 7680,
+            'track.bass': 3840,
+          },
+        },
+      });
+    }
 
     const valid = createInitialCanonicalAbc();
     expect(() => compileCanonicalAbc(valid.replaceAll('\n', '\r\n'))).toThrow(
       CompositionValidationError,
     );
+  });
+});
+
+describe('agent-recoverable validation diagnostics', () => {
+  it('rejects tick-zero inline tempo rather than creating duplicate tempo entries', () => {
+    const source = createInitialCanonicalAbc().replaceAll(
+      'z4 |',
+      '[Q:1/4=72] z4 |',
+    );
+    expect(() => compileCanonicalAbc(canonicalizeExternalAbc(source))).toThrow(
+      /Tick 0|initial Tempo/i,
+    );
+  });
+
+  it('returns bounded parser diagnostics without HTML for postfix accidentals', () => {
+    const source = createInitialCanonicalAbc().replace(
+      '[V:track.drums] z4 |',
+      '[V:track.drums] F#,, z3 |',
+    );
+    try {
+      canonicalizeExternalAbc(source);
+      throw new Error('expected validation failure');
+    } catch (error) {
+      expect(error).toBeInstanceOf(CompositionValidationError);
+      const issue = (error as CompositionValidationError).report.issues[0];
+      expect(issue?.message).not.toContain('<span');
+      expect(issue?.message.length ?? 0).toBeLessThan(2000);
+      expect(JSON.stringify(issue?.details ?? {})).toContain('^F');
+    }
   });
 });

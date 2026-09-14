@@ -1,6 +1,6 @@
 # Agent Music Workstation P0 十天双人模块化开发计划
 
-**版本：** 1.4
+**版本：** 2.1
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task.
 
@@ -13,7 +13,7 @@
 - 开发者 A：Music Core Utility Process + Built-in Agent Service。
 - 开发者 B：Electron Main + Renderer/React UI + openDAW Runtime。
 
-**技术基线：** Node.js 24.18.1、pnpm 9.15.9、TypeScript、Electron、React、openDAW、Mastra、MCP、abcjs、Git/worktree、SQLite/LibSQL。
+**技术基线：** Node.js 24.18.1、pnpm 9.15.9、TypeScript、Electron、React、openDAW、Strands、MCP、abcjs、Git/worktree。
 
 ---
 
@@ -21,11 +21,11 @@
 
 开发必须遵循：
 
-- `docs/product/Agent Music Workstation PRD.md` V1.8；
-- `docs/architecture/Agent Music Workstation System Architecture.md` V1.6；
+- `docs/product/Agent Music Workstation PRD.md` V1.19；
+- `docs/architecture/Agent Music Workstation System Architecture.md` V1.17；
 - `docs/architecture/spike.md` 中 Spike-001～010 的技术结论；Spike-010 的 Velocity 候选已按 ADR-034 纳入 P0。
 
-TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模块和回归测试，不重新设计同一问题。
+TG-001～TG-010 已完成既有技术可行性验证。开发阶段将其行为结论固化为正式模块和回归测试；其中 TG-008 的自研 Provider Adapter 实现约束已由 Architecture V1.16 ADR-044 替代，A4 应以 Strands 原生 Chat Completions / MCP Client 集成为正式实现，并复用 TG-008 的 Tool Call、流式、取消和错误行为作为回归标准。
 
 本计划只定义：
 
@@ -39,10 +39,10 @@ TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模
 - Electron Main、Renderer、Music Core Utility Process 和 Agent Service 的进程拓扑；
 - Renderer ↔ Core 的 typed IPC / PlaybackCompilation 通信；
 - Agent ↔ Core 的 MCP Streamable HTTP 通信；
-- MCP Server 的部署位置和七个 P0 Tool；
+- MCP Server 的部署位置和十个 P0 Tool；正式桌面产品为单 Core/单 MCP/`0..1` Active Project，Project 切换不重启 MCP；
 - Canonical ABC → MIDI → openDAW Runtime 的链路；
 - Current、Candidate、Task checkpoint 和 Git/worktree 状态机；
-- ABC、MIDI、WAV 的既定导出链；
+- clean Current → A5 Export Preparation → 桌面 MIDI/WAV 输出的既定导出链；
 - PRD 已冻结的产品范围。
 
 ---
@@ -54,12 +54,13 @@ TG-001～TG-010 已完成验证。开发阶段将 Spike 结论固化为正式模
 ```text
 Electron Main
 ├── Renderer + React UI + openDAW
-├── Music Core Utility Process
-└── Built-in Agent Service
+├── Music Core Utility Process（长期存活，0..1 Active Project + one MCP）
+└── Built-in Agent Service（one Core MCP connection）
 
 Renderer ↔ Music Core：typed IPC / PlaybackCompilation + TimelineViewModel
-Agent Service ↔ Music Core：MCP Streamable HTTP
-Agent Service ↔ SQLite
+Renderer ↔ Agent Service：经 Electron Main / Preload 的 typed Agent transport bridge（Session lifecycle + text/terminal）
+Agent Service ↔ Music Core：Strands MCP Client + MCP Streamable HTTP
+Agent Service ↔ Strands Session Storage
 Music Core ↔ Project Git Repository
 ```
 
@@ -81,11 +82,13 @@ Music Core Utility Process
 └── Core IPC Handler
 
 Built-in Agent Service
-├── Mastra Agent Loop
-├── Chat Completions Provider Adapter
-├── MCP Client
-├── Settings
-└── SQLite
+├── Strands Agent Loop
+├── Strands OpenAI-compatible Chat Completions
+├── Strands Agent-side MCP Client
+├── Strands SessionManager / Storage
+├── Agent Workflow
+├── Agent / Model Settings
+└── assistant text stream / execution terminal transport
 ```
 
 该模块簇共同处理：音乐工程事实、Agent 授权、工具调用、Candidate 写入和任务状态。
@@ -116,19 +119,20 @@ openDAW Runtime
 ├── WASM / Worker / AudioWorklet
 ├── RuntimeSnapshot Load
 ├── Transport / Preview
-└── Offline WAV Render
+└── abcjs WAV Export
 ```
 
 UI、时间轴、Clip、播放头、Transport 和 openDAW SDK 共享同一 Renderer 运行环境并频繁协同，因此作为一个模块簇分配给开发者 B。
 
-### 2.3 两条既有集成 seam
+### 2.3 三条既有集成 seam
 
 两人只沿架构已经存在的 seam 集成：
 
 1. **Renderer ↔ Music Core：** typed IPC、PlaybackCompilation、TimelineViewModel、Command/Event；
-2. **Agent ↔ Music Core：** MCP Streamable HTTP。
+2. **Agent ↔ Music Core：** MCP Streamable HTTP；
+3. **Renderer ↔ Agent Service：** 经 Main/Preload 的 typed text transport，只承载用户消息/Cancel、assistant text delta 与 execution terminal event。
 
-由于 Agent 和 Music Core 都由 A 负责，开发者 A 仍必须保持 MCP 隔离：内置 Agent 不得直接调用 Core 内部类、写文件或执行 Git。
+由于 Agent 和 Music Core 都由 A 负责，开发者 A 仍必须保持 MCP 隔离：内置 Agent 不得直接调用 Core 内部类、写文件或执行 Git。Agent UI transport 也不得承载原始 MCP Tool Result、A4 Workflow state 或任何工程写入/授权语义。
 
 ---
 
@@ -145,13 +149,15 @@ A 负责：
 - Canonical ABC 解析、Repeat 展开、规范化和序列化；
 - 固定六 Voice、PPQ=960、P0 语法白名单和每事件 Velocity `1..127`；Velocity `0` 必须在进入领域事件前拒绝；
 - Scope Mapping、`scopeRevision`、跨边界事件保护；
-- `replaceScopedMusic` 与 `updateGlobalMeter` 原子事务；
+- Scope 与 Composition length 解耦；`resizeComposition(targetMeasureCount)` 负责尾部结构 resize，`requestScopeExtension` 只负责授权；
+- `TRACK_LENGTH_MISMATCH` 轨长明细、ABC parser warning 去 HTML/聚合/限量、tick-0 inline Tempo/Key 拒绝；
+- `replaceScopedMusic`、`updateMusicalProperties` 与 `resizeComposition` 原子事务；
 - ABC → Standard MIDI Document；
-- MCP Server、Instance Token、runtime descriptor；
-- 七个 P0 MCP Tool 的 Schema、授权和业务语义；
+- 单一 MCP Server、Instance Token、Core-process-scoped runtime descriptor；MCP 与 Core 同生命周期，Project close/open 不重启；
+- 十个 P0 MCP Tool 的 Schema、授权和业务语义；
 - `finishTask`、Accept、Reject、取消和迟到结果保护；
 - Current-only 导出前检查、重新读取和重新编译；
-- ABC/MIDI 导出数据；
+- 同一 Current revision 的已验证 Canonical ABC 与 Standard MIDI bytes；
 - Core 侧 IPC Handler 和 Event；
 - Music Core 单元、Contract、Git 和故障注入测试。
 
@@ -159,17 +165,20 @@ A 负责：
 
 A 负责：
 
-- Agent Service 进程入口和生命周期；
-- Mastra 单 Agent Loop；
-- OpenAI-compatible Chat Completions；
-- SSE Tool Call 增量拼接；
-- Provider 取消、超时、429 和协议错误；
-- MCP Client 和 endpoint descriptor 发现；
-- 首次生成计划；
-- Scope 扩展请求；
-- `finishTask` 失败后的有限修复；
-- Settings 和 API Key 文件；
-- SQLite 的 conversation、message、task、tool_call 和 validation；
+- Agent Service 进程入口和 typed `ready` / `health` / `shutdown` / `fatal` 生命周期；
+- Strands 单 Agent Loop；
+- 使用 Strands 原生 OpenAI-compatible Chat Completions 能力，不自研 SSE Tool Call 拼接或第二套 Provider 协议层；
+- 使用 Strands 原生 Agent-side MCP Client，通过 Core-process-scoped descriptor + Instance Token 连接单一 Core MCP Server；A4 不按 `projectId` 选择多个 MCP Endpoint；
+- Provider/MCP transient retry 优先使用 Strands/底层 Client；A4 只处理最终错误归一化，不实现第二层通用 retry loop；
+- 首次生成计划与 Scope Extension 使用可恢复 Operation：调用方提供稳定 `operationId`，`submitGenerationPlan` / `requestScopeExtension` 立即返回；`getOperation` 查询终态，`cancelOperation` 显式业务取消；Agent-facing 计划输入不携带 `projectId`，由 MCP Host 注入当前 Active Project；transport timeout 不改变 Operation 状态；
+- executing 阶段 Scope 扩展请求；repairing 阶段禁止 Scope Extension；Scope Extension confirmation 继承 MCP cancellation，timeout/cancel 后不得后台批准；
+- `finishTask` validation failure 后的有限 repair：一轮 validation→repair→finishTask 计一次 `repairAttempt`，每轮开始前读取最新 `maxRepairAttempts`；
+- 统一 Cancel：pre-Task 只终止 Workflow，已有 Active Task 时 `cancelTask` 并回滚；最终 execution failure 同样不得遗留 Active Task；
+- 模型配置每次 Strands model call 动态读取，不冻结 Workflow/Task model snapshot；
+- Agent / Model Settings 和 API Key 文件；
+- Strands SessionManager/Storage 的 Project 多 Session 集成：一个 Project 可关联多个 Session，A4 负责 list/create/open/getActive 与唯一 Active Session 选择；P0 不支持多 Session 后台并行 execution，不自研 transcript/compaction，不使用 SQLite；
+- Session lifecycle + assistant text stream + execution terminal event transport；原始 MCP Tool Result、Strands Storage 和 A4 Workflow state 不进入 Renderer transport；
+- Agent Service 受控 fatal/shutdown 时由 A4 对 Active Task 触发 cancel + rollback；非受控子进程退出由 B1 supervisor 通知 Core/A3 执行 Project-only Active Task reconciliation；Session 只恢复对话；
 - Agent 结构化日志和脱敏。
 
 ### 3.3 A 不负责
@@ -178,7 +187,7 @@ A 负责：
 - BrowserWindow、Preload 和桌面打包；
 - 直接使用 openDAW SDK；
 - openDAW Worker、WASM、AudioWorklet 或 SoundFont；
-- Transport、试听切换和 WAV Offline Renderer；
+- Transport、试听切换和桌面 abcjs WAV 导出；
 - UI 中的导出进度、确认弹层和错误呈现。
 
 ---
@@ -192,8 +201,9 @@ B 负责：
 - Electron Main、BrowserWindow 和应用生命周期；
 - `nodeIntegration=false`、`contextIsolation=true` 和 Preload allowlist；
 - 启动、监督和关闭 Core Utility Process 与 Agent Process；
-- 进程 health、fatal error 和 restart 行为；
-- 项目目录和导出路径选择；
+- 进程 health、fatal error 和 restart 行为；通过共享 Agent Process Contract 转发 `ready` / `health` / `shutdown` / `fatal`，不解释 A4 业务状态；Agent 子进程非受控退出时向 Core 发送 `candidate.cancelActiveTaskForAgentLoss(projectId)`；
+- A4 Agent Service ↔ Renderer 的 typed Agent transport bridge；Main/Preload 只转发最小 Session lifecycle、用户消息/Cancel、assistant text delta 与 execution terminal event，不拥有 Session/Agent Workflow 状态；
+- 项目目录和导出路径选择；Project 切换确认后编排 `cancelCurrentExecution(currentProjectId)` → 等待 rollback/settle → Core close/open；切换不重启 Core/MCP；
 - openDAW 资源路径；
 - Windows 开发运行和发布构建。
 
@@ -204,12 +214,15 @@ B 只负责进程的启动与监督，不修改 A 所负责进程的内部业务
 B 负责：
 
 - React 应用壳和整体界面布局；
+- 单窗口 Project 打开/切换 UI；当前存在 Agent execution/Active Task 时必须提示“切换将取消当前 Agent 操作”，确认后才进入 B1 cancel/rollback barrier，拒绝则保持当前 Project；
 - 固定六轨工作区、Clip、时间轴和播放头；
 - Product Time Selection；
 - 单轨/多轨连续 Scope 的 UI 表达；
 - Play、Pause、Seek、Loop、Solo、Mute 控件；
 - Current/Candidate Preview 和状态显示；
-- Agent 对话、Task 阶段和 Tool Call 摘要；
+- Renderer-side `AgentClient`，经 Main/Preload bridge 列出/创建/打开 Project Session、读取 Active Session、发送用户消息/Cancel，并消费 assistant text delta 与 execution terminal event；普通局部修改确认后，`sendMessage` 只附带 A3 已创建 Task 的最小 `{taskId, candidateId}` bootstrap，不复制 Scope/baseRevision/scopeRevision；
+- Agent 面板只提供最小的新建 Session / 切换已有 Session 交互，不实现 rename、search、pin、folder 等复杂会话管理；
+- Agent 对话与流式输出；A4 内部 Workflow state 和原始 MCP Tool Result 不进入 UI Contract；
 - 首次生成、wholeProject、Scope 扩展和 Accept 的确认流程；
 - Accept、Reject 和取消操作；
 - 导出入口、进度、取消和用户错误提示；
@@ -225,24 +238,25 @@ B 负责所有直接依赖 `@opendaw/studio-sdk` 的实现，无论对应文件�
 - Tempo、Meter 和 Key wrapper；
 - WASM、Worker、AudioWorklet、Sample 和 SoundFont；
 - `soundfont2` ESM shim；
-- RuntimeSnapshot load/reload/dispose；
+- RuntimeSnapshot load/reload/dispose；Project 切换时先停止并释放旧 Project 播放状态，新 Project 打开后再构建/加载 Snapshot；
 - Current/Candidate 试听切换；
 - openDAW Transport；
-- Offline WAV Render、进度、AbortSignal 和尾音；
+
 - openDAW 相关 Contract 和 Electron 集成测试。
 
-### 4.4 WAV 功能归属
+### 4.4 导出功能归属
 
-WAV 是跨模块流程，但功能负责人为 B，因为实际渲染依赖 Electron Renderer 中的 openDAW Runtime。
+A5 负责从 clean Current 捕获稳定快照并执行 A2 最终编译，输出同一 `currentRevision` 绑定的 Canonical ABC 与 Standard MIDI bytes。A5 不写目标文件，也不依赖 abcjs/openDAW。
 
-既有架构职责保持不变：
+B5 负责桌面导出：
 
 ```text
-A：检查只导出 clean Current，重新读取并编译工程，准备既定导出输入
-B：选择输出路径，调用 openDAW Offline Renderer，显示进度并处理取消
+A5：clean Current → final compile → { canonicalAbc, midiFileBytes, currentRevision }
+B5：midiFileBytes → .mid
+B5：canonicalAbc → abcjs Synth → .wav
 ```
 
-这里是同一既有导出链上的任务分配，不是新的实现设计。
+openDAW 继续只服务试听 Runtime；正式 MIDI/WAV 导出不经过 openDAW。
 
 ### 4.5 B 不负责
 
@@ -322,7 +336,7 @@ B 在 A 未完成真实 Core 前使用：
 - 固定 Project/Candidate/Task 状态；
 - 固定确认请求和结构化错误；
 - 模拟导出进度和取消；
-- 固定 Agent 对话和 Tool Call 摘要。
+- 固定 Agent 用户消息、assistant text delta 和 execution terminal event。
 
 B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW。
 
@@ -347,11 +361,11 @@ B 不需要等待 Agent 和 Git 状态机才可完成 Electron、UI 和 openDAW�
 
 | 编号 | 模块 | 主要范围 | 直接依赖 | 稳定输出 |
 |---|---|---|---|---|
-| **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、显式恢复、另存为；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；同项目单写实例；稳定 Project Command/Event |
-| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Meter 修改与最终 Meter/barline 一致性校验、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateGlobalMeter`、`validateFinalMeterConsistency`、PlaybackCompilation、TimelineViewModel、ValidationReport |
-| **A3** | Candidate Transaction | Candidate `baseRevision`、`.agent-music` worktree、Candidate/Task 双状态机、execution envelope、Scope Extension 授权、checkpoint、Accept/Reject、取消回滚、cleanup marker、稳定领域错误；Current 正式写入经 A1 串行写入机制 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 Agent-facing / Renderer-control interface 与 Candidate Command/Event |
-| **A4** | Agent Toolchain | MCP Server、Instance Token、runtime descriptor、MCP Client、Provider Adapter、Mastra Agent Loop、planning/confirmation 前置流程、AgentExecutionContext、有限修复 | A1、A3、MCP Contracts | 可发现的本地 MCP Endpoint；Agent 经真实 MCP 完成计划、写入、修复和 `finishTask`，不复制 A3 Candidate/Task 授权状态 |
-| **A5** | Persistence & Export Preparation | SQLite、Settings、安全脱敏、复用 A1 clean Current 读取校验、ABC/MIDI 导出数据、WAV 输入准备 | A1、A2 | 可恢复 Agent 状态；经过 Current 校验的导出输入 |
+| **A1** | Project Foundation | 项目目录/元数据与 Current Git 创建、打开、关闭、显式恢复、另存为；一个长期 Core 内同时 `0..1` Active Project；进程内项目写入串行化；跨实例项目写锁；Project IPC Handler | Contracts | clean Current 项目生命周期；可在同一 Core 内安全 close/open 不同 Project；同项目单写实例；稳定 Project Command/Event |
+| **A2** | Composition Pipeline | Canonical ABC、Scope Mapping、PPQ、领域事件、每事件 Velocity、Global Musical Properties（初始 Meter / Tempo）、Composition Resize 与最终 Meter/barline 一致性校验、Standard MIDI Document、PlaybackCompilation 与 TimelineViewModel；不依赖 openDAW SDK，不构建 RuntimeSnapshot | Contracts、Spike fixtures | Canonical ABC、ScopeMappingCache、`replaceScopedMusic`、`updateMusicalProperties`、`resizeComposition`、`validateFinalMeterConsistency`、PlaybackCompilation、TimelineViewModel、ValidationReport |
+| **A3** | Candidate Transaction | Candidate `baseRevision`、`.agent-music` worktree、Candidate/Task 双状态机、execution envelope、Scope Extension 授权、checkpoint、Accept/Reject、取消回滚、cleanup marker、稳定领域错误；Current 正式写入经 A1 串行写入机制；Project close 前 Active Task 必须已取消/回滚 | A1、A2 | 不修改既有 Current 的 Candidate 事务；稳定 cancel/rollback 与 Agent-facing / Renderer-control interface；Project switch 可用权威 Task 状态 fail-closed |
+| **A4** | Agent Toolchain | Strands Agent Loop、OpenAI-compatible Chat Completions、Agent-side MCP Client、Project 多 Session/SessionManager/Storage、Core-process-scoped descriptor、Agent / Model Settings、planning/confirmation、统一 Cancel/final-failure rollback、有限 repair、Agent transport | A1、A3、MCP/Agent Contracts | 一个 Project 可有多个 Session 但同时唯一 Active Session；Agent Service 对单一 Core MCP 保持一个基础设施连接，不按 Project 切 Endpoint；Project switch 时 Cancel Promise 在 Active Task rollback 后才完成；Renderer 仅通过最小 Session lifecycle + 文本流/终态访问 A4 |
+| **A5** | Export Preparation | 在 A1 项目级串行协调下捕获 clean Current snapshot，使用 A2 最终编译/校验，准备桌面 MIDI/WAV 所需的 revision-bound Canonical ABC 与 Standard MIDI bytes；通过最小 Export Command/Event IPC 暴露；不拥有文件输出、abcjs/openDAW、Agent Settings、Session 或历史数据库 | A1、A2 | `PreparedCurrentExport { projectId, currentRevision, canonicalAbc, midiFileBytes }` + `export.prepareCurrent` typed IPC |
 
 #### 7.1.1 A1 最小接口与实现边界
 
@@ -385,7 +399,7 @@ interface ProjectAuthorityAccess {
 }
 ```
 
-`getProjectPath()` 只供 Core 内部 A3 定位 Candidate linked worktree；不得向 Renderer 或 Agent 暴露。A3 的 Accept 复用 A1 serialized write，A5 复用 clean Current 读取；不得向 A3 暴露 A1 的 GitAdapter、锁对象或解锁能力。
+`getProjectPath()` 只供 Core 内部 A3 定位 Candidate linked worktree；不得向 Renderer 或 Agent 暴露。A3 的 Accept 与 A5 的 Current snapshot capture 复用 A1 serialized write；不得向 A3 暴露 A1 的 GitAdapter、锁对象或解锁能力。
 
 A1 验收至少覆盖：
 
@@ -431,11 +445,11 @@ A3 必须实现：
 
 | 编号 | 模块 | 主要范围 | 直接依赖 | 稳定输出 |
 |---|---|---|---|---|
-| **B1** | Desktop Shell | Electron Main、Preload、进程监督、路径选择、openDAW 资源路径 | IPC Contracts | 安全启动并监督 Core/Agent 的桌面壳 |
-| **B2** | Workstation UI | 六轨工作区、时间轴、Scope、Agent 面板、错误呈现 | B1、Fake Core Client | 可消费固定 Project/Task/Candidate 状态的产品界面 |
-| **B3** | openDAW Runtime | SDK Adapter；消费 A2 PlaybackCompilation 构建 RuntimeSnapshot；六轨 Runtime、资源加载、Transport、Snapshot load | PlaybackCompilation、RuntimeSnapshot Contracts、Spike fixtures | 可从正式编译结果构建、加载 Snapshot 并稳定播放的 openDAW Runtime |
-| **B4** | Preview & Confirmation | Current/Candidate 试听、确认流程、Accept/Reject UI、Core Event 消费 | B2、B3、A3 的稳定输出 | 完整 Candidate 预览和确认交互 |
-| **B5** | WAV & Windows Delivery | Offline Render、进度、取消、尾音、桌面文件输出、Windows 构建 | B1、B3、A5 的稳定输出 | 可从 Current 导出 WAV 的 Windows 可运行构建 |
+| **B1** | Desktop Shell | Electron Main、Preload、一个 Core/Agent 进程监督、Agent transport bridge、路径选择、Project switch 生命周期编排、openDAW 资源路径 | IPC/Agent Contracts | Core/MCP 跨 Project 切换长期存活；确认后执行 Agent Cancel/rollback barrier，再安全 Core close/open；为 A4 ↔ Renderer 转发最小 Session lifecycle + text/terminal transport |
+| **B2** | Workstation UI | 六轨工作区、时间轴、Scope、单窗口 Project 打开/切换 UI、Renderer-side AgentClient、Agent Session 新建/切换、Agent 对话流、Agent 面板、错误呈现 | B1、Fake Core/Agent Client | 可消费 Project/Task/Candidate 产品状态；运行中 Agent 操作/Active Task 时切 Project 必须先提示；拒绝保持原 Project，确认后委托 B1 执行 cancel/rollback + close/open |
+| **B3** | openDAW Runtime | SDK Adapter；消费 A2 PlaybackCompilation 构建 RuntimeSnapshot；六轨 Runtime、资源加载、Transport、Snapshot load；Project switch playback teardown/reload | PlaybackCompilation、RuntimeSnapshot Contracts、Spike fixtures | 可从正式编译结果构建、加载 Snapshot 并稳定播放；Project 切换不泄漏旧 Transport/Runtime 状态 |
+| **B4** | Preview & Confirmation | Current/Candidate 试听、generation plan/wholeProject/Scope Extension/Accept 与运行中任务 Project-switch 警告等确认流程、Accept/Reject UI、Core Event 消费 | B2、B3、A3 的稳定输出 | 完整 Candidate 预览和确认交互；Project-switch 确认只授权 B1 启动 Cancel/close/open 流程，不直接改变 A3 状态 |
+| **B5** | Export & Windows Delivery | MIDI 文件输出、abcjs WAV Synth、导出失败安全、桌面文件输出、Windows 构建 | B1、A5 的稳定输出 | 可从 Current 导出 MIDI/WAV 的 Windows 可运行构建 |
 
 ### 7.3 模块完成条件
 
@@ -458,7 +472,7 @@ flowchart LR
         A2[A2 Composition Pipeline]
         A3[A3 Candidate Transaction]
         A4[A4 Agent Toolchain]
-        A5[A5 Persistence & Export Preparation]
+        A5[A5 Export Preparation]
 
         A1 --> A3
         A2 --> A3
@@ -473,20 +487,19 @@ flowchart LR
         B2[B2 Workstation UI]
         B3[B3 openDAW Runtime]
         B4[B4 Preview & Confirmation]
-        B5[B5 WAV & Windows Delivery]
+        B5[B5 Export & Windows Delivery]
 
         B1 --> B2
         B2 --> B4
         B3 --> B4
         B1 --> B5
-        B3 --> B5
     end
 
-    B1 -->|I1 进程启动 / health / IPC| A1
+    B1 -->|I1 进程启动 / Project switch / health / IPC| A1
     A2 -->|I2 PlaybackCompilation / typed IPC| B3
     A1 -->|I3 Project Command / Core Event| B2
     A3 -->|I4 Candidate Command / Event| B4
-    A4 -->|I5 Task / Confirmation Event| B4
+    A4 -->|I5 Agent IPC transport| B1
     A5 -->|I6 Current 导出输入| B5
 ```
 
@@ -495,12 +508,13 @@ flowchart LR
 | 依赖 | 上游必须稳定的输出 | 下游可开始的工作 |
 |---|---|---|
 | A1 → A3 | Current Git、跨实例写锁、项目级串行写入和 Project Command/Event | Candidate branch/worktree、事务状态机及安全 Accept |
-| A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask` 完整验证 |
-| A1/A3 → A4 | A1 的 projectId/项目生命周期，A3 的 TaskContext、Candidate 和七个 Tool 业务状态 | runtime descriptor 与 Agent 真实 MCP Tool Loop |
-| A1/A2 → A5 | A1 的 clean Current 读取校验、A2 的重新编译能力 | 正式 ABC/MIDI/WAV 导出准备 |
+| A2 → A3 | Canonical ABC、Scope Mapping、领域事件、MIDI、TimelineViewModel、ValidationReport | `replaceScopedMusic`、`updateMusicalProperties`、`resizeComposition` 和 `finishTask` 完整验证 |
+| A1/A3 → A4 | A1 的 Active Project 生命周期，A3 的 TaskContext、Candidate 和八个 Tool 业务状态 | 单一 Core MCP connection、Strands Tool Loop 与 Agent Workflow；`projectId` 只用于业务/授权校验，不用于 Endpoint 选择 |
+| A1/A2 → A5 | A1 的 clean Current 读取/串行协调、A2 的最终编译能力 | 同一 Current revision 的 Canonical ABC + Standard MIDI bytes |
+| A4 → B1 → B2 | A4 最小 Session lifecycle + text/terminal Contract；B1 安全 Main/Preload transport | Renderer-side AgentClient、Project Session 新建/切换、用户消息/Cancel、assistant 流式文本与 execution 终态 |
 | B1 → B2 | 安全 Preload 和 typed IPC Client | 真实桌面 UI |
 | B2/B3 → B4 | 产品交互状态和可播放 Runtime | Current/Candidate 预览及确认流程 |
-| B1/B3 → B5 | 文件路径、资源环境和 Offline Renderer | WAV 与 Windows 交付 |
+| B1/A5 → B5 | 文件路径/桌面资源环境与 `PreparedCurrentExport` | MIDI 文件输出、abcjs WAV 与 Windows 交付 |
 
 跨开发者依赖只使用图中 `I1～I6` 所标注的架构既有接口，不新增进程、私有调用或替代数据格式。
 
@@ -537,7 +551,8 @@ flowchart LR
 **通过标准：**
 
 - Electron 启动并显示 Main、Core、Agent 状态；
-- Main 能正常关闭两个子进程；
+- Main 能正常关闭两个子进程；Core/Agent 各只启动一次；
+- 在没有运行 Agent 操作时从 Project A 切到 Project B，不重启 Core/MCP/Agent，MCP endpoint/token 保持不变；
 - Renderer 无任意 Node、文件系统或通配 IPC 权限；
 - 双方 Fake/Fixture 使用同一 Contracts 版本。
 
@@ -584,7 +599,8 @@ Canonical ABC
 
 **通过标准：**
 
-- UI 可创建、打开和另存为真实项目；
+- UI 可创建、打开、关闭、切换和另存为真实项目；
+- 基础 Project A → Project B 切换在同一 Core 进程中完成；旧 Project lock 释放，新 Project lock 获得，Core/MCP 不重启；
 - 关闭重开后恢复同一个 clean Current；
 - dirty Current 和恢复错误以结构化状态显示；
 - 同一项目已被实例 A 打开时，实例 B 无法获得写锁；A 正常关闭后 B 可打开；
@@ -612,55 +628,82 @@ Canonical ABC
 
 **解除阻塞：** Candidate 的真实产品事务闭环完成；I5 可接入 Agent。
 
-### I5：Agent Toolchain → Candidate 产品流程
+### I5：Agent Toolchain → Agent UI / Candidate 产品流程
 
-**连接模块：** A4 → A3 → B4。
+**连接模块：** A4 ↔ B1 → B2/B4，同时 A4 → MCP → A3 → B4。
+
+I5 是跨模块 seam 的联调点，不新增 A6/B6，也不把联调逻辑集中到单独业务模块。各模块只实现自己一侧的 adapter/contract：A4 运行 Strands、Project 多 Session 与 Agent Workflow，并独占 Active Session 选择；B1 只提供 transport；B2 通过 AgentClient 执行最小 Session lifecycle 并消费文本流/终态；B4 负责产品确认；A3 继续独占 Candidate/Task 授权。
 
 **进入条件：**
 
-- A4 可通过真实 descriptor 连接真实 MCP Server；
-- A3 已支持完整 Task execution envelope、严格 `scopeRevision`、Scope Extension barrier、`replaceScopedMusic`、`updateGlobalMeter` 和 `finishTask`；
-- B4 可展示计划、确认、Task 阶段和 Candidate 状态。
+- A4 可使用 Strands Agent-side MCP Client 通过 Core-process-scoped descriptor + Instance Token 连接唯一真实 MCP Server，并跨 Project close/open 保持该基础设施连接；
+- A4 已能通过 Strands SessionManager/Storage 在同一 Project 下 list/create/open 多个 Session，并保持唯一 Active Session；
+- B1 已提供 Main/Preload typed Agent bridge，B2 已能使用 Fake AgentClient 新建/切换 Session、读取 Active Session、发送用户消息/Cancel 并消费 text delta / terminal event；
+- A3 已支持完整 Task execution envelope、严格 `scopeRevision`、Scope Extension barrier、`replaceScopedMusic`、`updateMusicalProperties`、`resizeComposition` 和 `finishTask`；
+- B4 可展示 generation plan、确认、Task 阶段和 Candidate 状态。
 
 **联调链：**
 
 ```text
-Fake Chat Completions Provider
-→ A4 Agent Toolchain
-→ MCP Client / Server
+Agent text/session:
+Project A
+→ A4 list/create/open Session 1 / Session 2（single Active Session）
+→ Strands Agent + SessionManager
+→ session lifecycle + assistant text delta / execution terminal event
+→ B1 Main/Preload transport bridge
+→ B2 AgentClient / Chat UI
+
+Project / confirmation:
+A4 Strands Agent
+→ submitGenerationPlan over MCP (pending)
+→ Core publishes confirmation state
+→ B4 displays plan
+→ user confirms via Core control
+→ A3 creates Candidate + Task
+→ pending submitGenerationPlan returns Task bootstrap
+→ A4 continues through Strands MCP Client
 → A3 Candidate Transaction
-→ Task / Candidate Event
+→ Candidate/Task Event
 → B4 Preview & Confirmation
 ```
 
 **通过标准：**
 
-- `tools/list` 只有七个 P0 Tool；
-- Agent 提交计划并等待用户确认；
+- `tools/list` 精确暴露十个 P0 Tool，不新增 `awaitingConfirmation`、append/remove 等重复 Tool；
+- Agent 调用 `submitGenerationPlan` 后，在用户决策前 Tool Call 保持 pending，正式 Task 不存在且所有 Task-bound Tool 不可用；
+- 用户确认后 A3 创建 Candidate/Task，pending Tool Call 返回 Task bootstrap，A4 才继续执行；拒绝/取消不产生正式 Task；
+- 普通局部修改由 B4/Core 控制链先创建正式 Task，再通过 B2/B1 `sendMessage` 仅携带 `{taskId, candidateId}` bootstrap；A4 必须先 `getTaskContext({taskId})` 取得 A3 权威 Scope 与 execution envelope，Agent transport 不携带 Scope/baseRevision/scopeRevision；
+- 同一 Project 可创建至少两个 Session，并在 execution 结束后切换；切回旧 Session 时由 Strands 恢复该 Session 对话；任一时刻只有一个 Active Session，切换不恢复或迁移旧 Active Task；
+- A4 的 Session lifecycle、assistant 文本流与 execution terminal event 经 B1 bridge 到达 B2；A4 内部 Workflow state、Strands Storage 和原始 MCP Tool Result 不进入该通道；
+- Cancel 在 planning/awaiting_confirmation 不创建 Task；executing/repairing 时必须 `cancelTask` 并回滚当前 Task；
 - Agent 经 MCP 生成可试听 Candidate；
+- `finishTask` validation failure 才进入 repair；repair 不允许 Scope Extension，一轮 validation→repair→finishTask 计一次 `repairAttempt`，轮次开始前读取最新 `maxRepairAttempts`；
+- 模型配置在每次 Strands model call 读取最新值；Strands 最终 provider/MCP execution failure 必须回滚 Active Task；
+- Agent Service 受控 fatal/shutdown 若存在 Active Task 由 A4 cancel + rollback；Agent 子进程突然退出由 B1 → Core/A3 `candidate.cancelActiveTaskForAgentLoss(projectId)` 回滚权威 Active Task；重启后可恢复 Strands Session 对话但不恢复未完成 Task；
+- Project A 存在 planning/awaiting_confirmation/executing/repairing 或 Active Task 时，B2/B4 发起切换 Project B 必须先提示；拒绝时 A 保持不变；确认后 B1 等待 `cancelCurrentExecution(A)` 完成，若已有 Task 必须确认 A3 rollback 已完成，再 close A/open B。整个过程 Core/MCP/Agent 进程与 MCP endpoint 不变；Cancel/rollback/close 失败时切换失败并保持 A；
 - `finishTask` 成功形成 checkpoint；
 - Current SHA 保持不变；
 - 错误 Token、过期 `scopeRevision` 和越界写入均被拒绝。
 
-**解除阻塞：** 首次生成和局部修改两条主流程不再依赖 Agent/Core Fake。
+**解除阻塞：** 首次生成和局部修改两条主流程不再依赖 Agent/Core/UI Fake。
 
-### I6：Export Preparation → WAV & Windows Delivery
+### I6：Export Preparation → Export & Windows Delivery
 
-**连接模块：** A5 → B5，同时依赖 B1、B3。
+**连接模块：** A5 → B5，同时依赖 B1。
 
 **进入条件：**
 
-- A5 可重新读取 clean `main` HEAD 并生成 ABC、MIDI 和既定 WAV 输入；
-- B5 可执行 openDAW Offline Render、桌面文件输出和取消；
+- A5 可在项目级串行协调下捕获 clean `main` HEAD，并生成同一 revision 的已验证 Canonical ABC 与 Standard MIDI bytes；
+- B5 可将 MIDI bytes 写为 `.mid`，并在桌面 Renderer 使用 abcjs Synth 从 Canonical ABC 生成 `.wav`；
 - I4、I5 已通过。
 
 **通过标准：**
 
 - Candidate 不可导出；
-- ABC、MIDI、WAV 只从 clean Current 生成；
-- WAV 进度单调、可取消，失败或取消不破坏既有目标文件；
+- MIDI、WAV 只从 clean Current 生成，Candidate 不可导出；
+- WAV 的进度/取消语义以实际 abcjs 集成能力为准，失败或取消不破坏既有目标文件；
 - 关闭重开后仍可播放和导出最后 Current；
-- Windows 中文路径、长路径、文件占用和 openDAW 资源路径通过 Smoke；
+- Windows 中文路径、长路径、文件占用和 abcjs 音频资源路径通过 Smoke；
 - 首次生成与局部修改两条 E2E 均使用真实模块。
 
 **解除阻塞：** Day 10 只剩验收阻塞修复和证据整理。
@@ -679,6 +722,7 @@ Fake Chat Completions Provider
 - 禁止跨所有权模块临时修改而不通知负责人；
 - openDAW 文件即使位于 Core 目录，也由 B review；
 - Agent 文件即使由 Main 启动，也由 A review；
+- 提交任何 Agent / Skill 相关改动时，验收必须以根目录 `pnpm check`（涵盖 `format:check`、`lint`、`typecheck`、`test`）为最终准入门槛，严禁仅跑 package-local 的 test / typecheck，避免遗漏全仓库代码规范及 ESLint 约束；
 - Day 8 起不进行无验收项支撑的重构。
 
 每次集成前运行：
@@ -700,24 +744,26 @@ git status --short
 | openDAW 构建不稳定 | Worker/WASM/SoundFont 路径失败 | 回到 Spike-001 的固定版本、Vite 配置和 shim |
 | ABC 白名单膨胀 | Day 4 仍加入未验证语法 | 固定 P0 白名单，明确拒绝未支持语法 |
 | MCP 与 Agent 绕过边界 | Agent 直接调用 Core 内部模块 | 删除私有路径，强制通过真实 MCP Contract 测试 |
-| WAV 协作不清 | A/B 同时修改整个导出链 | A 负责 Current/编译数据，B 负责 openDAW/Electron 渲染；沿既有 seam 集成 |
+| 导出协作不清 | A/B 同时修改整个导出链 | A5 只提供 revision-bound Canonical ABC + MIDI bytes；B5 负责 Electron 文件输出与 abcjs WAV Synth |
 | 两人互相等待 | 一方当天无可测输入 | 使用 Spike fixture 和 Fake IPC，不改变正式架构 |
+| Project switch 与 Agent 事务竞态 | 切换时仍有 pending Tool Call/Active Task，或切换导致 MCP reconnect | B2/B4 先提示；B1 确认后统一 Cancel 并等待 rollback/settle；Core close fail-closed；单 Core/MCP endpoint 跨切换保持不变 |
 | Windows 问题发现过晚 | Day 8 前未在 Windows 跑 smoke | Day 3 起每日运行最小 Windows smoke，Day 9 完整回归 |
 
 ---
 
 ## 13. Day 10 Definition of Done
 
-- [ ] PRD V1.8 P0 验收逐项记录。
+- [ ] PRD V1.18 P0 验收逐项记录。
 - [ ] TG-001～TG-010 正式回归可重复运行。
-- [ ] Windows 应用可启动、创建项目、关闭和重开。
+- [ ] Windows 应用可启动、创建项目、关闭和重开；Project A → B 切换不重启 Core/MCP/Agent。
+- [ ] 运行中 Agent execution/Active Task 时切换 Project 会先提示；确认后 Cancel + rollback + settle 完成才切换，拒绝或失败保持原 Project。
 - [ ] 首次生成与局部修改两条 E2E 通过。
 - [ ] Agent 只能通过 MCP 修改 Candidate。
 - [ ] Current/Candidate 试听、Accept 和 Reject 正确。
 - [ ] dirty Current、stale `scopeRevision` 和跨 Scope 持续事件均 fail-closed。
-- [ ] ABC、MIDI、WAV 只从 Current 导出。
-- [ ] WAV 进度、取消、尾音和失败安全通过。
-- [ ] API Key 未进入项目、Git、SQLite 或日志。
+- [ ] MIDI、WAV 只从 clean Current 导出，Candidate 不可导出。
+- [ ] 桌面 abcjs WAV 的资源加载、时长/尾音、可用取消语义和失败安全通过。
+- [ ] API Key 未进入项目、Git、Strands Session Storage 或日志。
 - [ ] `pnpm install --frozen-lockfile` 和 `pnpm check` 通过。
 - [ ] Windows 中文路径、长路径、文件占用和恢复 smoke test 通过。
 - [ ] Git 工作区 clean，演示工程与验收记录可复现。

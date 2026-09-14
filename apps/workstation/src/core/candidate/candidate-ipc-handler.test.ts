@@ -34,7 +34,7 @@ const task: TaskContextView = {
   scopeRevision: 0,
   state: 'editing',
   candidateState: 'active',
-  allowedOperations: ['replaceScopedMusic', 'updateGlobalMeter'],
+  allowedOperations: ['replaceScopedMusic', 'updateMusicalProperties'],
   trackIds: TRACK_IDS,
   createdAt: '2026-08-13T00:00:00.000Z',
 };
@@ -68,6 +68,7 @@ beforeEach(() => {
   fake = {
     startTask: vi.fn(() => Promise.resolve(task)),
     cancelTask: vi.fn(() => Promise.resolve(readyCandidate)),
+    cancelActiveTaskForAgentLoss: vi.fn(() => Promise.resolve(readyCandidate)),
     approveScopeExtension: vi.fn(() => Promise.resolve(expandedTask)),
     rejectScopeExtension: vi.fn(() => Promise.resolve(task)),
     acceptCandidate: vi.fn(() => Promise.resolve(committed)),
@@ -227,6 +228,30 @@ describe('CandidateIpcHandler', () => {
       {
         type: 'candidate.changed',
         requestId: 'request-cancel',
+        sequence: 2,
+        candidate: readyCandidate,
+      },
+    ]);
+  });
+
+  it('routes Agent process loss to authoritative Active Task cancellation', async () => {
+    const events = await handler.handle({
+      type: 'candidate.cancelActiveTaskForAgentLoss',
+      requestId: 'agent-exit-1',
+      projectId,
+    });
+
+    expect(fake.cancelActiveTaskForAgentLoss).toHaveBeenCalledWith(projectId);
+    expect(events).toEqual([
+      {
+        type: 'task.changed',
+        requestId: 'agent-exit-1',
+        sequence: 1,
+        task: undefined,
+      },
+      {
+        type: 'candidate.changed',
+        requestId: 'agent-exit-1',
         sequence: 2,
         candidate: readyCandidate,
       },

@@ -1,0 +1,417 @@
+import type { CandidateId, ProjectId, TaskId } from './domain.js';
+
+declare const agentSessionIdBrand: unique symbol;
+declare const agentExecutionIdBrand: unique symbol;
+
+export type AgentSessionId = string & {
+  readonly [agentSessionIdBrand]: true;
+};
+
+export type AgentExecutionId = string & {
+  readonly [agentExecutionIdBrand]: true;
+};
+
+export interface AgentSessionSummary {
+  readonly sessionId: AgentSessionId;
+  readonly projectId: ProjectId;
+  readonly createdAt: string;
+}
+
+export interface AgentConversationMessage {
+  readonly role: 'user' | 'assistant';
+  readonly text: string;
+}
+
+interface AgentCommandBase {
+  readonly requestId: string;
+  readonly projectId: ProjectId;
+}
+
+export type AgentCommand =
+  | (AgentCommandBase & {
+      readonly type: 'agent.session.list';
+    })
+  | (AgentCommandBase & {
+      readonly type: 'agent.session.create';
+    })
+  | (AgentCommandBase & {
+      readonly type: 'agent.session.open';
+      readonly sessionId: AgentSessionId;
+    })
+  | (AgentCommandBase & {
+      readonly type: 'agent.session.getActive';
+    })
+  | (AgentCommandBase & {
+      readonly type: 'agent.message.send';
+      readonly sessionId: AgentSessionId;
+      readonly task?: {
+        readonly taskId: TaskId;
+        readonly candidateId: CandidateId;
+      };
+      readonly text: string;
+    })
+  | (AgentCommandBase & {
+      readonly type: 'agent.execution.cancel';
+    })
+  | (AgentCommandBase & {
+      readonly type: 'agent.execution.state';
+    });
+
+export type AgentCommandResult =
+  | {
+      readonly type: 'agent.session.listed';
+      readonly requestId: string;
+      readonly sessions: readonly AgentSessionSummary[];
+    }
+  | {
+      readonly type: 'agent.session.created';
+      readonly requestId: string;
+      readonly session: AgentSessionSummary;
+    }
+  | {
+      readonly type: 'agent.session.opened';
+      readonly requestId: string;
+      readonly session: AgentSessionSummary;
+      readonly messages: readonly AgentConversationMessage[];
+    }
+  | {
+      readonly type: 'agent.session.active';
+      readonly requestId: string;
+      readonly session?: AgentSessionSummary;
+      readonly messages?: readonly AgentConversationMessage[];
+    }
+  | {
+      readonly type: 'agent.message.accepted';
+      readonly requestId: string;
+      readonly executionId: AgentExecutionId;
+    }
+  | {
+      readonly type: 'agent.execution.cancelAccepted';
+      readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.execution.stateReported';
+      readonly requestId: string;
+      readonly running: boolean;
+      readonly activeTask: boolean;
+    };
+
+interface AgentEventBase {
+  readonly projectId: ProjectId;
+  readonly sessionId: AgentSessionId;
+  readonly executionId: AgentExecutionId;
+}
+
+export type AgentEvent =
+  | (AgentEventBase & {
+      readonly type: 'agent.textDelta';
+      readonly text: string;
+    })
+  | (AgentEventBase & {
+      readonly type: 'agent.executionCompleted';
+    })
+  | (AgentEventBase & {
+      readonly type: 'agent.executionFailed';
+      readonly code: string;
+      readonly message: string;
+    })
+  | (AgentEventBase & {
+      readonly type: 'agent.executionCancelled';
+    });
+
+export type AgentProcessCommand =
+  | {
+      readonly type: 'agent.process.health';
+      readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.process.shutdown';
+      readonly requestId: string;
+    };
+
+export type AgentProcessEvent =
+  | { readonly type: 'agent.process.ready' }
+  | {
+      readonly type: 'agent.process.healthy';
+      readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.process.stopped';
+      readonly requestId: string;
+    }
+  | {
+      readonly type: 'agent.process.commandResult';
+      readonly result: AgentCommandResult;
+    }
+  | {
+      readonly type: 'agent.process.agentEvent';
+      readonly event: AgentEvent;
+    }
+  | {
+      readonly type: 'agent.process.commandFailed';
+      readonly requestId: string;
+      readonly code: string;
+      readonly message: string;
+    }
+  | {
+      readonly type: 'agent.process.fatal';
+      readonly code: string;
+      readonly message: string;
+    };
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const hasOnlyAllowedKeys = (
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean => {
+  const allowed = new Set([...required, ...optional]);
+  return (
+    required.every((key) => Object.hasOwn(value, key)) &&
+    Object.keys(value).every((key) => allowed.has(key))
+  );
+};
+
+const isUuid = (value: unknown): value is string =>
+  typeof value === 'string' && UUID_PATTERN.test(value);
+
+const isNonEmptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim().length > 0;
+
+const isSessionSummary = (value: unknown): value is AgentSessionSummary =>
+  isRecord(value) &&
+  hasOnlyAllowedKeys(value, ['sessionId', 'projectId', 'createdAt']) &&
+  isUuid(value.sessionId) &&
+  isUuid(value.projectId) &&
+  isNonEmptyString(value.createdAt);
+
+const isConversationMessage = (
+  value: unknown,
+): value is AgentConversationMessage =>
+  isRecord(value) &&
+  hasOnlyAllowedKeys(value, ['role', 'text']) &&
+  (value.role === 'user' || value.role === 'assistant') &&
+  typeof value.text === 'string';
+
+const isConversationMessages = (
+  value: unknown,
+): value is readonly AgentConversationMessage[] =>
+  Array.isArray(value) && value.every(isConversationMessage);
+
+const isCommandBase = (
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & {
+  readonly requestId: string;
+  readonly projectId: ProjectId;
+} => isNonEmptyString(value.requestId) && isUuid(value.projectId);
+
+export const isAgentCommand = (value: unknown): value is AgentCommand => {
+  if (!isRecord(value) || !isCommandBase(value)) {
+    return false;
+  }
+
+  switch (value.type) {
+    case 'agent.session.list':
+    case 'agent.session.create':
+    case 'agent.session.getActive':
+    case 'agent.execution.cancel':
+    case 'agent.execution.state':
+      return hasOnlyAllowedKeys(value, ['type', 'requestId', 'projectId']);
+    case 'agent.session.open':
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'requestId',
+          'projectId',
+          'sessionId',
+        ]) && isUuid(value.sessionId)
+      );
+    case 'agent.message.send':
+      return (
+        hasOnlyAllowedKeys(
+          value,
+          ['type', 'requestId', 'projectId', 'sessionId', 'text'],
+          ['task'],
+        ) &&
+        isUuid(value.sessionId) &&
+        (value.task === undefined ||
+          (isRecord(value.task) &&
+            hasOnlyAllowedKeys(value.task, ['taskId', 'candidateId']) &&
+            isUuid(value.task.taskId) &&
+            isUuid(value.task.candidateId))) &&
+        isNonEmptyString(value.text)
+      );
+    default:
+      return false;
+  }
+};
+
+export const isAgentCommandResult = (
+  value: unknown,
+): value is AgentCommandResult => {
+  if (!isRecord(value) || !isNonEmptyString(value.requestId)) {
+    return false;
+  }
+
+  switch (value.type) {
+    case 'agent.session.listed':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'sessions']) &&
+        Array.isArray(value.sessions) &&
+        value.sessions.every(isSessionSummary)
+      );
+    case 'agent.session.created':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'session']) &&
+        isSessionSummary(value.session)
+      );
+    case 'agent.session.opened':
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'requestId',
+          'session',
+          'messages',
+        ]) &&
+        isSessionSummary(value.session) &&
+        isConversationMessages(value.messages)
+      );
+    case 'agent.session.active':
+      return (
+        hasOnlyAllowedKeys(
+          value,
+          ['type', 'requestId'],
+          ['session', 'messages'],
+        ) &&
+        (value.session === undefined || isSessionSummary(value.session)) &&
+        (value.messages === undefined ||
+          isConversationMessages(value.messages)) &&
+        !(value.session === undefined && value.messages !== undefined)
+      );
+    case 'agent.message.accepted':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'executionId']) &&
+        isUuid(value.executionId)
+      );
+    case 'agent.execution.cancelAccepted':
+      return hasOnlyAllowedKeys(value, ['type', 'requestId']);
+    case 'agent.execution.stateReported':
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'requestId',
+          'running',
+          'activeTask',
+        ]) &&
+        typeof value.running === 'boolean' &&
+        typeof value.activeTask === 'boolean'
+      );
+    default:
+      return false;
+  }
+};
+
+export const isAgentEvent = (value: unknown): value is AgentEvent => {
+  if (
+    !isRecord(value) ||
+    !isUuid(value.projectId) ||
+    !isUuid(value.sessionId) ||
+    !isUuid(value.executionId)
+  ) {
+    return false;
+  }
+
+  switch (value.type) {
+    case 'agent.textDelta':
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'projectId',
+          'sessionId',
+          'executionId',
+          'text',
+        ]) && typeof value.text === 'string'
+      );
+    case 'agent.executionCompleted':
+    case 'agent.executionCancelled':
+      return hasOnlyAllowedKeys(value, [
+        'type',
+        'projectId',
+        'sessionId',
+        'executionId',
+      ]);
+    case 'agent.executionFailed':
+      return (
+        hasOnlyAllowedKeys(value, [
+          'type',
+          'projectId',
+          'sessionId',
+          'executionId',
+          'code',
+          'message',
+        ]) &&
+        isNonEmptyString(value.code) &&
+        isNonEmptyString(value.message)
+      );
+    default:
+      return false;
+  }
+};
+
+export const isAgentProcessCommand = (
+  value: unknown,
+): value is AgentProcessCommand =>
+  isRecord(value) &&
+  hasOnlyAllowedKeys(value, ['type', 'requestId']) &&
+  (value.type === 'agent.process.health' ||
+    value.type === 'agent.process.shutdown') &&
+  isNonEmptyString(value.requestId);
+
+export const isAgentProcessEvent = (
+  value: unknown,
+): value is AgentProcessEvent => {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  switch (value.type) {
+    case 'agent.process.ready':
+      return hasOnlyAllowedKeys(value, ['type']);
+    case 'agent.process.healthy':
+    case 'agent.process.stopped':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId']) &&
+        isNonEmptyString(value.requestId)
+      );
+    case 'agent.process.commandResult':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'result']) &&
+        isAgentCommandResult(value.result)
+      );
+    case 'agent.process.agentEvent':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'event']) &&
+        isAgentEvent(value.event)
+      );
+    case 'agent.process.commandFailed':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'requestId', 'code', 'message']) &&
+        isNonEmptyString(value.requestId) &&
+        isNonEmptyString(value.code) &&
+        isNonEmptyString(value.message)
+      );
+    case 'agent.process.fatal':
+      return (
+        hasOnlyAllowedKeys(value, ['type', 'code', 'message']) &&
+        isNonEmptyString(value.code) &&
+        isNonEmptyString(value.message)
+      );
+    default:
+      return false;
+  }
+};

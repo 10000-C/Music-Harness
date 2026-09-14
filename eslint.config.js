@@ -7,23 +7,44 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/dist/**',
       '**/build/**',
+      '**/out/**',
       '**/coverage/**',
       '**/.vite/**',
       '**/.turbo/**',
       '**/.agent-music/**',
       '**/.worktrees/**',
+      '**/.claude/**',
     ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
+    },
+  },
+  {
+    files: ['apps/workstation/src/renderer/**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        project: './apps/workstation/tsconfig.renderer.json',
+        projectService: false,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['apps/workstation/tests/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
   {

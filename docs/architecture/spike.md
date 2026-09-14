@@ -1352,7 +1352,9 @@ Provider Adapter 已通过本地 OpenAI-compatible fake Provider 验证流式 SS
 
 ### 3. 实现约束
 
-Provider Adapter 必须将 SSE 拼接、JSON 参数校验、超时、AbortSignal 和错误脱敏封装在自身 Interface 后；Agent Loop 不应理解 SSE frame。P0 继续只支持 Chat Completions，不增加 Responses API 双协议适配。
+> **历史说明：** 本 Spike 验证的是 Chat Completions Tool Call、流式、取消、超时和错误映射的可行性。其“自研 Provider Adapter / SSE 拼接”实现约束已被 Architecture V1.9 ADR-044 替代；正式 A4 直接使用 Strands 原生 OpenAI-compatible Chat Completions 能力与 Agent-side MCP Client，并以本 Spike 的行为断言作为回归标准。
+
+P0 继续只支持 Chat Completions，不增加 Responses API 双协议适配。
 
 ### 4. 证据索引
 
@@ -1449,7 +1451,7 @@ Spike-002 的 TG-001/TG-002 只用单音、单声部事件证明了 Canonicaliza
 
 - 从 Canonical `Q:1/4=N` 读取初始 Tempo，不使用 Meter 相关的 `getBpm()` 派生值；
 - 从显式事件 token 与 `L:` 独立计算 Tick 时值，不接受 Meter 改写音乐事件时长；
-- `updateGlobalMeter` 修改后验证 totalTicks、Note/Rest、Velocity、Tempo 和 Key 均不变；
+- `updateMusicalProperties` 修改后验证 totalTicks、Note/Rest、Velocity、Tempo 和 Key 均不变；
 - Global Meter 仅允许覆盖全部六轨的 `wholeProject` Scope，并重建 Standard MIDI Time Signature、Scope Mapping 与 TimelineViewModel。
 
 ### 7. 证据索引

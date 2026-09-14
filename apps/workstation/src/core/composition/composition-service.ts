@@ -8,14 +8,18 @@ import {
   compileComposition,
   type CompositionCompilation,
 } from './composition-pipeline.js';
+import {
+  resizeComposition,
+  type CompositionResizeResult,
+} from './composition-resize.js';
 import type { ValidationReport } from './composition-types.js';
 import { CompositionValidationError } from './composition-validation-error.js';
 import {
-  updateGlobalMeter,
-  type GlobalMeterUpdateResult,
-} from './global-meter.js';
+  updateMusicalProperties,
+  type MusicalPropertiesUpdate,
+  type MusicalPropertiesUpdateResult,
+} from './musical-properties.js';
 import { validateFinalMeterConsistency } from './meter-consistency.js';
-import type { GlobalMeterValue } from './meter-policy.js';
 import {
   getScopedComposition,
   type ScopedComposition,
@@ -43,6 +47,16 @@ export class CompositionPipeline {
 
   public compileCanonical(source: string): CompositionCompilation {
     return compileComposition(source);
+  }
+
+  public compileFinalCanonical(source: string): CompositionCompilation {
+    const compilation = this.compileCanonical(source);
+    const validation = this.validateFinalMeterConsistency(source);
+    const issue = validation.issues[0];
+    if (!validation.valid && issue !== undefined) {
+      throw new CompositionValidationError(issue);
+    }
+    return compilation;
   }
 
   public validateCanonical(source: string): ValidationReport {
@@ -75,11 +89,19 @@ export class CompositionPipeline {
     return replaceScopedMusic(compilation, scope, replacements);
   }
 
-  public updateGlobalMeter(
+  public resizeComposition(
     compilation: CompositionCompilation,
     scope: TaskScope,
-    meter: GlobalMeterValue,
-  ): GlobalMeterUpdateResult {
-    return updateGlobalMeter(compilation, scope, meter);
+    targetMeasureCount: number,
+  ): CompositionResizeResult {
+    return resizeComposition(compilation, scope, targetMeasureCount);
+  }
+
+  public updateMusicalProperties(
+    compilation: CompositionCompilation,
+    scope: TaskScope,
+    update: MusicalPropertiesUpdate,
+  ): MusicalPropertiesUpdateResult {
+    return updateMusicalProperties(compilation, scope, update);
   }
 }

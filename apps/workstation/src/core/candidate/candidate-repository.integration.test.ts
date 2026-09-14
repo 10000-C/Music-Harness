@@ -44,6 +44,24 @@ afterEach(async () => {
 });
 
 describe('CandidateGitRepository', { concurrent: false }, () => {
+  it('keeps Candidate authority LF-canonical after reopening a repository configured with autocrlf=true', async () => {
+    const current = await foundation.createProject(projectPath);
+    await foundation.closeProject();
+    await git(projectPath, 'config', 'core.autocrlf', 'true');
+
+    await foundation.openProject(projectPath);
+    const workspace = await repository.create(
+      projectPath,
+      candidateId,
+      current.currentRevision,
+    );
+    const authority = await repository.readAuthority(workspace);
+
+    expect(authority.compositionSource).not.toContain('\r\n');
+    expect(await git(projectPath, 'config', '--get', 'core.autocrlf')).toBe(
+      'false',
+    );
+  });
   it('creates one linked worktree from the requested Current revision', async () => {
     const current = await foundation.createProject(projectPath);
     const currentSnapshot = await foundation.readCleanCurrent();

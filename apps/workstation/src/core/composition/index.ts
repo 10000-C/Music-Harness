@@ -7,7 +7,8 @@ export { CompositionValidationError } from './composition-validation-error.js';
 export { CompositionPipeline } from './composition-service.js';
 export { compileComposition } from './composition-pipeline.js';
 export { createStandardMidiDocument } from './midi-document.js';
-export { updateGlobalMeter } from './global-meter.js';
+export { updateMusicalProperties } from './musical-properties.js';
+export { resizeComposition } from './composition-resize.js';
 export { createTimelineViewModel } from './timeline-view-model.js';
 export {
   SCOPE_MAPPING_PARSER_VERSION,
@@ -30,8 +31,12 @@ export type {
   ValidationReport,
 } from './composition-types.js';
 export type { CompositionCompilation } from './composition-pipeline.js';
+export type { CompositionResizeResult } from './composition-resize.js';
 export type { CanonicalizationResult } from './composition-service.js';
-export type { GlobalMeterUpdateResult } from './global-meter.js';
+export type {
+  MusicalPropertiesUpdate,
+  MusicalPropertiesUpdateResult,
+} from './musical-properties.js';
 export type { GlobalMeterValue } from './meter-policy.js';
 export type {
   ProtectedScopeEvent,

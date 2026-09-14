@@ -1,0 +1,55 @@
+import { defineConfig } from 'electron-vite';
+
+export default defineConfig({
+  main: {
+    build: {
+      externalizeDeps: false,
+      rollupOptions: {
+        input:
+          process.env.AGENT_MUSIC_INCLUDE_FAKE_SERVICES === '1'
+            ? {
+                index: 'src/main/index.ts',
+                'agent-service-entry': 'src/agent/agent-service-entry.ts',
+                'fake-service-entry': 'src/test-support/fake-service-entry.ts',
+                'project-service-entry':
+                  'src/core/project/project-service-entry.ts',
+              }
+            : {
+                index: 'src/main/index.ts',
+                'agent-service-entry': 'src/agent/agent-service-entry.ts',
+                'project-service-entry':
+                  'src/core/project/project-service-entry.ts',
+              },
+      },
+    },
+  },
+  preload: {
+    build: {
+      externalizeDeps: false,
+      rollupOptions: {
+        input: 'src/preload/index.ts',
+        output: { format: 'cjs', entryFileNames: '[name].cjs' },
+      },
+    },
+  },
+  renderer: {
+    root: 'src/renderer',
+    esbuild: {
+      jsx: 'automatic',
+    },
+    optimizeDeps: {
+      // Pre-bundle the renderer's static dependencies so the first page load
+      // does not trigger Vite's cold-start dependency re-optimization (which
+      // forces a full reload and renders blank in the Electron window).
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-dev-runtime',
+        'spessasynth_core',
+        'spessasynth_lib',
+        'midi-file',
+      ],
+    },
+  },
+});
