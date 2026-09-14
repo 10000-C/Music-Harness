@@ -62,6 +62,7 @@ export const createLiveAgentAdapter = ({
 
   const listeners = new Set<(current: LiveAgentState) => void>();
   const settledWaiters = new Set<() => void>();
+  const earlyExecutionEvents: AgentEvent[] = [];
 
   const setState = (patch: Partial<LiveAgentState>): void => {
     state = Object.freeze({ ...state, ...patch });
@@ -72,13 +73,17 @@ export const createLiveAgentAdapter = ({
 
   const handleAgentEvent = (event: AgentEvent): void => {
     if (event.projectId !== state.projectId) return;
-    if (
-      event.sessionId !== state.activeSession?.sessionId ||
-      !state.isExecuting ||
-      state.activeExecutionId === null ||
-      event.executionId !== state.activeExecutionId
-    )
+    if (event.sessionId !== state.activeSession?.sessionId) return;
+    if (!state.isExecuting) return;
+    if (state.activeExecutionId === null) {
+      // The Main/Agent transport can deliver the first text delta or terminal
+      // event before the request/accepted response reaches this adapter. Keep
+      // a small bounded buffer and replay it once the authoritative execution
+      // id is known; events for another execution are discarded on replay.
+      if (earlyExecutionEvents.length < 64) earlyExecutionEvents.push(event);
       return;
+    }
+    if (event.executionId !== state.activeExecutionId) return;
 
     switch (event.type) {
       case 'agent.textDelta':
@@ -283,6 +288,15 @@ export const createLiveAgentAdapter = ({
     text: string,
     task?: { taskId: TaskId; candidateId: CandidateId },
   ): Promise<void> => {
+    if (state.isExecuting) {
+      setState({
+        error: {
+          code: 'EXECUTION_IN_PROGRESS',
+          message: 'Wait for the current Agent operation to finish.',
+        },
+      });
+      return;
+    }
     if (state.activeSession === null) {
       setState({
         error: {
@@ -315,13 +329,21 @@ export const createLiveAgentAdapter = ({
 
       if (outcome.ok && outcome.result.type === 'agent.message.accepted') {
         setState({ activeExecutionId: outcome.result.executionId });
+        const buffered = earlyExecutionEvents.splice(0);
+        for (const event of buffered) {
+          if (event.executionId === outcome.result.executionId) {
+            handleAgentEvent(event);
+          }
+        }
       } else if (!outcome.ok) {
+        earlyExecutionEvents.length = 0;
         setState({
           isExecuting: false,
           error: { code: outcome.code, message: outcome.userMessage },
         });
       }
     } catch (error: unknown) {
+      earlyExecutionEvents.length = 0;
       setState({
         isExecuting: false,
         error: {
@@ -367,6 +389,7 @@ export const createLiveAgentAdapter = ({
   };
 
   const dispose = (): void => {
+    earlyExecutionEvents.length = 0;
     for (const waiter of [...settledWaiters]) waiter();
     listeners.clear();
     unsubscribeEvent();

@@ -29,6 +29,11 @@ import {
   type LiveCandidateState,
 } from './core-client/live-candidate-adapter.js';
 import {
+  createLiveGenerationPlanAdapter,
+  type LiveGenerationPlanAdapter,
+  type LiveGenerationPlanState,
+} from './core-client/live-generation-plan-adapter.js';
+import {
   createLiveAgentAdapter,
   type LiveAgentAdapter,
   type LiveAgentState,
@@ -40,13 +45,25 @@ import {
   type SourceAwarePlaybackAdapter,
 } from './opendaw-runtime/index.js';
 import type { PlaybackCommand } from './opendaw-runtime/types.js';
+import {
+  createAbcjsWavRenderer,
+  createCurrentExportAdapter,
+  type CurrentExportAdapter,
+} from './export/index.js';
 import { CompetitionAgentPanel } from './workspace/agent/competition-agent-panel.js';
 import { LiveAgentPanel } from './workspace/agent/live-agent-panel.js';
 import type { AgentSessionId } from '@agent-music/contracts';
 import { ArrangementMap } from './workspace/arrangement-map.js';
 import { CandidateStage } from './workspace/candidate-stage.js';
+import { ScopeExtensionStage } from './workspace/scope-extension-stage.js';
+import { GenerationPlanStage } from './workspace/generation-plan-stage.js';
+import { ProjectSwitchConfirmation } from './workspace/project-switch-confirmation.js';
 import { ConfirmationDialog } from './workspace/confirmation-dialog.js';
 import { competitionCandidateDetails } from './workspace/competition-demo-view-model.js';
+import {
+  SettingsModal,
+  type AgentSettings,
+} from './workspace/settings-modal.js';
 import { ExportCurrentView } from './workspace/export-current.js';
 import {
   exportCurrentSuggestedName,
@@ -661,7 +678,14 @@ const DemoApp = () => {
         activeView={activeView}
         projectName={projectName}
         currentLabel={currentLabel}
+        isSettingsConfigured={true}
         onViewChange={setActiveView}
+        onSwitchProject={() => {
+          setActiveView('studio');
+        }}
+        onOpenSettings={() => {
+          // Dummy for demo
+        }}
       />
 
       <main className="workspace-main" id="workspace-main">
@@ -846,12 +870,34 @@ const LiveProjectWorkspace = () => {
   const [candidateState, setCandidateState] =
     useState<LiveCandidateState | null>(null);
   const candidateAdapter = useRef<LiveCandidateAdapter | null>(null);
+  const [generationPlanState, setGenerationPlanState] = useState<LiveGenerationPlanState | null>(null);
+  const generationPlanAdapter = useRef<LiveGenerationPlanAdapter | null>(null);
   const [agentState, setAgentState] = useState<LiveAgentState | null>(null);
   const [agentPrompt, setAgentPrompt] = useState('');
   const agentAdapter = useRef<LiveAgentAdapter | null>(null);
+  const exportAdapter = useRef<CurrentExportAdapter | null>(null);
+  const exportAbortController = useRef<AbortController | null>(null);
   const [selectedExportPaths, setSelectedExportPaths] = useState<
     Partial<Record<ExportCurrentFormat, string>>
   >({});
+  const [exportDeliveryStates, setExportDeliveryStates] = useState<
+    Partial<
+      Record<
+        ExportCurrentFormat,
+        'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled'
+      >
+    >
+  >({});
+
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    purpose: 'create' | 'open';
+    path: string;
+  } | null>(null);
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings | undefined>(
+    undefined,
+  );
   const [serviceSnapshot, setServiceSnapshot] =
     useState<ServiceFleetSnapshot | null>(null);
 
@@ -878,6 +924,11 @@ const LiveProjectWorkspace = () => {
   }, []);
 
   useEffect(() => {
+    void window.agentMusic?.readSettings().then((settings) => {
+      if (settings !== null) {
+        setAgentSettings(settings);
+      }
+    });
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -982,6 +1033,28 @@ const LiveProjectWorkspace = () => {
 
   useEffect(() => {
     const bridge = window.agentMusic;
+    const previous = generationPlanAdapter.current;
+    generationPlanAdapter.current = null;
+    previous?.dispose();
+    setGenerationPlanState(null);
+    if (project?.state !== 'ready' || bridge === undefined) return undefined;
+
+    const adapter = createLiveGenerationPlanAdapter({
+      projectId: project.projectId,
+      bridge,
+    });
+    generationPlanAdapter.current = adapter;
+    setGenerationPlanState(adapter.getState());
+    const unsubscribe = adapter.subscribe(setGenerationPlanState);
+    return () => {
+      unsubscribe();
+      adapter.dispose();
+      if (generationPlanAdapter.current === adapter) generationPlanAdapter.current = null;
+    };
+  }, [project?.projectId, project?.state]);
+
+  useEffect(() => {
+    const bridge = window.agentMusic;
     const previous = agentAdapter.current;
     agentAdapter.current = null;
     previous?.dispose();
@@ -1001,6 +1074,29 @@ const LiveProjectWorkspace = () => {
       unsubscribe();
       adapter.dispose();
       if (agentAdapter.current === adapter) agentAdapter.current = null;
+    };
+  }, [project?.projectId, project?.state, project?.currentRevision]);
+
+  useEffect(() => {
+    exportAbortController.current?.abort();
+    exportAbortController.current = null;
+    exportAdapter.current = null;
+    setExportDeliveryStates({});
+
+    const bridge = window.agentMusic;
+    if (project?.state !== 'ready' || bridge === undefined) return undefined;
+
+    const adapter = createCurrentExportAdapter({
+      projectId: project.projectId,
+      preparation: bridge,
+      files: bridge,
+      wavRenderer: createAbcjsWavRenderer(),
+    });
+    exportAdapter.current = adapter;
+    return () => {
+      exportAbortController.current?.abort();
+      exportAbortController.current = null;
+      if (exportAdapter.current === adapter) exportAdapter.current = null;
     };
   }, [project?.projectId, project?.state]);
 
@@ -1134,13 +1230,79 @@ const LiveProjectWorkspace = () => {
         [format]: chosen.path,
       }));
       setMessage(
-        'Destination saved. Export will become available when A5 publishes the verified Current input.',
+        'Destination saved. Start the export when you are ready.',
       );
     },
     [project],
   );
 
   const coreReady = serviceSnapshot?.core === 'ready';
+
+  const startExport = useCallback(
+    async (format: ExportCurrentFormat) => {
+      if (format === 'abc') {
+        setMessage(
+          'Canonical ABC is an internal format and cannot be exported.',
+        );
+        return;
+      }
+      const path = selectedExportPaths[format];
+      if (path === undefined) {
+        setMessage('Choose an export destination first.');
+        return;
+      }
+      const adapter = exportAdapter.current;
+      if (adapter === null) {
+        setExportDeliveryStates((current) => ({
+          ...current,
+          [format]: 'failed',
+        }));
+        setMessage(
+          'Current export is unavailable until the desktop bridge is ready.',
+        );
+        return;
+      }
+      if (exportAbortController.current !== null) {
+        setMessage('Another Current export is already in progress.');
+        return;
+      }
+
+      const controller = new AbortController();
+      exportAbortController.current = controller;
+      setExportDeliveryStates((current) => ({
+        ...current,
+        [format]: 'preparing',
+      }));
+      const operation = adapter.exportCurrent(format, path, controller.signal);
+      setExportDeliveryStates((current) => ({
+        ...current,
+        [format]: 'exporting',
+      }));
+      try {
+        const outcome = await operation;
+        if (!mounted.current) return;
+        if (outcome.ok) {
+          setExportDeliveryStates((current) => ({
+            ...current,
+            [format]: 'completed',
+          }));
+          setMessage(`${format.toUpperCase()} exported to ${outcome.path}.`);
+        } else {
+          setExportDeliveryStates((current) => ({
+            ...current,
+            [format]:
+              outcome.code === 'EXPORT_CANCELLED' ? 'cancelled' : 'failed',
+          }));
+          setMessage(outcome.userMessage);
+        }
+      } finally {
+        if (exportAbortController.current === controller) {
+          exportAbortController.current = null;
+        }
+      }
+    },
+    [selectedExportPaths],
+  );
 
   const selectAndDispatch = useCallback(
     async (purpose: 'create' | 'open' | 'saveAs') => {
@@ -1161,6 +1323,12 @@ const LiveProjectWorkspace = () => {
         return;
       }
       if (chosen.cancelled || chosen.path === undefined) return;
+
+      if ((purpose === 'open' || purpose === 'create') && project !== null) {
+        setPendingSwitch({ purpose, path: chosen.path });
+        return;
+      }
+
       const requestId = liveRequestId(purpose);
       await dispatch(
         purpose === 'create'
@@ -1170,7 +1338,7 @@ const LiveProjectWorkspace = () => {
             : { type: 'project.saveAs', requestId, targetPath: chosen.path },
       );
     },
-    [dispatch],
+    [dispatch, project],
   );
 
   const projectName =
@@ -1192,12 +1360,78 @@ const LiveProjectWorkspace = () => {
     timeline === null || playback === null
       ? 0
       : secondsAtTick(timeline, playback.positionTick);
+  const generationPlan = generationPlanState?.operation ?? null;
+  const pendingGenerationPlan =
+    generationPlan !== null && generationPlan.state === 'pending'
+      ? generationPlan
+      : null;
 
   return (
     <div
       className="workstation-shell live-project-workspace"
       aria-live="polite"
     >
+      {pendingSwitch !== null && project !== null && (
+        <ProjectSwitchConfirmation
+          source={project.projectId}
+          target={pendingSwitch.path}
+          sourceName={projectName}
+          targetName={displayName(pendingSwitch.path)}
+          canSuspend={false}
+          activeExecution={agentState?.isExecuting ?? false}
+          activeTask={
+            generationPlanState?.operation?.state === 'pending' ||
+            (candidateState?.task !== null && candidateState?.task !== undefined)
+          }
+          onConfirm={() => {
+            void (async () => {
+              const requestId = liveRequestId(pendingSwitch.purpose);
+              await dispatch(
+                pendingSwitch.purpose === 'create'
+                  ? { type: 'project.create', requestId, projectPath: pendingSwitch.path }
+                  : { type: 'project.open', requestId, projectPath: pendingSwitch.path }
+              );
+              setActiveView('studio');
+              setPendingSwitch(null);
+            })();
+          }}
+          onCancel={() => {
+            setPendingSwitch(null);
+          }}
+        />
+      )}
+      {isSettingsOpen && (
+        <SettingsModal
+          initialSettings={agentSettings}
+          onSave={(settings) => {
+            void (async () => {
+              setBusy(true);
+              try {
+                if (window.agentMusic) {
+                  const result = await window.agentMusic.writeSettings(settings);
+                  if (result.ok) {
+                    setAgentSettings(settings);
+                    setIsSettingsOpen(false);
+                  } else {
+                    setMessage(
+                      `Failed to save settings: ${result.userMessage ?? 'Unknown error'}`,
+                    );
+                  }
+                } else {
+                  // Fallback for browser mock
+                  setAgentSettings(settings);
+                  setIsSettingsOpen(false);
+                }
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+          onClose={() => {
+            setIsSettingsOpen(false);
+          }}
+        />
+      )}
       <a className="skip-link" href="#workspace-main">
         Skip to workspace
       </a>
@@ -1206,7 +1440,17 @@ const LiveProjectWorkspace = () => {
         projectName={projectName}
         currentLabel={currentLabel}
         projectOpen={project !== null}
+        busy={busy}
+        isSettingsConfigured={
+          agentSettings !== undefined && agentSettings.apiKey.trim() !== ''
+        }
         onViewChange={setActiveView}
+        onSwitchProject={() => {
+          void selectAndDispatch('open');
+        }}
+        onOpenSettings={() => {
+          setIsSettingsOpen(true);
+        }}
         availableViews={project === null ? ['studio'] : ['studio', 'export']}
       />
       <main className="workspace-main" id="workspace-main">
@@ -1289,10 +1533,14 @@ const LiveProjectWorkspace = () => {
             projectName={projectName}
             currentRevision={project?.currentRevision ?? null}
             currentReady={project?.state === 'ready'}
-            playbackInputReady={playable}
+            playbackInputReady={project?.state === 'ready'}
             selectedPaths={selectedExportPaths}
+            exportStates={exportDeliveryStates}
             onChoosePath={(format) => {
               void chooseExportPath(format);
+            }}
+            onStartExport={(format) => {
+              void startExport(format);
             }}
           />
         ) : (
@@ -1347,7 +1595,75 @@ const LiveProjectWorkspace = () => {
               </section>
             ) : (
               <>
-                {candidateState?.status === 'ready' && (
+                {pendingGenerationPlan !== null ? (
+                  <GenerationPlanStage
+                    operation={pendingGenerationPlan}
+                    timeline={timeline}
+                    busy={busy}
+                    onApprove={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await generationPlanAdapter.current?.approve();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to approve plan.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                    onReject={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await generationPlanAdapter.current?.reject();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to reject plan.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                  />
+                ) : candidateState?.pendingScopeExtension ? (
+                  <ScopeExtensionStage
+                    pendingScopeExtension={candidateState.pendingScopeExtension}
+                    timeline={timeline}
+                    busy={busy}
+                    onApprove={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await candidateAdapter.current?.approveScopeExtension();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to approve scope extension.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                    onReject={() => {
+                      void (async () => {
+                        try {
+                          setBusy(true);
+                          await candidateAdapter.current?.rejectScopeExtension();
+                        } catch (error: unknown) {
+                          setMessage(
+                            error instanceof Error ? error.message : 'Failed to reject scope extension.',
+                          );
+                        } finally {
+                          setBusy(false);
+                        }
+                      })();
+                    }}
+                  />
+                ) : candidateState?.status === 'ready' ? (
                   <CandidateStage
                     title="Candidate ready to review"
                     details={undefined}
@@ -1391,7 +1707,7 @@ const LiveProjectWorkspace = () => {
                     onAccept={() => void resolveCandidate('accept')}
                     onReject={() => void resolveCandidate('reject')}
                   />
-                )}
+                ) : null}
                 <section className="utility-view" aria-label="Project controls">
                   <h2>{projectName}</h2>
                   <p>{message}</p>

@@ -151,11 +151,16 @@ p {
 }
 
 .brand-lockup > span:last-child,
-.workspace-profile > span:last-child,
-.project-card > span {
+.workspace-settings-trigger__info,
+.project-card__info {
   display: flex;
+  flex: 1;
   min-width: 0;
   flex-direction: column;
+}
+
+.workspace-settings-trigger__info {
+  padding-right: 12px;
 }
 
 .brand-lockup strong {
@@ -165,11 +170,14 @@ p {
 }
 
 .brand-lockup small,
-.workspace-profile small,
+.workspace-settings-trigger small,
 .project-card small {
   margin-top: 1px;
   color: var(--quiet);
   font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-section {
@@ -211,6 +219,16 @@ p {
   transform: scale(0.98);
 }
 
+.project-card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.project-card:disabled:hover {
+  background: transparent;
+}
+
 .project-card img {
   width: 42px;
   height: 42px;
@@ -219,8 +237,46 @@ p {
   border-radius: 9px;
 }
 
+.project-card__info {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.project-card__action {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.project-card:hover .project-card__action {
+  color: #f7f4fb;
+  background: rgba(255, 255, 255, 0.09);
+  transform: translateY(-1px);
+}
+
+.project-card:disabled .project-card__action,
+.project-card:disabled:hover .project-card__action {
+  color: rgba(255, 255, 255, 0.2);
+  background: transparent;
+  transform: none;
+}
+
 .project-card strong,
-.workspace-profile strong {
+.workspace-settings-trigger strong {
   overflow: hidden;
   font-size: 10px;
   font-weight: 600;
@@ -271,27 +327,63 @@ p {
   font-size: 12px;
 }
 
-.workspace-profile {
+.workspace-settings-trigger {
   display: flex;
   align-items: center;
   gap: 11px;
   margin: auto 15px 24px;
   padding: 11px 12px;
   color: var(--text);
-  background: #15191f;
-  border: 1px solid #252b34;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
 }
 
-.workspace-profile__avatar {
+.workspace-settings-trigger:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.workspace-settings-trigger:active {
+  transform: scale(0.98);
+}
+
+.workspace-settings-trigger__icon {
   display: grid;
   width: 33px;
   height: 33px;
   flex: 0 0 33px;
   place-items: center;
-  color: transparent;
-  background: #6f78ff;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 50%;
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.1);
+}
+
+.workspace-settings-trigger__status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.workspace-settings-trigger__status--ready {
+  background: #38d39f;
+  box-shadow: 0 0 6px rgba(56, 211, 159, 0.4);
+}
+
+.workspace-settings-trigger__status--missing {
+  background: #ffb86c;
+  box-shadow: 0 0 6px rgba(255, 184, 108, 0.4);
 }
 
 /* Center workspace */
@@ -3407,7 +3499,7 @@ body {
 
 .sidebar-eyebrow,
 .project-card small,
-.workspace-profile small {
+.workspace-settings-trigger small {
   color: #878393;
   font-size: 9px;
   letter-spacing: 0.045em;
@@ -3439,7 +3531,7 @@ body {
   border-color: rgba(185, 157, 255, 0.18);
 }
 
-.workspace-profile {
+.workspace-settings-trigger {
   margin: auto 13px 17px;
   padding: 10px;
   background: rgba(255, 255, 255, 0.035);
@@ -6723,7 +6815,7 @@ button:active {
 }
 
 /* 3. Strip heavy container from Local User profile */
-.workspace-profile {
+.workspace-settings-trigger {
   background: transparent !important;
   border: none !important;
   padding: 10px 18px !important;
@@ -6822,4 +6914,418 @@ textarea,
       0 0 14px rgba(0, 229, 255, 0.55),
       inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
   }
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: FIX NATIVE WINDOW DRAG (WCO)
+   ========================================================================== */
+
+/* 1. Make the main workspace container draggable. 
+   Because Impeccable Phase 20 changed .project-header to a floating pill with a 16px top margin,
+   the top 16px of the window edge fell back to .workspace-main which was not draggable. */
+.workspace-main {
+  -webkit-app-region: drag;
+}
+
+/* 2. Ensure ExportCurrent is no-drag so its contents are fully interactive */
+.export-current {
+  -webkit-app-region: no-drag;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: FIX NATIVE WINDOW DRAG (SIDEBARS)
+   ========================================================================== */
+
+/* 1. Make left sidebar and right agent panel draggable to support their top paddings */
+.project-sidebar,
+.agent-panel,
+.agent-chat__header {
+  -webkit-app-region: drag;
+}
+
+/* 2. Exempt their interactive content regions from inheriting drag */
+.sidebar-section,
+.workspace-settings-trigger,
+.agent-chat__messages,
+.agent-composer,
+.agent-panel__tabs,
+.agent-panel__content,
+select {
+  -webkit-app-region: no-drag;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: FIX NATIVE WINDOW DRAG (EMPTY STATE TOP BAR)
+   ========================================================================== */
+
+/* 1. In the Empty State, the workspace-content takes 100% height and has no-drag, 
+      blocking the drag region across the whole screen.
+      We add a dedicated 48px invisible drag bar at the very top of the window just for the empty state. */
+.workspace-main:has(.project-empty-state)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  -webkit-app-region: drag;
+  z-index: 100;
+}
+
+/* ==========================================================================
+   IMPECCABLE OVERRIDES: WINDOW CONTROLS OVERLAY (WCO) SAFE AREA IN EXPORT
+   ========================================================================== */
+
+/* 1. When the right Agent Panel is hidden in Export view, .workspace-main spans to the right edge.
+      Give .project-header a 150px right clearance so it never collides with or sits under WCO buttons. */
+.workstation-shell:has(.export-current) .project-header {
+  width: calc(100% - 174px) !important;
+  max-width: 1400px !important;
+  margin: 16px 150px 16px auto !important;
+}
+
+/* 2. Hide redundant "Export" button from header when user is already on the Export page */
+.workstation-shell:has(.export-current) .project-header__actions button {
+  display: none !important;
+}
+
+/* ==========================================================================
+   COMPONENT DEDICATED STYLES: SCOPE, EXPORT, MODAL, CONFIRMATION
+   ========================================================================== */
+
+.brand-lockup__logo {
+  width: 28px;
+  height: 28px;
+  transform: scale(2.2);
+  object-fit: contain;
+  filter: invert(1);
+}
+
+.candidate-stage__scope {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #cfc4de;
+  line-height: 1.5;
+}
+
+.candidate-stage__scope strong {
+  color: #ede7f6;
+}
+
+.export-current__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-status {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #a488ff;
+}
+
+.export-status--completed {
+  color: #38d39f;
+}
+
+.export-status--failed {
+  color: #ff5c77;
+}
+
+.export-status--preparing,
+.export-status--exporting {
+  color: #a488ff;
+}
+
+.export-status--cancelled {
+  color: #a09aa9;
+}
+
+.workstation-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(8, 6, 12, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+.confirmation-dialog__content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.confirmation-dialog__details {
+  margin: 12px 0 4px;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.confirmation-dialog__detail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.confirmation-dialog__label {
+  color: rgba(235, 230, 245, 0.55);
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 42px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.confirmation-dialog__value {
+  color: #ede7f6;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmation-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.settings-dialog {
+  width: min(480px, 100%);
+  padding: 32px;
+  background: rgba(22, 20, 28, 0.45);
+  backdrop-filter: blur(48px) saturate(160%);
+  -webkit-backdrop-filter: blur(48px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 24px;
+  box-shadow: 0 32px 96px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.08);
+  animation: settings-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes settings-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.settings-dialog__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.settings-dialog__eyebrow {
+  display: block;
+  color: #a78bfa;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.settings-dialog__header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.settings-dialog__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 99px;
+}
+
+.settings-dialog__status.is-ready {
+  color: #38d39f;
+  background: rgba(56, 211, 159, 0.1);
+  border: 1px solid rgba(56, 211, 159, 0.25);
+  box-shadow: 0 0 12px rgba(56, 211, 159, 0.15);
+}
+
+.settings-dialog__status.is-ready .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38d39f;
+  box-shadow: 0 0 8px #38d39f;
+}
+
+.settings-dialog__status.is-warning {
+  color: #ffb86c;
+  background: rgba(255, 184, 108, 0.1);
+  border: 1px solid rgba(255, 184, 108, 0.25);
+  box-shadow: 0 0 12px rgba(255, 184, 108, 0.15);
+}
+
+.settings-dialog__status.is-warning .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffb86c;
+  box-shadow: 0 0 8px #ffb86c;
+}
+
+.settings-dialog__description {
+  margin: 0 0 28px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(235, 230, 245, 0.65);
+}
+
+.settings-dialog__description code {
+  padding: 3px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: #cfc4de;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 24px;
+}
+
+.settings-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-form__field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(235, 230, 245, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-form__field select,
+.settings-form__field input[type='text'],
+.settings-form__field input[type='password'] {
+  height: 42px;
+  padding: 0 14px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top-color: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-form__field select:focus,
+.settings-form__field input:focus {
+  outline: none;
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(167, 139, 250, 0.6);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(167, 139, 250, 0.2);
+}
+
+.settings-form__field small {
+  font-size: 12px;
+  color: rgba(235, 230, 245, 0.45);
+  margin-top: 4px;
+}
+
+.settings-form__error {
+  color: #ffb86c !important;
+  font-weight: 500;
+}
+
+.settings-form__input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settings-form__input-with-icon input {
+  width: 100%;
+  padding-right: 44px;
+}
+
+.settings-form__input-with-icon .icon-action {
+  position: absolute;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  color: rgba(235, 230, 245, 0.5);
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.settings-form__input-with-icon .icon-action:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.settings-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-dialog__actions button {
+  height: 42px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-dialog__actions .ghost-action {
+  background: transparent;
+  border: none;
+  color: rgba(235, 230, 245, 0.6);
+  padding: 0 16px;
+}
+
+.settings-dialog__actions .ghost-action:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.settings-dialog__actions .primary-action {
+  padding: 0 24px;
 }

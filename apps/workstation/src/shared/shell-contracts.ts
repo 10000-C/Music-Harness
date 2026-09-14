@@ -31,6 +31,20 @@ import {
   type AgentCommand,
   type AgentEvent,
 } from '@agent-music/contracts';
+export {
+  isCoreOperationEventNotification,
+  isCoreOperationStateSnapshot,
+  isOperationControlCommand,
+  isOperationControlResult,
+  isOperationStateResult,
+  isOperationView,
+} from './operation-bridge.js';
+export {
+  isExportFileWriteCommand,
+  isExportFileWriteResult,
+  isExportPreparationResult,
+  isPreparedCurrentExport,
+} from './export-bridge.js';
 
 export const shellIpcChannels = {
   snapshot: 'shell:snapshot',
@@ -46,6 +60,13 @@ export const shellIpcChannels = {
   agent: 'shell:agent',
   agentEvent: 'shell:agent:event',
   candidateEvent: 'shell:candidate:event',
+  operation: 'shell:operation',
+  operationState: 'shell:operation:state',
+  operationEvent: 'shell:operation:event',
+  exportPrepare: 'shell:export:prepare',
+  exportWrite: 'shell:export:write',
+  settingsRead: 'shell:settings:read',
+  settingsWrite: 'shell:settings:write',
 } as const;
 
 export type ProjectDirectoryPurpose = 'create' | 'open' | 'saveAs';

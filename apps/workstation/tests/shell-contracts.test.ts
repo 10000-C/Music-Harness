@@ -8,6 +8,12 @@ import {
   isCoreCandidateStateResponse,
 } from '../src/shared/candidate-bridge.js';
 import { isMainToServiceMessage } from '../src/shared/service-lifecycle.js';
+import {
+  isCoreOperationEventNotification,
+  isOperationControlCommand,
+  isOperationControlResult,
+  isOperationStateResult,
+} from '../src/shared/operation-bridge.js';
 
 const projectId = '00000000-0000-4000-8000-000000000301';
 const candidateId = '00000000-0000-4000-8000-000000000302';
@@ -164,5 +170,56 @@ describe('shell contracts', () => {
         },
       }),
     ).toBe(true);
+  });
+
+  it('validates Operation state and control payloads before exposing them to Renderer', () => {
+    const operation = {
+      operationId: 'operation-1',
+      type: 'generationPlan' as const,
+      state: 'pending' as const,
+      createdAt: '2026-09-14T00:00:00.000Z',
+      summary: 'Generate a new chorus',
+      scope: {
+        type: 'wholeProject' as const,
+        trackIds: ['track.drums'] as const,
+      },
+    };
+    const state = {
+      projectId,
+      sequence: 6,
+      operations: [operation],
+    };
+    expect(isOperationStateResult({ ok: true, state })).toBe(true);
+    expect(
+      isOperationControlCommand({
+        type: 'operation.resolve',
+        protocolVersion: 1,
+        requestId: 'resolve-1',
+        operationId: operation.operationId,
+        decision: 'approve',
+      }),
+    ).toBe(true);
+    expect(isOperationControlResult({ ok: true, operation })).toBe(true);
+    expect(
+      isCoreOperationEventNotification({
+        type: 'operationState.event',
+        protocolVersion: 1,
+        projectId,
+        sequence: 7,
+        operation,
+      }),
+    ).toBe(true);
+    expect(
+      isOperationStateResult({
+        ok: true,
+        state: { ...state, operations: [{ operationId: 'bad' }] },
+      }),
+    ).toBe(false);
+    expect(
+      isOperationControlResult({
+        ok: true,
+        operation: { ...operation, state: 'pending', summary: 42 },
+      }),
+    ).toBe(false);
   });
 });

@@ -35,6 +35,117 @@ const createFakeBridge = () => {
 };
 
 describe('LiveAgentAdapter', () => {
+  it('buffers an early Agent event until the accepted execution id is known', async () => {
+    const { bridge, dispatchAgent, emit } = createFakeBridge();
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.session.active',
+        requestId: 'req-active',
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
+        messages: [],
+      },
+    });
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-list',
+        sessions: [],
+      },
+    });
+    let accept!: (value: unknown) => void;
+    dispatchAgent.mockReturnValueOnce(
+      new Promise((resolve) => {
+        accept = resolve;
+      }),
+    );
+
+    const adapter = createLiveAgentAdapter({ projectId, bridge });
+    await adapter.initialize();
+    const sending = adapter.sendMessage('Keep the first response');
+    emit({
+      type: 'agent.textDelta',
+      projectId,
+      sessionId,
+      executionId,
+      text: 'Buffered response',
+    });
+    emit({
+      type: 'agent.executionCompleted',
+      projectId,
+      sessionId,
+      executionId,
+    });
+
+    accept({
+      ok: true,
+      result: {
+        type: 'agent.message.accepted',
+        requestId: 'req-send',
+        executionId,
+      },
+    });
+    await sending;
+
+    expect(adapter.getState().isExecuting).toBe(false);
+    expect(adapter.getState().messages).toEqual([
+      { role: 'user', text: 'Keep the first response' },
+      { role: 'assistant', text: 'Buffered response' },
+    ]);
+  });
+
+  it('rejects re-entrant messages while an execution is active', async () => {
+    const { bridge, dispatchAgent } = createFakeBridge();
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.session.active',
+        requestId: 'req-active',
+        session: {
+          sessionId,
+          projectId,
+          createdAt: '2026-09-11T00:00:00.000Z',
+        },
+        messages: [],
+      },
+    });
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.session.listed',
+        requestId: 'req-list',
+        sessions: [],
+      },
+    });
+    dispatchAgent.mockResolvedValueOnce({
+      ok: true,
+      result: {
+        type: 'agent.message.accepted',
+        requestId: 'req-send',
+        executionId,
+      },
+    });
+
+    const adapter = createLiveAgentAdapter({ projectId, bridge });
+    await adapter.initialize();
+    await adapter.sendMessage('First request');
+    await adapter.sendMessage('Second request');
+
+    expect(dispatchAgent).toHaveBeenCalledTimes(3);
+    expect(adapter.getState().messages).toEqual([
+      { role: 'user', text: 'First request' },
+    ]);
+    expect(adapter.getState().error).toEqual({
+      code: 'EXECUTION_IN_PROGRESS',
+      message: 'Wait for the current Agent operation to finish.',
+    });
+  });
+
   it('initializes by opening active session and recovering conversation messages', async () => {
     const { bridge, dispatchAgent } = createFakeBridge();
     dispatchAgent.mockResolvedValueOnce({

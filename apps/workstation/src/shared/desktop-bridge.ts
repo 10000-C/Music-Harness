@@ -1,3 +1,4 @@
+import type { AgentSettings } from './settings-bridge.js';
 import type { ServiceKind } from '../shared/service-lifecycle.js';
 import type { ServiceFleetSnapshot } from './service-status.js';
 import type {
@@ -17,6 +18,12 @@ import type {
   PlaybackSnapshotSource,
 } from './playback-bridge.js';
 import type { CoreCandidateEventNotification } from './candidate-bridge.js';
+import type { LiveOperationBridge } from './operation-bridge.js';
+import type {
+  ExportFileWriteCommand,
+  ExportFileWriteResult,
+  ExportPreparationResult,
+} from './export-bridge.js';
 import type {
   AgentCommand,
   AgentEvent,
@@ -24,7 +31,7 @@ import type {
   ProjectId,
   ProjectCommand,
 } from '@agent-music/contracts';
-export interface DesktopBridge {
+export interface DesktopBridge extends LiveOperationBridge {
   getServiceSnapshot(): Promise<ServiceFleetSnapshot>;
   restartService(service: ServiceKind): Promise<CommandResult>;
   onServiceSnapshot(
@@ -47,6 +54,12 @@ export interface DesktopBridge {
     projectId: ProjectId,
     source: PlaybackSnapshotSource,
   ): Promise<PlaybackSnapshotResult>;
+  prepareCurrentExport(): Promise<ExportPreparationResult>;
+  writeCurrentExport(
+    command: ExportFileWriteCommand,
+  ): Promise<ExportFileWriteResult>;
+  readSettings(): Promise<AgentSettings | null>;
+  writeSettings(settings: AgentSettings): Promise<CommandResult>;
 }
 declare global {
   interface Window {
