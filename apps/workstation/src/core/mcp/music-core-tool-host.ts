@@ -383,13 +383,16 @@ export class MusicCoreToolHost {
     }
   }
 
-  private getOperation(operationId: OperationId): OperationView {
+  private async getOperation(operationId: OperationId): Promise<OperationView> {
     const record = this.operations.get(operationId);
     if (record === undefined) {
       throw new CandidateError(
         'OPERATION_NOT_FOUND',
         'Operation does not exist in the current Core runtime',
       );
+    }
+    if (record.phase === 'committing') {
+      await record.commitPromise;
     }
     return this.toOperationView(record);
   }

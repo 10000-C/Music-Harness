@@ -49,7 +49,7 @@ const startFakeOpenAi = async (expectedSkill: string) => {
       if (toolCall !== undefined) {
         response.write(
           `data: ${JSON.stringify({
-            id: `chatcmpl-${index}`,
+            id: `chatcmpl-${String(index)}`,
             object: 'chat.completion.chunk',
             created: index,
             model: 'test-model',
@@ -77,7 +77,7 @@ const startFakeOpenAi = async (expectedSkill: string) => {
         );
         response.write(
           `data: ${JSON.stringify({
-            id: `chatcmpl-${index}`,
+            id: `chatcmpl-${String(index)}`,
             object: 'chat.completion.chunk',
             created: index,
             model: 'test-model',
@@ -88,7 +88,7 @@ const startFakeOpenAi = async (expectedSkill: string) => {
       } else {
         response.write(
           `data: ${JSON.stringify({
-            id: `chatcmpl-${index}`,
+            id: `chatcmpl-${String(index)}`,
             object: 'chat.completion.chunk',
             created: index,
             model: 'test-model',
@@ -106,7 +106,7 @@ const startFakeOpenAi = async (expectedSkill: string) => {
         );
         response.write(
           `data: ${JSON.stringify({
-            id: `chatcmpl-${index}`,
+            id: `chatcmpl-${String(index)}`,
             object: 'chat.completion.chunk',
             created: index,
             model: 'test-model',
@@ -175,12 +175,10 @@ describe('music style skills Strands tool loop', () => {
       )) {
         if (
           typeof event === 'object' &&
-          event !== null &&
           'type' in event &&
           event.type === 'afterToolCallEvent' &&
           'toolUse' in event &&
           typeof event.toolUse === 'object' &&
-          event.toolUse !== null &&
           'name' in event.toolUse &&
           typeof event.toolUse.name === 'string'
         ) {

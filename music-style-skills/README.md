@@ -54,6 +54,16 @@ When the user cites an artist or track, translate the reference into craft varia
 
 The Agent runtime should discover these directories as individual skills and expose only their metadata until a skill is invoked. The skill provides arranging knowledge; project inspection and modification remain the responsibility of the Agent's music tools.
 
+## Verification and quality gate
+
+Any changes or additions to Agent Skills must pass the full workspace gate:
+
+```bash
+pnpm check
+```
+
+Do not rely only on package-local test/typecheck (e.g. `pnpm --filter @agent-music/agent test`), as workspace-level ESLint rules (such as `restrict-template-expressions`, `no-unnecessary-condition`, and `no-misused-promises`) and Prettier formatting are enforced across all test and runtime code at the root level.
+
 ## Scope
 
 These files describe durable genre conventions, not live scene trends. Current microgenre terminology and current artist/production trends should be verified separately when freshness matters.

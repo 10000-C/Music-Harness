@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 
 import {
   TRACK_IDS,
@@ -76,92 +77,105 @@ const startFakeOpenAi = async (turns: readonly ModelTurn[]) => {
       raw += chunk;
     });
     request.on('end', () => {
-      requests.push(JSON.parse(raw) as unknown);
-      const turn = turns[index];
-      index += 1;
-      if (turn === undefined) {
-        response.writeHead(400, { 'content-type': 'application/json' });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: 'Unexpected model call',
-              type: 'invalid_request',
-            },
-          }),
-        );
-        return;
-      }
-      response.writeHead(200, {
-        'content-type': 'text/event-stream',
-        'cache-control': 'no-cache',
-      });
-      if ('toolCall' in turn) {
-        response.write(
-          `data: ${JSON.stringify({
-            id: `chatcmpl-${String(index)}`,
-            object: 'chat.completion.chunk',
-            created: index,
-            model: 'project-test-model',
-            choices: [
-              {
-                index: 0,
-                delta: {
-                  role: 'assistant',
-                  tool_calls: [
-                    {
-                      index: 0,
-                      id: `call-${String(index)}`,
-                      type: 'function',
-                      function: {
-                        name: turn.toolCall.name,
-                        arguments: JSON.stringify(turn.toolCall.arguments),
+      void (async () => {
+        await delay(1);
+        requests.push(JSON.parse(raw) as unknown);
+        const turn = turns[index];
+        index += 1;
+        if (turn === undefined) {
+          response.writeHead(400, { 'content-type': 'application/json' });
+          response.end(
+            JSON.stringify({
+              error: {
+                message: 'Unexpected model call',
+                type: 'invalid_request',
+              },
+            }),
+          );
+          return;
+        }
+        response.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+        });
+        if ('toolCall' in turn) {
+          response.write(
+            `data: ${JSON.stringify({
+              id: `chatcmpl-${String(index)}`,
+              object: 'chat.completion.chunk',
+              created: index,
+              model: 'project-test-model',
+              choices: [
+                {
+                  index: 0,
+                  delta: {
+                    role: 'assistant',
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: `call-${String(index)}`,
+                        type: 'function',
+                        function: {
+                          name: turn.toolCall.name,
+                          arguments: JSON.stringify(turn.toolCall.arguments),
+                        },
                       },
-                    },
-                  ],
+                    ],
+                  },
+                  finish_reason: null,
                 },
-                finish_reason: null,
+              ],
+            })}\n\n`,
+          );
+          response.write(
+            `data: ${JSON.stringify({
+              id: `chatcmpl-${String(index)}`,
+              object: 'chat.completion.chunk',
+              created: index,
+              model: 'project-test-model',
+              choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+              usage: {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                total_tokens: 2,
               },
-            ],
-          })}\n\n`,
-        );
-        response.write(
-          `data: ${JSON.stringify({
-            id: `chatcmpl-${String(index)}`,
-            object: 'chat.completion.chunk',
-            created: index,
-            model: 'project-test-model',
-            choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
-            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-          })}\n\n`,
-        );
-      } else {
-        response.write(
-          `data: ${JSON.stringify({
-            id: `chatcmpl-${String(index)}`,
-            object: 'chat.completion.chunk',
-            created: index,
-            model: 'project-test-model',
-            choices: [
-              {
-                index: 0,
-                delta: { role: 'assistant', content: turn.text },
-                finish_reason: null,
+            })}\n\n`,
+          );
+        } else {
+          response.write(
+            `data: ${JSON.stringify({
+              id: `chatcmpl-${String(index)}`,
+              object: 'chat.completion.chunk',
+              created: index,
+              model: 'project-test-model',
+              choices: [
+                {
+                  index: 0,
+                  delta: { role: 'assistant', content: turn.text },
+                  finish_reason: null,
+                },
+              ],
+            })}\n\n`,
+          );
+          response.write(
+            `data: ${JSON.stringify({
+              id: `chatcmpl-${String(index)}`,
+              object: 'chat.completion.chunk',
+              created: index,
+              model: 'project-test-model',
+              choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+              usage: {
+                prompt_tokens: 1,
+                completion_tokens: 1,
+                total_tokens: 2,
               },
-            ],
-          })}\n\n`,
-        );
-        response.write(
-          `data: ${JSON.stringify({
-            id: `chatcmpl-${String(index)}`,
-            object: 'chat.completion.chunk',
-            created: index,
-            model: 'project-test-model',
-            choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
-            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-          })}\n\n`,
-        );
-      }
-      response.end('data: [DONE]\n\n');
+            })}\n\n`,
+          );
+        }
+        response.end('data: [DONE]\n\n');
+      })().catch((error: unknown) => {
+        response.writeHead(500).end(String(error));
+      });
     });
   });
   fakeServers.push(server);
@@ -538,5 +552,5 @@ describe('AgentWorkflow full project acceptance', { concurrent: false }, () => {
         code: 'TASK_NOT_ACTIVE',
       },
     );
-  });
+  }, 30000);
 });

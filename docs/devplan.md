@@ -722,6 +722,7 @@ A4 Strands Agent
 - 禁止跨所有权模块临时修改而不通知负责人；
 - openDAW 文件即使位于 Core 目录，也由 B review；
 - Agent 文件即使由 Main 启动，也由 A review；
+- 提交任何 Agent / Skill 相关改动时，验收必须以根目录 `pnpm check`（涵盖 `format:check`、`lint`、`typecheck`、`test`）为最终准入门槛，严禁仅跑 package-local 的 test / typecheck，避免遗漏全仓库代码规范及 ESLint 约束；
 - Day 8 起不进行无验收项支撑的重构。
 
 每次集成前运行：
