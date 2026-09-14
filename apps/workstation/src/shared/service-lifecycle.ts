@@ -3,9 +3,15 @@ import {
   isCoreCandidateRequest,
   type CoreCandidateRequest,
 } from './candidate-bridge.js';
+import type {
+  CorePlaybackRequest,
+  CorePlaybackResponse,
+  CorePlaybackSnapshotRequest,
+} from './playback-bridge.js';
 import {
   isCorePlaybackRequest,
-  type CorePlaybackRequest,
+  isCorePlaybackResponse,
+  isCorePlaybackSnapshotRequest,
 } from './playback-bridge.js';
 
 export const SERVICE_LIFECYCLE_PROTOCOL_VERSION = 1 as const;
@@ -16,7 +22,8 @@ export type MainToServiceMessage =
   | Readonly<{ type: 'shutdown'; protocolVersion: 1; requestId: string }>
   | CoreProjectRequest
   | CoreCandidateRequest
-  | CorePlaybackRequest;
+  | CorePlaybackRequest
+  | CorePlaybackSnapshotRequest;
 export type ServiceToMainMessage =
   | Readonly<{ type: 'ready'; protocolVersion: 1; service: ServiceKind }>
   | Readonly<{ type: 'healthResult'; protocolVersion: 1; requestId: string }>

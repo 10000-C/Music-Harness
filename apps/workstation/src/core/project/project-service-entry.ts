@@ -134,6 +134,40 @@ const handle = async (message: unknown): Promise<void> => {
       }
       return;
     }
+    else if (message.type === 'playback.readSnapshot') {
+      if (message.source.kind === 'current') {
+        try {
+          const current = await playback.read();
+          send({
+            type: 'playback.snapshot',
+            protocolVersion: 1,
+            requestId: message.requestId,
+            projectId: message.projectId,
+            source: message.source,
+            revision: current.revision,
+            compilation: current.compilation,
+            timeline: current.timeline,
+          });
+        } catch (error: unknown) {
+          send({
+            type: 'playback.snapshotFailed',
+            protocolVersion: 1,
+            requestId: message.requestId,
+            code: 'CURRENT_UNAVAILABLE',
+            userMessage: error instanceof Error ? error.message : 'Unknown error',
+          });
+        }
+      } else {
+        send({
+          type: 'playback.snapshotFailed',
+          protocolVersion: 1,
+          requestId: message.requestId,
+          code: 'CANDIDATE_UNAVAILABLE',
+          userMessage: 'Candidate snapshot reading is not yet implemented in Core.',
+        });
+      }
+      return;
+    }
     if (message.type === 'candidateCommand') {
       await enqueueCandidate(message.command);
       return;
