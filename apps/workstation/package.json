@@ -14,7 +14,10 @@
     "build:smoke": "cross-env AGENT_MUSIC_INCLUDE_FAKE_SERVICES=1 electron-vite build",
     "smoke:shell": "pnpm build:smoke && vitest run tests/desktop-shell.smoke.test.ts --config vitest.smoke.config.ts",
     "smoke:real": "pnpm build:smoke && vitest run tests/real-services.smoke.test.ts --config vitest.smoke.config.ts",
-    "smoke:spessasynth": "pnpm build:smoke && vitest run tests/spessasynth.smoke.test.ts --config vitest.smoke.config.ts"
+    "smoke:spessasynth": "pnpm build:smoke && vitest run tests/spessasynth.smoke.test.ts --config vitest.smoke.config.ts",
+
+    "pack": "pnpm build && electron-builder --dir",
+    "dist": "pnpm build && electron-builder --win"
   },
   "dependencies": {
     "@agent-music/agent": "workspace:*",
@@ -37,9 +40,27 @@
     "@types/react-dom": "19.2.4",
     "cross-env": "10.1.0",
     "electron": "40.10.6",
+    "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "typescript": "5.9.3",
     "vite": "7.2.7",
     "vitest": "4.1.10"
+  },
+  "build": {
+    "appId": "com.music-harness.app",
+    "productName": "Lie",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
   }
 }
