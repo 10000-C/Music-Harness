@@ -4,11 +4,13 @@ import type {
 } from '../../shared/service-lifecycle.js';
 import type { AgentCommand, AgentProcessCommand } from '@agent-music/contracts';
 import type { CoreCandidateStateRequest } from '../../shared/candidate-bridge.js';
+import type { CorePlaybackSnapshotRequest } from '../../shared/playback-bridge.js';
 
 /** Messages accepted by a managed Core or Agent process transport. */
 export type ManagedProcessMessage =
   | MainToServiceMessage
   | CoreCandidateStateRequest
+  | CorePlaybackSnapshotRequest
   | AgentProcessCommand
   | AgentCommand;
 

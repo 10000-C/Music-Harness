@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  compileComposition,
+  createInitialCanonicalAbc,
+} from '../src/core/composition/index.js';
 import { createServiceSupervisor as createProductionServiceSupervisor } from '../src/main/service-supervisor/index.js';
 import type { ProjectId } from '@agent-music/contracts';
 import type {
@@ -146,6 +150,42 @@ describe('ServiceSupervisor', () => {
     await expect(pending).resolves.toMatchObject({
       type: 'playback.failed',
       code: 'COMPILATION_FAILED',
+    });
+  });
+  it('routes a source-aware playback snapshot to its matching Core request', async () => {
+    const processes = adapter();
+    const supervisor = (active = createServiceSupervisor(processes));
+    await supervisor.start();
+    processes.emit('core', {
+      type: 'ready',
+      protocolVersion: 1,
+      service: 'core',
+    });
+    const projectId = '00000000-0000-4000-8000-000000000001' as ProjectId;
+    const source = { kind: 'current' as const, revision: 'current-1' };
+    const pending = supervisor.readPlaybackSnapshot(projectId, source);
+    const request = processes.sent.find(
+      (message): message is { type: string; requestId: string } =>
+        typeof message === 'object' &&
+        message !== null &&
+        (message as { type?: string }).type === 'playback.readSnapshot',
+    );
+    expect(request).toBeDefined();
+    const compiled = compileComposition(createInitialCanonicalAbc());
+    processes.emit('core', {
+      type: 'playback.snapshot',
+      protocolVersion: 1,
+      requestId: request?.requestId,
+      projectId,
+      source,
+      revision: source.revision,
+      compilation: compiled.playback,
+      timeline: compiled.timelineViewModel,
+    });
+    await expect(pending).resolves.toMatchObject({
+      type: 'playback.snapshot',
+      source,
+      revision: source.revision,
     });
   });
   it('routes the complete Candidate event batch only to its matching request', async () => {

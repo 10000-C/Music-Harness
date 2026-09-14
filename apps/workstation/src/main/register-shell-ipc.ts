@@ -1,6 +1,7 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import { isServiceKind } from '../shared/service-lifecycle.js';
 import { isProjectId } from '../shared/candidate-bridge.js';
+import { isPlaybackSnapshotSource } from '../shared/playback-bridge.js';
 import {
   isExportPathRequest,
   isProjectDirectoryPurpose,
@@ -9,6 +10,7 @@ import {
   isCandidateCommandResult,
   isCandidateEventNotification,
   isCandidateStateResult,
+  isPlaybackSnapshotResult,
   isCorePlaybackResponse,
   isAgentCommand,
   isAgentEvent,
@@ -149,6 +151,37 @@ export const registerShellIpc = (
       return null;
     }
   });
+  ipcMain.handle(
+    shellIpcChannels.playbackSnapshot,
+    async (_event, projectId: unknown, source: unknown) => {
+      if (!isProjectId(projectId) || !isPlaybackSnapshotSource(source)) {
+        return {
+          ok: false,
+          code: 'INVALID_PLAYBACK_SOURCE',
+          userMessage: 'Invalid playback source.',
+        };
+      }
+      try {
+        const result = {
+          ok: true as const,
+          snapshot: await supervisor.readPlaybackSnapshot(projectId, source),
+        };
+        return isPlaybackSnapshotResult(result)
+          ? result
+          : {
+              ok: false,
+              code: 'CORE_INVALID_RESPONSE',
+              userMessage: 'Music Core returned invalid playback data.',
+            };
+      } catch {
+        return {
+          ok: false,
+          code: 'CORE_UNAVAILABLE',
+          userMessage: 'Music Core is unavailable. Try again.',
+        };
+      }
+    },
+  );
   ipcMain.handle(
     shellIpcChannels.exportPath,
     async (_event, request: unknown) => {

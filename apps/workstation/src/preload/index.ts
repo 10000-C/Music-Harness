@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { isServiceKind } from '../shared/service-lifecycle.js';
 import { isProjectId } from '../shared/candidate-bridge.js';
+import { isPlaybackSnapshotSource } from '../shared/playback-bridge.js';
 import {
   isCommandResult,
   isDirectoryDialogResult,
@@ -12,6 +13,7 @@ import {
   isCandidateCommandResult,
   isCandidateEventNotification,
   isCandidateStateResult,
+  isPlaybackSnapshotResult,
   isCorePlaybackResponse,
   isAgentCommand,
   isAgentEvent,
@@ -132,6 +134,26 @@ const bridge = {
       };
     const value = await invoke(shellIpcChannels.candidateState, projectId);
     return isCandidateStateResult(value)
+      ? value
+      : {
+          ok: false as const,
+          code: 'IPC_UNAVAILABLE',
+          userMessage: 'The desktop service is unavailable. Try again.',
+        };
+  },
+  async readPlaybackSnapshot(projectId: unknown, source: unknown) {
+    if (!isProjectId(projectId) || !isPlaybackSnapshotSource(source))
+      return {
+        ok: false as const,
+        code: 'INVALID_PLAYBACK_SOURCE',
+        userMessage: 'Invalid playback source.',
+      };
+    const value = await invoke(
+      shellIpcChannels.playbackSnapshot,
+      projectId,
+      source,
+    );
+    return isPlaybackSnapshotResult(value)
       ? value
       : {
           ok: false as const,

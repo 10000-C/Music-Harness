@@ -27,8 +27,12 @@ import {
 } from '../../shared/candidate-bridge.js';
 import {
   isCorePlaybackResponse,
+  isCorePlaybackSnapshotResponse,
+  type CorePlaybackSnapshot,
+  type CorePlaybackSnapshotRequest,
   type CorePlaybackRequest,
   type CorePlaybackResponse,
+  type PlaybackSnapshotSource,
 } from '../../shared/playback-bridge.js';
 import type { ProjectEvent } from '@agent-music/contracts';
 import type { CandidateEvent } from '@agent-music/contracts';
@@ -66,6 +70,10 @@ export interface ServiceSupervisor {
   dispatchAgent(command: AgentCommand): Promise<AgentCommandResult>;
   onAgentEvent(listener: (event: AgentEvent) => void): () => void;
   readCurrentPlayback(): Promise<CorePlaybackResponse>;
+  readPlaybackSnapshot(
+    projectId: CorePlaybackSnapshotRequest['projectId'],
+    source: PlaybackSnapshotSource,
+  ): Promise<CorePlaybackSnapshot>;
 }
 
 export interface SupervisorOptions {
@@ -127,6 +135,17 @@ export const createServiceSupervisor = (
     {
       readonly generation: number;
       readonly resolve: (response: CorePlaybackResponse) => void;
+      readonly reject: (error: Error) => void;
+      readonly timeout: ReturnType<typeof setTimeout>;
+    }
+  >();
+  const pendingPlaybackSnapshots = new Map<
+    string,
+    {
+      readonly generation: number;
+      readonly projectId: CorePlaybackSnapshotRequest['projectId'];
+      readonly source: PlaybackSnapshotSource;
+      readonly resolve: (snapshot: CorePlaybackSnapshot) => void;
       readonly reject: (error: Error) => void;
       readonly timeout: ReturnType<typeof setTimeout>;
     }
@@ -246,6 +265,12 @@ export const createServiceSupervisor = (
         cancel(pending.timeout);
         pending.reject(new Error('The Music Core process restarted.'));
         pendingPlayback.delete(requestId);
+      }
+      for (const [requestId, pending] of pendingPlaybackSnapshots) {
+        if (pending.generation !== generations.core) continue;
+        cancel(pending.timeout);
+        pending.reject(new Error('The Music Core process restarted.'));
+        pendingPlaybackSnapshots.delete(requestId);
       }
       for (const [requestId, pending] of pendingCandidates) {
         if (pending.generation !== generations.core) continue;
@@ -464,6 +489,29 @@ export const createServiceSupervisor = (
         cancel(pending.timeout);
         pendingPlayback.delete(message.requestId);
         pending.resolve(message);
+      }
+      return;
+    }
+    if (service === 'core' && isCorePlaybackSnapshotResponse(message)) {
+      const pending = pendingPlaybackSnapshots.get(message.requestId);
+      if (pending?.generation === generation) {
+        cancel(pending.timeout);
+        pendingPlaybackSnapshots.delete(message.requestId);
+        if (
+          message.type !== 'playback.snapshot' ||
+          pending.projectId !== message.projectId ||
+          pending.source.kind !== message.source.kind ||
+          pending.source.revision !== message.source.revision ||
+          (pending.source.kind === 'candidate' &&
+            (message.source.kind !== 'candidate' ||
+              pending.source.candidateId !== message.source.candidateId))
+        ) {
+          pending.reject(
+            new Error('Music Core returned a mismatched playback snapshot.'),
+          );
+        } else {
+          pending.resolve(message);
+        }
       }
       return;
     }
@@ -759,6 +807,49 @@ export const createServiceSupervisor = (
           cancel(timeout);
           pendingPlayback.delete(requestId);
           reject(new Error('Music Core could not receive playback request.'));
+        }
+      });
+    },
+
+    readPlaybackSnapshot(projectId, source) {
+      if (states.core !== 'ready') {
+        return Promise.reject(new Error('Music Core is not ready.'));
+      }
+      const process = processes.get('core');
+      if (process === undefined) {
+        return Promise.reject(new Error('Music Core is unavailable.'));
+      }
+      const requestId = `playback-snapshot-${String(++requestSequence)}`;
+      const generation = generations.core;
+      return new Promise<CorePlaybackSnapshot>((resolve, reject) => {
+        const timeout = schedule(() => {
+          pendingPlaybackSnapshots.delete(requestId);
+          reject(new Error('Music Core did not return a playback snapshot.'));
+        }, 15_000);
+        pendingPlaybackSnapshots.set(requestId, {
+          generation,
+          projectId,
+          source,
+          resolve,
+          reject,
+          timeout,
+        });
+        try {
+          process.send({
+            type: 'playback.readSnapshot',
+            protocolVersion: 1,
+            requestId,
+            projectId,
+            source,
+          } satisfies CorePlaybackSnapshotRequest);
+        } catch {
+          cancel(timeout);
+          pendingPlaybackSnapshots.delete(requestId);
+          reject(
+            new Error(
+              'Music Core could not receive playback snapshot request.',
+            ),
+          );
         }
       });
     },

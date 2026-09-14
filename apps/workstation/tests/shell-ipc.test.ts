@@ -69,6 +69,7 @@ const supervisor = {
     return vi.fn();
   }),
   readCurrentPlayback: vi.fn(),
+  readPlaybackSnapshot: vi.fn(),
   shutdown: vi.fn(async () => undefined),
   subscribe: vi.fn((listener: (snapshot: unknown) => void) => {
     snapshotListener = listener;
@@ -100,6 +101,7 @@ describe('shell Main IPC and dialogs', () => {
         channels.candidate,
         channels.candidateState,
         channels.playback,
+        channels.playbackSnapshot,
         channels.project,
         channels.restart,
         channels.snapshot,

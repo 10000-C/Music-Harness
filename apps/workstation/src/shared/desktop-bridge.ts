@@ -9,9 +9,13 @@ import type {
   ProjectCommandResult,
   CandidateCommandResult,
   CandidateStateResult,
+  PlaybackSnapshotResult,
   DesktopAgentCommandResult,
 } from './shell-contracts.js';
-import type { CorePlaybackResponse } from './playback-bridge.js';
+import type {
+  CorePlaybackResponse,
+  PlaybackSnapshotSource,
+} from './playback-bridge.js';
 import type { CoreCandidateEventNotification } from './candidate-bridge.js';
 import type {
   AgentCommand,
@@ -39,6 +43,10 @@ export interface DesktopBridge {
   dispatchAgent(command: AgentCommand): Promise<DesktopAgentCommandResult>;
   onAgentEvent(listener: (event: AgentEvent) => void): () => void;
   readCurrentPlayback(): Promise<CorePlaybackResponse | null>;
+  readPlaybackSnapshot(
+    projectId: ProjectId,
+    source: PlaybackSnapshotSource,
+  ): Promise<PlaybackSnapshotResult>;
 }
 declare global {
   interface Window {

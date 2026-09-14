@@ -16,7 +16,11 @@ import {
   type CoreCandidateEventNotification,
 } from './candidate-bridge.js';
 import { isCorePlaybackResponse } from './playback-bridge.js';
-import type { CorePlaybackResponse } from './playback-bridge.js';
+import {
+  isCorePlaybackSnapshotResponse,
+  type CorePlaybackResponse,
+  type CorePlaybackSnapshot,
+} from './playback-bridge.js';
 import {
   isDesktopAgentCommandResult,
   type DesktopAgentCommandResult,
@@ -38,6 +42,7 @@ export const shellIpcChannels = {
   candidate: 'shell:candidate',
   candidateState: 'shell:candidate:state',
   playback: 'shell:playback',
+  playbackSnapshot: 'shell:playback:snapshot',
   agent: 'shell:agent',
   agentEvent: 'shell:agent:event',
   candidateEvent: 'shell:candidate:event',
@@ -67,6 +72,12 @@ export type CandidateCommandResult =
   | Readonly<{ ok: false; code: string; userMessage: string }>;
 export type CandidateStateResult =
   | Readonly<{ ok: true; state: CandidateStateSnapshot }>
+  | Readonly<{ ok: false; code: string; userMessage: string }>;
+export type PlaybackSnapshotResult =
+  | Readonly<{
+      ok: true;
+      snapshot: CorePlaybackSnapshot;
+    }>
   | Readonly<{ ok: false; code: string; userMessage: string }>;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -191,6 +202,24 @@ export const isCandidateEventNotification = (
   value: unknown,
 ): value is CoreCandidateEventNotification => {
   return isCoreCandidateEventNotification(value);
+};
+
+export const isPlaybackSnapshotResult = (
+  value: unknown,
+): value is PlaybackSnapshotResult => {
+  if (!isRecord(value) || typeof value.ok !== 'boolean') return false;
+  if (value.ok) {
+    if (!isRecord(value.snapshot)) return false;
+    return isCorePlaybackSnapshotResponse({
+      ...value.snapshot,
+      type: 'playback.snapshot',
+      protocolVersion: 1,
+      requestId: 'shell-playback-snapshot-result',
+    });
+  }
+  return (
+    typeof value.code === 'string' && typeof value.userMessage === 'string'
+  );
 };
 export { isServiceKind };
 export type { ServiceKind };
