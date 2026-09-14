@@ -7,6 +7,7 @@ import {
   isCoreCandidateEventNotification,
   isCoreCandidateStateResponse,
 } from '../src/shared/candidate-bridge.js';
+import { isMainToServiceMessage } from '../src/shared/service-lifecycle.js';
 
 const projectId = '00000000-0000-4000-8000-000000000301';
 const candidateId = '00000000-0000-4000-8000-000000000302';
@@ -135,5 +136,33 @@ describe('shell contracts', () => {
         },
       }),
     ).toBe(false);
+  });
+
+  it('accepts playback.readSnapshot as a valid main-to-service message', () => {
+    expect(
+      isMainToServiceMessage({
+        type: 'playback.readSnapshot',
+        protocolVersion: 1,
+        requestId: 'snapshot-req-1',
+        projectId,
+        source: {
+          kind: 'current',
+          revision: 'current-rev-1',
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isMainToServiceMessage({
+        type: 'playback.readSnapshot',
+        protocolVersion: 1,
+        requestId: 'snapshot-req-2',
+        projectId,
+        source: {
+          kind: 'candidate',
+          candidateId,
+          revision: 'candidate-rev-1',
+        },
+      }),
+    ).toBe(true);
   });
 });

@@ -23,7 +23,10 @@ import {
   isMainToServiceMessage,
   type ServiceKind,
 } from '../../shared/service-lifecycle.js';
-import type { CorePlaybackResponse } from '../../shared/playback-bridge.js';
+import type {
+  CorePlaybackResponse,
+  CorePlaybackSnapshotResponse,
+} from '../../shared/playback-bridge.js';
 import { currentPlaybackFailure } from './current-playback-response.js';
 
 const service: ServiceKind = 'core';
@@ -131,6 +134,41 @@ const handle = async (message: unknown): Promise<void> => {
         // Do not send partially compiled or stale authority data across this
         // boundary. The Renderer can show an actionable fail-safe state.
         send(currentPlaybackFailure(message.requestId, error));
+      }
+      return;
+    } else if (message.type === 'playback.readSnapshot') {
+      if (message.source.kind === 'current') {
+        try {
+          const current = await playback.read();
+          send({
+            type: 'playback.snapshot',
+            protocolVersion: 1,
+            requestId: message.requestId,
+            projectId: message.projectId,
+            source: message.source,
+            revision: current.revision,
+            compilation: current.compilation,
+            timeline: current.timeline,
+          } satisfies CorePlaybackSnapshotResponse);
+        } catch (error: unknown) {
+          send({
+            type: 'playback.snapshotFailed',
+            protocolVersion: 1,
+            requestId: message.requestId,
+            code: 'CURRENT_UNAVAILABLE',
+            userMessage:
+              error instanceof Error ? error.message : 'Unknown error',
+          } satisfies CorePlaybackSnapshotResponse);
+        }
+      } else {
+        send({
+          type: 'playback.snapshotFailed',
+          protocolVersion: 1,
+          requestId: message.requestId,
+          code: 'CANDIDATE_UNAVAILABLE',
+          userMessage:
+            'Candidate snapshot reading is not yet implemented in Core.',
+        } satisfies CorePlaybackSnapshotResponse);
       }
       return;
     }
