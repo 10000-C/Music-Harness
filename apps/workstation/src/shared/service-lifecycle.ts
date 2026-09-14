@@ -57,6 +57,8 @@ export const isMainToServiceMessage = (
   if (value.type === 'candidateCommand') return isCoreCandidateRequest(value);
   if (value.type === 'playback.readCurrent')
     return isCorePlaybackRequest(value);
+  if (value.type === 'playback.readSnapshot')
+    return isCorePlaybackSnapshotRequest(value);
   if (!isRequestId(value.requestId)) return false;
   return value.type === 'healthCheck' || value.type === 'shutdown';
 };

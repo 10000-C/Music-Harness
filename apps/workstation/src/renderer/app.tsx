@@ -858,6 +858,7 @@ const LiveProjectWorkspace = () => {
       void playbackAdapter.current?.dispose();
       playbackAdapter.current = null;
       setRuntimeState(null);
+      setTimeline(null);
       return;
     }
     const bridge = window.agentMusic;
@@ -874,23 +875,17 @@ const LiveProjectWorkspace = () => {
     const unsubscribe = adapter.subscribe((state) => {
       if (mounted.current) setRuntimeState(state);
     });
-    return () => {
-      unsubscribe();
-      void adapter.dispose();
-      if (playbackAdapter.current === adapter) playbackAdapter.current = null;
-    };
-  }, [project?.state, project?.projectId]);
-
-  useEffect(() => {
-    const adapter = playbackAdapter.current;
-    if (!adapter || project?.state !== 'ready') return;
-    
     void adapter.load({ kind: 'current', revision: project.currentRevision }).then((result) => {
       if (!mounted.current) return;
       if (result.status === 'failed') setMessage(result.failure.message);
       else setMessage('Current is loaded for playback.');
     });
-  }, [project?.state, project?.currentRevision]);
+    return () => {
+      unsubscribe();
+      void adapter.dispose();
+      if (playbackAdapter.current === adapter) playbackAdapter.current = null;
+    };
+  }, [project?.state, project?.projectId, project?.currentRevision]);
 
   useEffect(() => {
     const bridge = window.agentMusic;
@@ -919,7 +914,12 @@ const LiveProjectWorkspace = () => {
       }
     });
     return () => { active = false; };
-  }, [runtimeState?.activeSource, project?.state, project?.projectId]);
+  }, [
+    runtimeState?.activeSource?.kind,
+    runtimeState?.activeSource?.revision,
+    project?.state,
+    project?.projectId,
+  ]);
 
   useEffect(() => {
     const bridge = window.agentMusic;
