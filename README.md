@@ -44,6 +44,17 @@ pnpm install
 
 `engine-strict` is on (`.npmrc`), so the install will refuse to run on the wrong Node version.
 
+The workstation keeps a small pnpm patch for `spessasynth_lib@4.3.14` in
+[`patches/spessasynth_lib@4.3.14.patch`](patches/spessasynth_lib@4.3.14.patch).
+It reconciles the package's `MIDIData.embeddedSoundBank` declaration with its
+`BasicMIDI` base type and does not change runtime code. If TypeScript reports
+`MIDIData`/`BasicMIDI` incompatibility after switching branches, reinstall the
+workspace with Node 24 so pnpm reapplies the locked patch:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
 ## Running the desktop app
 
 ```bash
