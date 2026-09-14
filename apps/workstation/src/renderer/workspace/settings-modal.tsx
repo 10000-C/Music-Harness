@@ -28,7 +28,7 @@ export const SettingsModal = ({
   onClose,
 }: SettingsModalProps) => {
   const [settings, setSettings] = useState<AgentSettings>(
-    initialSettings ?? DEFAULT_SETTINGS
+    initialSettings ?? DEFAULT_SETTINGS,
   );
   const [showKey, setShowKey] = useState(false);
 
@@ -47,12 +47,18 @@ export const SettingsModal = ({
             <h2 id="settings-dialog-title">AI Collaborator</h2>
           </div>
           {isConfigured ? (
-            <span className="settings-dialog__status is-ready" title="API Key configured">
+            <span
+              className="settings-dialog__status is-ready"
+              title="API Key configured"
+            >
               <div className="status-dot"></div>
               Ready
             </span>
           ) : (
-            <span className="settings-dialog__status is-warning" title="API Key required">
+            <span
+              className="settings-dialog__status is-warning"
+              title="API Key required"
+            >
               <div className="status-dot"></div>
               Required
             </span>
@@ -83,7 +89,9 @@ export const SettingsModal = ({
               }}
             >
               <option value="openai">OpenAI (or Compatible)</option>
-              <option value="custom">Custom Endpoint (e.g. DeepSeek, Ollama)</option>
+              <option value="custom">
+                Custom Endpoint (e.g. DeepSeek, Ollama)
+              </option>
             </select>
           </div>
 
@@ -93,10 +101,14 @@ export const SettingsModal = ({
               id="setting-base-url"
               type="text"
               value={settings.baseUrl}
-              onChange={(e) => { setSettings({ ...settings, baseUrl: e.target.value }); }}
+              onChange={(e) => {
+                setSettings({ ...settings, baseUrl: e.target.value });
+              }}
               placeholder="https://api.openai.com/v1"
             />
-            <small>Must be compatible with the standard /v1/chat/completions endpoint</small>
+            <small>
+              Must be compatible with the standard /v1/chat/completions endpoint
+            </small>
           </div>
 
           <div className="settings-form__field">
@@ -106,7 +118,9 @@ export const SettingsModal = ({
                 id="setting-api-key"
                 type={showKey ? 'text' : 'password'}
                 value={settings.apiKey}
-                onChange={(e) => { setSettings({ ...settings, apiKey: e.target.value }); }}
+                onChange={(e) => {
+                  setSettings({ ...settings, apiKey: e.target.value });
+                }}
                 placeholder="sk-..."
                 autoComplete="off"
                 spellCheck="false"
@@ -114,14 +128,20 @@ export const SettingsModal = ({
               <button
                 type="button"
                 className="icon-action"
-                onClick={() => { setShowKey(!showKey); }}
+                onClick={() => {
+                  setShowKey(!showKey);
+                }}
                 aria-label={showKey ? 'Hide API Key' : 'Show API Key'}
                 title={showKey ? 'Hide' : 'Show'}
               >
                 {showKey ? <EyeClosedIcon size={16} /> : <EyeIcon size={16} />}
               </button>
             </div>
-            {!isConfigured && <small className="settings-form__error">API Key is required for the agent to work.</small>}
+            {!isConfigured && (
+              <small className="settings-form__error">
+                API Key is required for the agent to work.
+              </small>
+            )}
           </div>
 
           <div className="settings-form__field">
@@ -130,7 +150,9 @@ export const SettingsModal = ({
               id="setting-model"
               type="text"
               value={settings.model}
-              onChange={(e) => { setSettings({ ...settings, model: e.target.value }); }}
+              onChange={(e) => {
+                setSettings({ ...settings, model: e.target.value });
+              }}
               placeholder="gpt-4o"
             />
           </div>
@@ -143,7 +165,9 @@ export const SettingsModal = ({
           <button
             type="button"
             className="primary-action"
-            onClick={() => { onSave(settings); }}
+            onClick={() => {
+              onSave(settings);
+            }}
           >
             Save Changes
           </button>

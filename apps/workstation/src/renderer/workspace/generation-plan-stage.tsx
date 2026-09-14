@@ -3,7 +3,10 @@ import type { RendererTimelineViewModel as TimelineViewModel } from '../b-contra
 import { formatScope } from './format-scope.js';
 
 interface GenerationPlanStageProps {
-  readonly operation: Extract<GenerationPlanOperationView, { state: 'pending' }>;
+  readonly operation: Extract<
+    GenerationPlanOperationView,
+    { state: 'pending' }
+  >;
   readonly timeline?: TimelineViewModel | null;
   readonly busy?: boolean;
   readonly onApprove: () => void;

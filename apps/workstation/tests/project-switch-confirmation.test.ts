@@ -46,7 +46,9 @@ describe('ProjectSwitchConfirmation presentation', () => {
     );
 
     expect(html).toContain('Switch Project?');
-    expect(html).toContain('Switching projects will cancel the active work in progress.');
+    expect(html).toContain(
+      'Switching projects will cancel the active work in progress.',
+    );
     expect(html).toContain('destructive-action');
     expect(html).toContain('Switch &amp; Cancel Work');
     expect(html).not.toContain('Switch &amp; Suspend');
@@ -82,7 +84,9 @@ describe('ProjectSwitchConfirmation presentation', () => {
       }),
     );
 
-    expect(html).toContain('Switching projects will cancel the active work in progress.');
+    expect(html).toContain(
+      'Switching projects will cancel the active work in progress.',
+    );
     expect(html).toContain('destructive-action');
     expect(html).toContain('Switch &amp; Cancel Work');
   });

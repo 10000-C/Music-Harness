@@ -11,12 +11,9 @@ export const formatScope = (
       ? formatBarRange(range, timeline)
       : `Ticks ${String(range.startTick)}–${String(range.endTick)}`;
 
-  const label =
-    scope.type === 'wholeProject' ? '全工程' : formatRange(scope);
+  const label = scope.type === 'wholeProject' ? '全工程' : formatRange(scope);
   const tracks =
-    scope.trackIds.length === 0
-      ? 'All tracks'
-      : scope.trackIds.join(', ');
+    scope.trackIds.length === 0 ? 'All tracks' : scope.trackIds.join(', ');
 
   return { label, tracks };
 };

@@ -1,7 +1,10 @@
 import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { isAgentSettings, type AgentSettings } from '../shared/settings-bridge.js';
+import {
+  isAgentSettings,
+  type AgentSettings,
+} from '../shared/settings-bridge.js';
 import type { CommandResult } from '../shared/shell-contracts.js';
 
 const getSettingsPath = (): string =>

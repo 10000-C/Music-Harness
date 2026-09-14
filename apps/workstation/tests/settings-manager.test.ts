@@ -1,6 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { promises as fs } from 'node:fs';
-import { readAgentSettings, writeAgentSettings } from '../src/main/settings-manager.js';
+import {
+  readAgentSettings,
+  writeAgentSettings,
+} from '../src/main/settings-manager.js';
 import type { AgentSettings } from '../src/shared/settings-bridge.js';
 
 vi.mock('node:fs', () => ({
@@ -80,7 +83,9 @@ describe('settings-manager', () => {
     const result = await writeAgentSettings(validSettings);
     expect(result).toEqual({ ok: true });
 
-    expect(fs.mkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+    expect(fs.mkdir).toHaveBeenCalledWith(expect.any(String), {
+      recursive: true,
+    });
     expect(fs.writeFile).toHaveBeenCalledWith(
       expect.stringMatching(/\.tmp$/),
       JSON.stringify(validSettings, null, 2),

@@ -12,14 +12,15 @@ import type { RendererTimelineViewModel as TimelineViewModel } from '../src/rend
 (globalThis as unknown as { React: typeof React }).React = React;
 
 describe('GenerationPlanStage presentation', () => {
-  const operation: Extract<GenerationPlanOperationView, { state: 'pending' }> = {
-    type: 'generationPlan',
-    state: 'pending',
-    operationId: 'op-1' as OperationId,
-    createdAt: '2026-09-14T00:00:00Z',
-    summary: 'Generate a funky bassline',
-    scope: { type: 'wholeProject', trackIds: [] },
-  };
+  const operation: Extract<GenerationPlanOperationView, { state: 'pending' }> =
+    {
+      type: 'generationPlan',
+      state: 'pending',
+      operationId: 'op-1' as OperationId,
+      createdAt: '2026-09-14T00:00:00Z',
+      summary: 'Generate a funky bassline',
+      scope: { type: 'wholeProject', trackIds: [] },
+    };
 
   const timeline: TimelineViewModel = {
     schemaVersion: 1,

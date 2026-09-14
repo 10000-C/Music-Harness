@@ -870,7 +870,8 @@ const LiveProjectWorkspace = () => {
   const [candidateState, setCandidateState] =
     useState<LiveCandidateState | null>(null);
   const candidateAdapter = useRef<LiveCandidateAdapter | null>(null);
-  const [generationPlanState, setGenerationPlanState] = useState<LiveGenerationPlanState | null>(null);
+  const [generationPlanState, setGenerationPlanState] =
+    useState<LiveGenerationPlanState | null>(null);
   const generationPlanAdapter = useRef<LiveGenerationPlanAdapter | null>(null);
   const [agentState, setAgentState] = useState<LiveAgentState | null>(null);
   const [agentPrompt, setAgentPrompt] = useState('');
@@ -1049,7 +1050,8 @@ const LiveProjectWorkspace = () => {
     return () => {
       unsubscribe();
       adapter.dispose();
-      if (generationPlanAdapter.current === adapter) generationPlanAdapter.current = null;
+      if (generationPlanAdapter.current === adapter)
+        generationPlanAdapter.current = null;
     };
   }, [project?.projectId, project?.state]);
 
@@ -1229,9 +1231,7 @@ const LiveProjectWorkspace = () => {
         ...current,
         [format]: chosen.path,
       }));
-      setMessage(
-        'Destination saved. Start the export when you are ready.',
-      );
+      setMessage('Destination saved. Start the export when you are ready.');
     },
     [project],
   );
@@ -1381,15 +1381,24 @@ const LiveProjectWorkspace = () => {
           activeExecution={agentState?.isExecuting ?? false}
           activeTask={
             generationPlanState?.operation?.state === 'pending' ||
-            (candidateState?.task !== null && candidateState?.task !== undefined)
+            (candidateState?.task !== null &&
+              candidateState?.task !== undefined)
           }
           onConfirm={() => {
             void (async () => {
               const requestId = liveRequestId(pendingSwitch.purpose);
               await dispatch(
                 pendingSwitch.purpose === 'create'
-                  ? { type: 'project.create', requestId, projectPath: pendingSwitch.path }
-                  : { type: 'project.open', requestId, projectPath: pendingSwitch.path }
+                  ? {
+                      type: 'project.create',
+                      requestId,
+                      projectPath: pendingSwitch.path,
+                    }
+                  : {
+                      type: 'project.open',
+                      requestId,
+                      projectPath: pendingSwitch.path,
+                    },
               );
               setActiveView('studio');
               setPendingSwitch(null);
@@ -1408,7 +1417,8 @@ const LiveProjectWorkspace = () => {
               setBusy(true);
               try {
                 if (window.agentMusic) {
-                  const result = await window.agentMusic.writeSettings(settings);
+                  const result =
+                    await window.agentMusic.writeSettings(settings);
                   if (result.ok) {
                     setAgentSettings(settings);
                     setIsSettingsOpen(false);
@@ -1607,7 +1617,9 @@ const LiveProjectWorkspace = () => {
                           await generationPlanAdapter.current?.approve();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to approve plan.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to approve plan.',
                           );
                         } finally {
                           setBusy(false);
@@ -1621,7 +1633,9 @@ const LiveProjectWorkspace = () => {
                           await generationPlanAdapter.current?.reject();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to reject plan.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to reject plan.',
                           );
                         } finally {
                           setBusy(false);
@@ -1641,7 +1655,9 @@ const LiveProjectWorkspace = () => {
                           await candidateAdapter.current?.approveScopeExtension();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to approve scope extension.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to approve scope extension.',
                           );
                         } finally {
                           setBusy(false);
@@ -1655,7 +1671,9 @@ const LiveProjectWorkspace = () => {
                           await candidateAdapter.current?.rejectScopeExtension();
                         } catch (error: unknown) {
                           setMessage(
-                            error instanceof Error ? error.message : 'Failed to reject scope extension.',
+                            error instanceof Error
+                              ? error.message
+                              : 'Failed to reject scope extension.',
                           );
                         } finally {
                           setBusy(false);

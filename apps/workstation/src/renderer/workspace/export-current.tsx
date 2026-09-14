@@ -11,18 +11,16 @@ import {
 } from './export-current-model.js';
 
 export type ExportDeliveryState =
-  | 'preparing'
-  | 'exporting'
-  | 'completed'
-  | 'failed'
-  | 'cancelled';
+  'preparing' | 'exporting' | 'completed' | 'failed' | 'cancelled';
 
 interface ExportCurrentViewProps {
   readonly projectName: string;
   readonly currentRevision: string | null;
   readonly currentReady: boolean;
   readonly playbackInputReady: boolean;
-  readonly selectedPaths: Readonly<Partial<Record<ExportCurrentFormat, string>>>;
+  readonly selectedPaths: Readonly<
+    Partial<Record<ExportCurrentFormat, string>>
+  >;
   readonly exportStates?: Readonly<
     Partial<Record<ExportCurrentFormat, ExportDeliveryState>>
   >;

@@ -71,7 +71,12 @@ export const CandidateStage = ({
       </button>
     </div>
     <div className="candidate-stage__actions">
-      <button type="button" className="ghost-action" disabled={busy} onClick={onReject}>
+      <button
+        type="button"
+        className="ghost-action"
+        disabled={busy}
+        onClick={onReject}
+      >
         Discard
       </button>
       <button

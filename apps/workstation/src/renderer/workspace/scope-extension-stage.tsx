@@ -34,8 +34,8 @@ export const ScopeExtensionStage = ({
         <h2 id="scope-extension-stage-title">Allow broader access?</h2>
         <p>
           <strong>Strong Confirmation:</strong> The agent requests to expand its
-          task scope to continue working. This will allow the agent to modify the
-          requested areas of your project.
+          task scope to continue working. This will allow the agent to modify
+          the requested areas of your project.
         </p>
         <div className="candidate-stage__scope">
           <strong>Requested Scope:</strong> {timeLabel} | {trackLabel}

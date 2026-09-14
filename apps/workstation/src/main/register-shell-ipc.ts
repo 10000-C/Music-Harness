@@ -303,7 +303,7 @@ export const registerShellIpc = (
     shellIpcChannels.settingsWrite,
     async (_event, settings: unknown) => {
       return await writeAgentSettings(settings);
-    }
+    },
   );
   const unsubscribeSnapshot = supervisor.subscribe((snapshot) => {
     if (
